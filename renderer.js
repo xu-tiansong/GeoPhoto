@@ -2,13 +2,43 @@ const { ipcRenderer } = require('electron');
 // Leaflet 已通过 CDN 在 HTML 中加载，使用全局 L 对象
 
 // --- 1. 初始化地图 ---
-// 设置初始视角为世界地图
-const map = L.map('map').setView([20, 0], 2);
+// 不设置初始视角，等待恢复保存的状态
+const map = L.map('map', { center: [20, 0], zoom: 2 });
 
 // 使用 Esri 免费卫星图层
 L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
     attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EBP, and the GIS User Community'
 }).addTo(map);
+
+// 标记是否正在恢复状态（防止恢复时触发保存）
+let isRestoringState = false;
+
+// 保存地图状态（防抖）
+let saveMapStateTimeout = null;
+function saveMapState() {
+    // 如果正在恢复状态，不保存
+    if (isRestoringState) return;
+    
+    if (saveMapStateTimeout) clearTimeout(saveMapStateTimeout);
+    saveMapStateTimeout = setTimeout(async () => {
+        const center = map.getCenter();
+        const zoom = map.getZoom();
+        try {
+            await ipcRenderer.invoke('save-map-state', {
+                lat: center.lat,
+                lng: center.lng,
+                zoom: zoom
+            });
+            console.log('地图状态已保存:', { lat: center.lat, lng: center.lng, zoom });
+        } catch (error) {
+            console.error('保存地图状态失败:', error);
+        }
+    }, 500); // 500ms 防抖
+}
+
+// 监听地图移动和缩放事件
+map.on('moveend', saveMapState);
+map.on('zoomend', saveMapState);
 
 // --- 2. 初始化矩形绘图工具 ---
 const drawnItems = new L.FeatureGroup();
@@ -34,68 +64,268 @@ const drawControl = new L.Control.Draw({
 });
 map.addControl(drawControl);
 
-// --- 3. 扫描文件夹功能 ---
-const scanBtn = document.getElementById('scan-btn');
-const statusText = document.getElementById('status');
+// --- 3. 加载遮罩层 ---
+const loadingOverlay = document.getElementById('loading-overlay');
+const loadingText = loadingOverlay.querySelector('.loading-text');
 
-scanBtn.addEventListener('click', async () => {
-    statusText.innerText = "🔍 正在扫描目录，请稍候...";
-    
-    // 调用 main.js 中的扫描逻辑
-    const result = await ipcRenderer.invoke('scan-directory');
-    
-    if (result.count > 0) {
-        statusText.innerText = `✅ 扫描完成！新增了 ${result.count} 张带GPS的照片。`;
-        loadMarkers(); // 扫描完立即刷新地图
-    } else {
-        statusText.innerText = "ℹ️ 未发现新照片或所选目录无带GPS信息的照片。";
-    }
-});
+function showLoading(text = '正在扫描文件...') {
+    loadingText.textContent = text;
+    loadingOverlay.classList.remove('hidden');
+}
+
+function hideLoading() {
+    loadingOverlay.classList.add('hidden');
+}
 
 // --- 监听来自菜单的扫描事件 ---
 ipcRenderer.on('scan-started', () => {
-    statusText.innerText = "🔍 正在扫描目录，请稍候...";
+    showLoading('正在扫描文件...');
 });
 
 ipcRenderer.on('scan-completed', (event, data) => {
-    if (data.count > 0) {
-        statusText.innerText = `✅ 扫描完成！在 "${data.directory}" 中新增了 ${data.count} 个带GPS的文件（照片/视频）。`;
-        loadMarkers(); // 扫描完立即刷新地图
+    hideLoading();
+    
+    const totalFiles = data.totalPhotos + data.totalVideos;
+    const newFiles = data.newPhotos + data.newVideos;
+    
+    let message = `扫描完成！\n`;
+    message += `目录中共有 ${data.totalPhotos} 张照片和 ${data.totalVideos} 个视频\n`;
+    
+    if (newFiles > 0) {
+        message += `其中新增 ${data.newPhotos} 张照片和 ${data.newVideos} 个视频`;
+        loadMarkers(); // 有新文件时刷新地图
     } else {
-        statusText.innerText = "ℹ️ 未发现新文件或所选目录无带GPS信息的文件。";
+        message += `没有新增文件（${data.skippedFiles} 个文件已存在）`;
     }
+    
+    // 使用对话框显示结果
+    alert(message);
 });
 
 ipcRenderer.on('scan-error', (event, data) => {
-    statusText.innerText = `❌ 扫描出错: ${data.error}`;
+    hideLoading();
+    alert(`扫描出错: ${data.error}`);
 });
 
 // --- 4. 渲染地图标记 (Markers) ---
-let markersLayer = L.layerGroup().addTo(map);
+// 使用 MarkerCluster 进行聚合，大幅提升性能
+let markersLayer = L.markerClusterGroup({
+    chunkedLoading: true,           // 分块加载，避免UI阻塞
+    chunkInterval: 100,             // 每块处理间隔
+    chunkDelay: 50,                 // 块之间延迟
+    spiderfyOnMaxZoom: true,        // 最大缩放时展开
+    showCoverageOnHover: false,     // 不显示覆盖范围
+    zoomToBoundsOnClick: true,      // 点击聚合时缩放
+    maxClusterRadius: 50,           // 聚合半径（像素）
+    disableClusteringAtZoom: 18,    // 缩放级别18时不再聚合
+    animate: false                  // 禁用动画提升性能
+});
+map.addLayer(markersLayer);
 
+let isLoadingMarkers = false;
+let currentPhotosCache = [];        // 缓存当前照片数据
+
+// 创建缩略图 HTML，根据图片比例调整大小，视频显示播放图标
+function createThumbnailTooltip(photo) {
+    const filePath = `${photo.directory}/${photo.filename}`;
+    const fileUrl = `file://${filePath.replace(/\\/g, '/')}`;
+    const isVideo = photo.type === 'video';
+    const uniqueId = `thumb-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    if (isVideo) {
+        // 视频：使用 video 元素获取第一帧，并叠加播放图标
+        return `
+            <div class="photo-tooltip">
+                <div class="thumbnail-wrapper" id="${uniqueId}">
+                    <video src="${fileUrl}" 
+                           style="max-width: 224px; max-height: 224px; display: block;"
+                           onloadedmetadata="adjustVideoThumbnailSize(this)"
+                           onerror="this.style.display='none'; this.parentElement.innerHTML='<div style=\\'width:120px;height:90px;background:#333;display:flex;align-items:center;justify-content:center;\\'><div class=\\'video-play-icon\\'></div></div>';"
+                           muted preload="metadata">
+                    </video>
+                    <div class="video-play-icon"></div>
+                </div>
+            </div>
+        `;
+    } else {
+        // 照片需要动态加载以获取原始尺寸
+        return `
+            <div class="photo-tooltip">
+                <div class="thumbnail-wrapper">
+                    <img src="${fileUrl}" 
+                         style="max-width: 224px; max-height: 224px;"
+                         onload="adjustThumbnailSize(this)"
+                         onerror="this.style.display='none'; this.parentElement.innerHTML='<div style=\\'width:100px;height:100px;background:#333;display:flex;align-items:center;justify-content:center;color:#999;\\'>无法加载</div>';">
+                </div>
+            </div>
+        `;
+    }
+}
+
+// 调整照片缩略图大小，保持比例，224px 为限制
+window.adjustThumbnailSize = function(img) {
+    const naturalWidth = img.naturalWidth;
+    const naturalHeight = img.naturalHeight;
+    const maxSize = 224;
+    
+    if (naturalWidth > naturalHeight) {
+        // 横幅照片：宽度 224px，高度按比例
+        img.style.width = maxSize + 'px';
+        img.style.height = 'auto';
+    } else {
+        // 竖幅照片：高度 224px，宽度按比例
+        img.style.height = maxSize + 'px';
+        img.style.width = 'auto';
+    }
+};
+
+// 调整视频缩略图大小，保持比例，224px 为限制
+window.adjustVideoThumbnailSize = function(video) {
+    const videoWidth = video.videoWidth;
+    const videoHeight = video.videoHeight;
+    const maxSize = 224;
+    
+    if (videoWidth > videoHeight) {
+        // 横幅视频：宽度 224px，高度按比例
+        video.style.width = maxSize + 'px';
+        video.style.height = 'auto';
+    } else {
+        // 竖幅视频：高度 224px，宽度按比例
+        video.style.height = maxSize + 'px';
+        video.style.width = 'auto';
+    }
+    // 跳转到第 0.1 秒以显示第一帧
+    video.currentTime = 0.1;
+};
+
+// 根据时间范围异步加载照片标记
+async function loadMarkersByTimeRange(startTime, endTime) {
+    if (isLoadingMarkers) return; // 防止重复加载
+    isLoadingMarkers = true;
+    
+    try {
+        // 异步查询指定时间范围的照片
+        const photos = await ipcRenderer.invoke('query-photos-by-time', {
+            startTime: startTime.toISOString(),
+            endTime: endTime.toISOString()
+        });
+        
+        // 缓存当前照片数据
+        currentPhotosCache = photos;
+        
+        // 清除旧标记，避免重复叠加
+        markersLayer.clearLayers();
+        
+        // 批量创建标记数组，然后一次性添加
+        const markers = [];
+        photos.forEach(photo => {
+            if (photo.lat && photo.lng) {
+                const marker = L.marker([photo.lat, photo.lng]);
+                
+                // 存储照片数据到 marker，延迟创建 tooltip
+                marker.photoData = photo;
+                
+                // 鼠标移入时才创建 tooltip（延迟加载）
+                marker.on('mouseover', function() {
+                    if (!this._tooltipBound) {
+                        this.bindTooltip(createThumbnailTooltip(this.photoData), {
+                            direction: 'top',
+                            offset: [0, -10],
+                            opacity: 1,
+                            className: 'photo-tooltip-container'
+                        });
+                        this._tooltipBound = true;
+                        this.openTooltip();
+                    }
+                });
+                
+                // 点击时才创建 popup（延迟加载）
+                marker.on('click', function() {
+                    if (!this._popupBound) {
+                        const p = this.photoData;
+                        const dateStr = p.time ? new Date(p.time).toLocaleString() : '未知时间';
+                        const typeStr = p.type === 'video' ? '🎬 视频' : '📷 照片';
+                        this.bindPopup(`
+                            <b>${typeStr}详情</b><br>
+                            时间: ${dateStr}<br>
+                            文件名: <small>${p.filename || '未知'}</small><br>
+                            目录: <small>${p.directory || '未知'}</small>
+                        `);
+                        this._popupBound = true;
+                        this.openPopup();
+                    }
+                });
+                
+                markers.push(marker);
+            }
+        });
+        
+        // 批量添加到聚合层
+        markersLayer.addLayers(markers);
+        
+        console.log(`已加载 ${photos.length} 个标记 (${startTime.toLocaleDateString()} - ${endTime.toLocaleDateString()})`);
+    } catch (error) {
+        console.error('加载标记出错:', error);
+    } finally {
+        isLoadingMarkers = false;
+    }
+}
+
+// 兼容旧的 loadMarkers 函数（加载所有照片）
 async function loadMarkers() {
-    // 从数据库获取所有照片信息
-    const photos = await ipcRenderer.invoke('get-all-photos');
-    
-    // 清除旧标记，避免重复叠加
-    markersLayer.clearLayers();
-    
-    photos.forEach(photo => {
-        if (photo.lat && photo.lng) {
-            const marker = L.marker([photo.lat, photo.lng]);
-            
-            // 绑定弹出窗，显示时间和类型
-            const dateStr = photo.time ? new Date(photo.time).toLocaleString() : '未知时间';
-            const typeStr = photo.type === 'video' ? '🎬 视频' : '📷 照片';
-            marker.bindPopup(`
-                <b>${typeStr}详情</b><br>
-                时间: ${dateStr}<br>
-                路径: <small>${photo.path}</small>
-            `);
-            
-            markersLayer.addLayer(marker);
-        }
-    });
+    try {
+        const photos = await ipcRenderer.invoke('get-all-photos');
+        currentPhotosCache = photos;
+        markersLayer.clearLayers();
+        
+        const markers = [];
+        photos.forEach(photo => {
+            if (photo.lat && photo.lng) {
+                const marker = L.marker([photo.lat, photo.lng]);
+                
+                // 存储照片数据到 marker，延迟创建 tooltip
+                marker.photoData = photo;
+                
+                // 鼠标移入时才创建 tooltip（延迟加载）
+                marker.on('mouseover', function() {
+                    if (!this._tooltipBound) {
+                        this.bindTooltip(createThumbnailTooltip(this.photoData), {
+                            direction: 'top',
+                            offset: [0, -10],
+                            opacity: 1,
+                            className: 'photo-tooltip-container'
+                        });
+                        this._tooltipBound = true;
+                        this.openTooltip();
+                    }
+                });
+                
+                // 点击时才创建 popup（延迟加载）
+                marker.on('click', function() {
+                    if (!this._popupBound) {
+                        const p = this.photoData;
+                        const dateStr = p.time ? new Date(p.time).toLocaleString() : '未知时间';
+                        const typeStr = p.type === 'video' ? '🎬 视频' : '📷 照片';
+                        this.bindPopup(`
+                            <b>${typeStr}详情</b><br>
+                            时间: ${dateStr}<br>
+                            文件名: <small>${p.filename || '未知'}</small><br>
+                            目录: <small>${p.directory || '未知'}</small>
+                        `);
+                        this._popupBound = true;
+                        this.openPopup();
+                    }
+                });
+                
+                markers.push(marker);
+            }
+        });
+        
+        // 批量添加到聚合层
+        markersLayer.addLayers(markers);
+    } catch (error) {
+        console.error('加载标记出错:', error);
+    }
 }
 
 // --- 5. 监听矩形选框结束事件 ---
@@ -544,6 +774,12 @@ class TimelineScrollbar {
         
         // 鼠标释放
         document.addEventListener('mouseup', () => {
+            if (this.isDragging) {
+                // 拖动结束后通知选择范围变化（只有当拖动的是选择范围时）
+                if (this.dragType === 'left' || this.dragType === 'right' || this.dragType === 'move') {
+                    this.notifySelectionChange();
+                }
+            }
             this.isDragging = false;
             this.dragType = null;
             this.container.style.cursor = 'grab';
@@ -692,17 +928,57 @@ class TimelineScrollbar {
         
         this.render();
     }
+    
+    // 当选择范围变化时触发回调
+    onSelectionChange(callback) {
+        this.selectionChangeCallback = callback;
+    }
+    
+    // 通知选择范围变化
+    notifySelectionChange() {
+        if (this.selectionChangeCallback) {
+            this.selectionChangeCallback(this.selectionStart, this.selectionEnd);
+        }
+    }
 }
 
 // 初始化时间滚动条
 let timelineScrollbar;
 
-// 页面启动时，自动加载一次数据库里已有的标记
-window.onload = () => {
-    loadMarkers();
-    // 延迟初始化时间滚动条，确保DOM完全加载
+// 页面启动时的初始化
+window.onload = async () => {
+    // 1. 恢复地图状态（在恢复期间禁止保存）
+    isRestoringState = true;
+    try {
+        const mapState = await ipcRenderer.invoke('load-map-state');
+        if (mapState && typeof mapState.lat === 'number' && typeof mapState.lng === 'number' && typeof mapState.zoom === 'number') {
+            map.setView([mapState.lat, mapState.lng], mapState.zoom);
+            console.log('地图状态已恢复:', mapState);
+        } else {
+            console.log('没有保存的地图状态，使用默认视图');
+        }
+    } catch (error) {
+        console.error('恢复地图状态失败:', error);
+    }
+    // 延迟一点再允许保存，避免恢复动画触发保存
+    setTimeout(() => {
+        isRestoringState = false;
+        console.log('地图状态恢复完成，开始监听变化');
+    }, 1000);
+    
+    // 2. 延迟初始化时间滚动条，确保DOM完全加载
     setTimeout(() => {
         timelineScrollbar = new TimelineScrollbar();
         console.log('Timeline initialized');
+        
+        // 3. 设置选择范围变化的回调
+        timelineScrollbar.onSelectionChange((startTime, endTime) => {
+            // 异步加载选择时间范围内的照片
+            loadMarkersByTimeRange(startTime, endTime);
+        });
+        
+        // 4. 初始加载：根据时间滚动条的当前选择范围异步加载照片
+        const range = timelineScrollbar.getSelectedRange();
+        loadMarkersByTimeRange(range.start, range.end);
     }, 100);
 };

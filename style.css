@@ -9,6 +9,46 @@
     box-shadow: 0 0 10px rgba(0,0,0,0.2);
 }
 
+/* 加载遮罩层 */
+#loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+}
+
+#loading-overlay.hidden {
+    display: none;
+}
+
+.loading-spinner {
+    width: 50px;
+    height: 50px;
+    border: 4px solid #333;
+    border-top: 4px solid #3498db;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.loading-text {
+    color: white;
+    margin-top: 20px;
+    font-size: 16px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
 html, body {
     margin: 0;
     padding: 0;
@@ -158,4 +198,108 @@ body {
 
 .thumb-handle.right {
     right: 0;
+}
+
+/* 照片缩略图 Tooltip */
+.photo-tooltip {
+    padding: 4px;
+    background: rgba(0, 0, 0, 0.85);
+    border: 1px solid #555;
+    border-radius: 4px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+}
+
+.photo-tooltip .thumbnail-wrapper {
+    position: relative;
+    display: inline-block;
+    line-height: 0;
+}
+
+.photo-tooltip img {
+    display: block;
+    border-radius: 2px;
+}
+
+.photo-tooltip video {
+    display: block;
+    border-radius: 2px;
+}
+
+.photo-tooltip .video-play-icon {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 48px;
+    height: 48px;
+    background: rgba(0, 0, 0, 0.6);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+}
+
+.photo-tooltip .video-play-icon::after {
+    content: '';
+    width: 0;
+    height: 0;
+    border-left: 20px solid white;
+    border-top: 12px solid transparent;
+    border-bottom: 12px solid transparent;
+    margin-left: 4px;
+}
+
+/* Leaflet tooltip 样式覆盖 */
+.leaflet-tooltip.photo-tooltip-container {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    padding: 0;
+}
+
+.leaflet-tooltip.photo-tooltip-container::before {
+    display: none;
+}
+
+/* MarkerCluster 自定义样式 */
+.marker-cluster {
+    background-clip: padding-box;
+    border-radius: 50%;
+}
+
+.marker-cluster div {
+    width: 36px;
+    height: 36px;
+    margin-left: 2px;
+    margin-top: 2px;
+    text-align: center;
+    border-radius: 50%;
+    font: 13px 'Segoe UI', Arial, sans-serif;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+}
+
+.marker-cluster-small {
+    background-color: rgba(110, 204, 57, 0.6);
+}
+.marker-cluster-small div {
+    background-color: rgba(110, 204, 57, 0.9);
+}
+
+.marker-cluster-medium {
+    background-color: rgba(240, 194, 12, 0.6);
+}
+.marker-cluster-medium div {
+    background-color: rgba(240, 194, 12, 0.9);
+}
+
+.marker-cluster-large {
+    background-color: rgba(241, 128, 23, 0.6);
+}
+.marker-cluster-large div {
+    background-color: rgba(241, 128, 23, 0.9);
 }
