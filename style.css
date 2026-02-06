@@ -202,17 +202,38 @@ body {
 
 /* 照片缩略图 Tooltip */
 .photo-tooltip {
-    padding: 4px;
-    background: rgba(0, 0, 0, 0.85);
+    padding: 6px;
+    background: rgba(0, 0, 0, 0.9);
     border: 1px solid #555;
-    border-radius: 4px;
+    border-radius: 6px;
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+    max-width: 240px;
 }
 
 .photo-tooltip .thumbnail-wrapper {
     position: relative;
     display: inline-block;
     line-height: 0;
+}
+
+.photo-tooltip .tooltip-info {
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid rgba(255, 255, 255, 0.2);
+    text-align: center;
+    line-height: 1.4;
+}
+
+.photo-tooltip .tooltip-datetime {
+    color: #fff;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.photo-tooltip .tooltip-city {
+    color: #aaa;
+    font-size: 11px;
+    margin-top: 2px;
 }
 
 .photo-tooltip img {

@@ -301,13 +301,13 @@ function createApplicationMenu() {
             label: 'File',
             submenu: [
                 {
-                    label: '指定照片目录',
+                    label: 'Input Photo Directory',
                     click: async () => {
                         await handleSetPhotoDirectory();
                     }
                 },
                 { type: 'separator' },
-                { role: 'quit', label: '退出' }
+                { role: 'quit', label: 'Quit' }
             ]
         },
         {
@@ -350,26 +350,28 @@ function createApplicationMenu() {
 
 // 处理"指定照片目录"菜单点击
 async function handleSetPhotoDirectory() {
+    /*
     if (currentPhotoDirectory) {
         // 已有指定目录，询问是否更改
         const result = await dialog.showMessageBox(mainWindow, {
             type: 'question',
-            buttons: ['是', '否'],
+            buttons: ['Yes', 'No'],
             defaultId: 1,
-            title: '更改照片目录',
-            message: `是否要更改 "${currentPhotoDirectory}" 这个照片目录？`
+            title: 'Change Photo Directory',
+            message: `Do you want to change the photo directory from "${currentPhotoDirectory}"?`
         });
         
         if (result.response === 1) {
-            // 用户选择"否"
+            // User chose "No"
             return;
         }
     }
+      */
     
     // 弹出目录选择对话框
     const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
         properties: ['openDirectory'],
-        title: '选择照片目录'
+        title: 'Select Photo Directory'
     });
     
     if (canceled || filePaths.length === 0) return;
@@ -493,6 +495,26 @@ ipcMain.handle('save-map-state', (event, state) => {
 // 读取地图状态
 ipcMain.handle('load-map-state', () => {
     const row = db.prepare('SELECT value FROM settings WHERE key = ?').get('mapState');
+    if (row) {
+        try {
+            return JSON.parse(row.value);
+        } catch (e) {
+            return null;
+        }
+    }
+    return null;
+});
+
+// 保存时间轴状态
+ipcMain.handle('save-timeline-state', (event, state) => {
+    const stmt = db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)');
+    stmt.run('timelineState', JSON.stringify(state));
+    return true;
+});
+
+// 读取时间轴状态
+ipcMain.handle('load-timeline-state', () => {
+    const row = db.prepare('SELECT value FROM settings WHERE key = ?').get('timelineState');
     if (row) {
         try {
             return JSON.parse(row.value);

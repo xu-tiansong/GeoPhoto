@@ -5,9 +5,16 @@ const { ipcRenderer } = require('electron');
 // 不设置初始视角，等待恢复保存的状态
 const map = L.map('map', { center: [20, 0], zoom: 2 });
 
-// 使用 Esri 免费卫星图层
+// 使用 Esri 免费卫星图层（底图）
 L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-    attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EBP, and the GIS User Community'
+    attribution: 'Tiles &copy; Esri'
+}).addTo(map);
+
+// 添加标签图层（国家、城市名称）- 叠加在卫星图上
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; <a href="https://carto.com/">CARTO</a>',
+    subdomains: 'abcd',
+    pane: 'overlayPane'  // 确保在覆盖层上显示
 }).addTo(map);
 
 // 标记是否正在恢复状态（防止恢复时触发保存）
@@ -124,6 +131,46 @@ map.addLayer(markersLayer);
 
 let isLoadingMarkers = false;
 let currentPhotosCache = [];        // 缓存当前照片数据
+let cityCache = new Map();          // 城市信息缓存 (lat,lng -> cityName)
+
+// 逆地理编码获取城市名称（使用 Nominatim 免费服务）
+async function getCityName(lat, lng) {
+    const cacheKey = `${lat.toFixed(3)},${lng.toFixed(3)}`; // 精度到小数点3位
+    
+    if (cityCache.has(cacheKey)) {
+        return cityCache.get(cacheKey);
+    }
+    
+    try {
+        const response = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&zoom=10&accept-language=zh`,
+            { headers: { 'User-Agent': 'GeoPhoto/1.0' } }
+        );
+        const data = await response.json();
+        
+        // 提取城市名称（优先级：city > town > county > state）
+        const address = data.address || {};
+        const cityName = address.city || address.town || address.county || 
+                         address.state || address.country || '未知位置';
+        
+        cityCache.set(cacheKey, cityName);
+        return cityName;
+    } catch (error) {
+        console.log('逆地理编码失败:', error);
+        return '未知位置';
+    }
+}
+
+// 格式化日期时间
+function formatDateTime(timeStr) {
+    if (!timeStr) return { date: '未知日期', time: '' };
+    const d = new Date(timeStr);
+    if (isNaN(d.getTime())) return { date: '未知日期', time: '' };
+    
+    const date = `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
+    const time = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+    return { date, time };
+}
 
 // 创建缩略图 HTML，根据图片比例调整大小，视频显示播放图标
 function createThumbnailTooltip(photo) {
@@ -131,6 +178,31 @@ function createThumbnailTooltip(photo) {
     const fileUrl = `file://${filePath.replace(/\\/g, '/')}`;
     const isVideo = photo.type === 'video';
     const uniqueId = `thumb-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    // 格式化日期时间
+    const { date, time } = formatDateTime(photo.time);
+    const dateTimeStr = time ? `${date} ${time}` : date;
+    
+    // 创建城市占位符ID
+    const cityId = `city-${uniqueId}`;
+    
+    // 异步加载城市名称
+    if (photo.lat && photo.lng) {
+        setTimeout(async () => {
+            const cityName = await getCityName(photo.lat, photo.lng);
+            const cityEl = document.getElementById(cityId);
+            if (cityEl) {
+                cityEl.textContent = cityName;
+            }
+        }, 0);
+    }
+    
+    const infoHtml = `
+        <div class="tooltip-info">
+            <div class="tooltip-datetime">${dateTimeStr}</div>
+            <div class="tooltip-city" id="${cityId}">${photo.lat && photo.lng ? '加载中...' : '无位置信息'}</div>
+        </div>
+    `;
     
     if (isVideo) {
         // 视频：使用 video 元素获取第一帧，并叠加播放图标
@@ -145,6 +217,7 @@ function createThumbnailTooltip(photo) {
                     </video>
                     <div class="video-play-icon"></div>
                 </div>
+                ${infoHtml}
             </div>
         `;
     } else {
@@ -157,6 +230,7 @@ function createThumbnailTooltip(photo) {
                          onload="adjustThumbnailSize(this)"
                          onerror="this.style.display='none'; this.parentElement.innerHTML='<div style=\\'width:100px;height:100px;background:#333;display:flex;align-items:center;justify-content:center;color:#999;\\'>无法加载</div>';">
                 </div>
+                ${infoHtml}
             </div>
         `;
     }
@@ -216,19 +290,42 @@ async function loadMarkersByTimeRange(startTime, endTime) {
         // 清除旧标记，避免重复叠加
         markersLayer.clearLayers();
         
+        // 统计同一位置的照片数量，用于添加微小偏移
+        const locationCount = new Map();
+        
         // 批量创建标记数组，然后一次性添加
         const markers = [];
-        photos.forEach(photo => {
+        photos.forEach((photo, index) => {
             if (photo.lat && photo.lng) {
-                const marker = L.marker([photo.lat, photo.lng]);
+                // 计算位置key（精确到小数点后5位）
+                const locKey = `${photo.lat.toFixed(5)},${photo.lng.toFixed(5)}`;
+                const count = locationCount.get(locKey) || 0;
+                locationCount.set(locKey, count + 1);
                 
-                // 存储照片数据到 marker，延迟创建 tooltip
-                marker.photoData = photo;
+                // 为同一位置的照片添加微小偏移（螺旋排列）
+                let lat = photo.lat;
+                let lng = photo.lng;
+                if (count > 0) {
+                    const angle = count * 0.5; // 弧度
+                    const offset = 0.00002 * count; // 约2米的偏移
+                    lat += offset * Math.cos(angle);
+                    lng += offset * Math.sin(angle);
+                }
+                
+                const marker = L.marker([lat, lng]);
+                
+                // 使用唯一ID标识每个marker
+                const markerId = `marker-${photo.id || index}-${Date.now()}`;
+                marker._markerId = markerId;
+                
+                // 深拷贝照片数据到 marker，避免引用问题
+                marker.photoData = JSON.parse(JSON.stringify(photo));
                 
                 // 鼠标移入时才创建 tooltip（延迟加载）
                 marker.on('mouseover', function() {
                     if (!this._tooltipBound) {
-                        this.bindTooltip(createThumbnailTooltip(this.photoData), {
+                        const photoInfo = this.photoData;
+                        this.bindTooltip(createThumbnailTooltip(photoInfo), {
                             direction: 'top',
                             offset: [0, -10],
                             opacity: 1,
@@ -278,18 +375,41 @@ async function loadMarkers() {
         currentPhotosCache = photos;
         markersLayer.clearLayers();
         
+        // 统计同一位置的照片数量，用于添加微小偏移
+        const locationCount = new Map();
+        
         const markers = [];
-        photos.forEach(photo => {
+        photos.forEach((photo, index) => {
             if (photo.lat && photo.lng) {
-                const marker = L.marker([photo.lat, photo.lng]);
+                // 计算位置key（精确到小数点后5位）
+                const locKey = `${photo.lat.toFixed(5)},${photo.lng.toFixed(5)}`;
+                const count = locationCount.get(locKey) || 0;
+                locationCount.set(locKey, count + 1);
                 
-                // 存储照片数据到 marker，延迟创建 tooltip
-                marker.photoData = photo;
+                // 为同一位置的照片添加微小偏移（螺旋排列）
+                let lat = photo.lat;
+                let lng = photo.lng;
+                if (count > 0) {
+                    const angle = count * 0.5; // 弧度
+                    const offset = 0.00002 * count; // 约2米的偏移
+                    lat += offset * Math.cos(angle);
+                    lng += offset * Math.sin(angle);
+                }
+                
+                const marker = L.marker([lat, lng]);
+                
+                // 使用唯一ID标识每个marker
+                const markerId = `marker-${photo.id || index}-${Date.now()}`;
+                marker._markerId = markerId;
+                
+                // 深拷贝照片数据到 marker，避免引用问题
+                marker.photoData = JSON.parse(JSON.stringify(photo));
                 
                 // 鼠标移入时才创建 tooltip（延迟加载）
                 marker.on('mouseover', function() {
                     if (!this._tooltipBound) {
-                        this.bindTooltip(createThumbnailTooltip(this.photoData), {
+                        const photoInfo = this.photoData;
+                        this.bindTooltip(createThumbnailTooltip(photoInfo), {
                             direction: 'top',
                             offset: [0, -10],
                             opacity: 1,
@@ -355,7 +475,7 @@ map.on(L.Draw.Event.CREATED, async function (e) {
 
 // --- 6. 时间滚动条组件 ---
 class TimelineScrollbar {
-    constructor() {
+    constructor(skipInitialRender = false) {
         this.container = document.getElementById('timeline-container');
         this.upperRow = document.getElementById('timeline-upper-row');
         this.lowerRow = document.getElementById('timeline-lower-row');
@@ -381,16 +501,17 @@ class TimelineScrollbar {
         this.dragStartTimelineStart = null;
         this.dragStartTimelineEnd = null;
         
-        // 初始化时间范围
+        // 初始化时间范围（默认值）
         this.initTimeRange();
         
         this.initEvents();
         
-        // 延迟渲染以确保容器有正确的宽度
-        requestAnimationFrame(() => {
-            this.initTimeRange();
-            this.render();
-        });
+        // 如果不跳过初始渲染，则延迟渲染
+        if (!skipInitialRender) {
+            requestAnimationFrame(() => {
+                this.render();
+            });
+        }
     }
     
     // 初始化时间范围
@@ -416,11 +537,20 @@ class TimelineScrollbar {
     // 窗口大小变化时重新计算
     onResize() {
         const containerWidth = this.container.offsetWidth;
-        const numDays = Math.max(7, Math.floor(containerWidth / this.tickWidth));
+        if (containerWidth <= 0) return;
         
-        // 保持右侧时间不变（显示到今天），调整左侧
+        // 根据当前精度模式计算应显示的刻度数
+        const numTicks = Math.max(7, Math.floor(containerWidth / this.tickWidth));
+        
+        // 保持右侧时间不变，调整左侧
         const newStart = new Date(this.timelineEnd);
-        newStart.setDate(newStart.getDate() - numDays);
+        if (this.scaleMode === 'hour') {
+            newStart.setHours(newStart.getHours() - numTicks);
+        } else if (this.scaleMode === 'day') {
+            newStart.setDate(newStart.getDate() - numTicks);
+        } else if (this.scaleMode === 'month') {
+            newStart.setMonth(newStart.getMonth() - numTicks);
+        }
         this.timelineStart = newStart;
         
         // 确保选择范围在可视范围内
@@ -432,6 +562,90 @@ class TimelineScrollbar {
         }
         
         this.render();
+        this.saveState(); // 保存状态
+    }
+    
+    // 保存时间轴状态到数据库
+    async saveState() {
+        const state = {
+            scaleMode: this.scaleMode,
+            scaleModeIndex: this.scaleModeIndex,
+            timelineStart: this.timelineStart.toISOString(),
+            timelineEnd: this.timelineEnd.toISOString(),
+            selectionStart: this.selectionStart.toISOString(),
+            selectionEnd: this.selectionEnd.toISOString()
+        };
+        try {
+            await ipcRenderer.invoke('save-timeline-state', state);
+        } catch (error) {
+            console.error('保存时间轴状态失败:', error);
+        }
+    }
+    
+    // 从数据库恢复时间轴状态
+    async restoreState() {
+        try {
+            const state = await ipcRenderer.invoke('load-timeline-state');
+            if (state) {
+                this.scaleMode = state.scaleMode || 'day';
+                this.scaleModeIndex = state.scaleModeIndex !== undefined ? state.scaleModeIndex : 1;
+                
+                const savedTimelineStart = new Date(state.timelineStart);
+                const savedTimelineEnd = new Date(state.timelineEnd);
+                const savedSelectionStart = new Date(state.selectionStart);
+                const savedSelectionEnd = new Date(state.selectionEnd);
+                
+                // 验证时间有效性
+                if (isNaN(savedTimelineStart.getTime()) || isNaN(savedTimelineEnd.getTime()) ||
+                    isNaN(savedSelectionStart.getTime()) || isNaN(savedSelectionEnd.getTime())) {
+                    console.log('保存的时间无效，使用默认值');
+                    return false;
+                }
+                
+                // 保持选择范围不变，根据当前容器宽度重新计算时间轴范围
+                this.selectionStart = savedSelectionStart;
+                this.selectionEnd = savedSelectionEnd;
+                
+                // 根据容器宽度计算应显示的刻度数
+                const containerWidth = this.container.offsetWidth || window.innerWidth;
+                const numTicks = Math.max(7, Math.floor(containerWidth / this.tickWidth));
+                
+                // 以选择范围的中点为中心，计算时间轴范围
+                // 保持右侧为 savedTimelineEnd（或调整到当前日期如果更晚）
+                this.timelineEnd = savedTimelineEnd;
+                const newStart = new Date(this.timelineEnd);
+                
+                if (this.scaleMode === 'hour') {
+                    newStart.setHours(newStart.getHours() - numTicks);
+                } else if (this.scaleMode === 'day') {
+                    newStart.setDate(newStart.getDate() - numTicks);
+                } else if (this.scaleMode === 'month') {
+                    newStart.setMonth(newStart.getMonth() - numTicks);
+                }
+                this.timelineStart = newStart;
+                
+                // 确保选择范围在可视范围内
+                if (this.selectionStart < this.timelineStart) {
+                    // 如果选择范围在可视范围外，调整时间轴以包含选择范围
+                    this.timelineStart = new Date(this.selectionStart);
+                }
+                if (this.selectionEnd > this.timelineEnd) {
+                    this.timelineEnd = new Date(this.selectionEnd);
+                }
+                
+                console.log('时间轴状态已恢复:', {
+                    scaleMode: this.scaleMode,
+                    timelineStart: this.timelineStart,
+                    timelineEnd: this.timelineEnd,
+                    selectionStart: this.selectionStart,
+                    selectionEnd: this.selectionEnd
+                });
+                return true;
+            }
+        } catch (error) {
+            console.error('恢复时间轴状态失败:', error);
+        }
+        return false;
     }
     
     // 将时间对齐到刻度（天的开始）
@@ -738,6 +952,7 @@ class TimelineScrollbar {
             this.scaleMode = this.scaleModes[this.scaleModeIndex];
             this.adjustTimelineForScale();
             this.render();
+            this.saveState(); // 保存状态
         });
         
         // 左侧手柄拖动
@@ -778,6 +993,10 @@ class TimelineScrollbar {
                 // 拖动结束后通知选择范围变化（只有当拖动的是选择范围时）
                 if (this.dragType === 'left' || this.dragType === 'right' || this.dragType === 'move') {
                     this.notifySelectionChange();
+                }
+                // 平移时间轴后也保存状态
+                if (this.dragType === 'pan') {
+                    this.saveState();
                 }
             }
             this.isDragging = false;
@@ -939,6 +1158,7 @@ class TimelineScrollbar {
         if (this.selectionChangeCallback) {
             this.selectionChangeCallback(this.selectionStart, this.selectionEnd);
         }
+        this.saveState(); // 保存状态
     }
 }
 
@@ -967,9 +1187,16 @@ window.onload = async () => {
     }, 1000);
     
     // 2. 延迟初始化时间滚动条，确保DOM完全加载
-    setTimeout(() => {
-        timelineScrollbar = new TimelineScrollbar();
-        console.log('Timeline initialized');
+    setTimeout(async () => {
+        // 创建时间滚动条，跳过初始渲染
+        timelineScrollbar = new TimelineScrollbar(true);
+        
+        // 尝试恢复保存的状态
+        const restored = await timelineScrollbar.restoreState();
+        console.log('Timeline initialized, restored:', restored);
+        
+        // 渲染时间轴
+        timelineScrollbar.render();
         
         // 3. 设置选择范围变化的回调
         timelineScrollbar.onSelectionChange((startTime, endTime) => {
