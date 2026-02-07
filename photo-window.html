@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Photo Viewer</title>
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="node_modules/leaflet/dist/leaflet.css" />
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            background: #1a1a1a;
+            color: #fff;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+        }
+
+        /* 左侧照片容器 */
+        .photo-container {
+            flex: 1;
+            background: #0a0a0a;
+            position: relative;
+            overflow: hidden;
+            cursor: grab;
+        }
+
+        .photo-container.dragging {
+            cursor: grabbing;
+        }
+
+        .photo-wrapper {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .photo-wrapper img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            user-select: none;
+            -webkit-user-drag: none;
+            transition: transform 0.1s ease-out;
+        }
+
+        /* 缩放控制按钮 */
+        .zoom-controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 8px 12px;
+            border-radius: 6px;
+            z-index: 10;
+        }
+
+        .zoom-btn {
+            background: #333;
+            border: none;
+            color: #fff;
+            width: 32px;
+            height: 32px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+        }
+
+        .zoom-btn:hover {
+            background: #444;
+        }
+
+        .zoom-level {
+            color: #aaa;
+            display: flex;
+            align-items: center;
+            padding: 0 10px;
+            font-size: 14px;
+        }
+
+        /* 右侧容器 */
+        .sidebar {
+            width: 320px;
+            background: #2a2a2a;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        /* 关闭按钮 */
+        .close-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 32px;
+            height: 32px;
+            background: #d32f2f;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-size: 20px;
+            font-weight: bold;
+            z-index: 100;
+            transition: background 0.2s;
+        }
+
+        .close-btn:hover {
+            background: #b71c1c;
+        }
+
+        /* Tab导航 */
+        .tab-nav {
+            display: flex;
+            background: #1a1a1a;
+            padding: 10px 10px 0 10px;
+            gap: 5px;
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 10px;
+            background: transparent;
+            border: none;
+            color: #888;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+            font-size: 13px;
+        }
+
+        .tab-btn:hover {
+            color: #aaa;
+        }
+
+        .tab-btn.active {
+            color: #fff;
+            border-bottom-color: #2196f3;
+        }
+
+        /* Tab内容 */
+        .tab-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        .tab-pane {
+            display: none;
+        }
+
+        .tab-pane.active {
+            display: block;
+        }
+
+        /* Info面板样式 */
+        .info-row {
+            margin-bottom: 16px;
+        }
+
+        .info-label {
+            color: #888;
+            font-size: 12px;
+            margin-bottom: 4px;
+        }
+
+        .info-value {
+            color: #fff;
+            font-size: 14px;
+            word-break: break-all;
+        }
+
+        /* Similar Photos面板 */
+        .similar-photos-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+
+        .similar-photo-item {
+            aspect-ratio: 1;
+            background: #1a1a1a;
+            border-radius: 4px;
+            cursor: pointer;
+            overflow: hidden;
+            transition: transform 0.2s;
+        }
+
+        .similar-photo-item:hover {
+            transform: scale(1.05);
+        }
+
+        .similar-photo-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        /* Tags面板 */
+        .tags-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .tag {
+            background: #3a3a3a;
+            padding: 6px 12px;
+            border-radius: 16px;
+            font-size: 13px;
+            color: #fff;
+        }
+
+        .add-tag-btn {
+            background: #2196f3;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            color: #fff;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+
+        .add-tag-btn:hover {
+            background: #1976d2;
+        }
+
+        /* 小地图样式 */
+        .mini-map-container {
+            margin-top: 16px;
+            border-radius: 4px;
+            overflow: hidden;
+            background: #1a1a1a;
+        }
+
+        .mini-map-label {
+            color: #888;
+            font-size: 12px;
+            margin-bottom: 8px;
+        }
+
+        #miniMap {
+            width: 100%;
+            height: 180px;
+            border-radius: 4px;
+        }
+
+        /* 占位符文本 */
+        .placeholder {
+            color: #666;
+            text-align: center;
+            padding: 40px 20px;
+        }
+
+        /* 滚动条样式 */
+        .tab-content::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .tab-content::-webkit-scrollbar-track {
+            background: #1a1a1a;
+        }
+
+        .tab-content::-webkit-scrollbar-thumb {
+            background: #444;
+            border-radius: 4px;
+        }
+
+        .tab-content::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+    </style>
+</head>
+<body>
+    <!-- 左侧照片容器 -->
+    <div class="photo-container" id="photoContainer">
+        <div class="photo-wrapper" id="photoWrapper">
+            <img id="photoImage" src="" alt="Photo">
+        </div>
+        <div class="zoom-controls">
+            <button class="zoom-btn" id="zoomOut" title="Zoom Out">−</button>
+            <span class="zoom-level" id="zoomLevel">100%</span>
+            <button class="zoom-btn" id="zoomIn" title="Zoom In">+</button>
+            <button class="zoom-btn" id="zoomReset" title="Reset">⟲</button>
+        </div>
+    </div>
+
+    <!-- 右侧容器 -->
+    <div class="sidebar">
+        <button class="close-btn" id="closeBtn">×</button>
+        
+        <!-- Tab导航 -->
+        <div class="tab-nav">
+            <button class="tab-btn active" data-tab="info">Info</button>
+            <button class="tab-btn" data-tab="similar">Similar</button>
+            <button class="tab-btn" data-tab="tags">Tags</button>
+        </div>
+
+        <!-- Tab内容 -->
+        <div class="tab-content">
+            <!-- Info面板 -->
+            <div class="tab-pane active" id="tab-info">
+                <div class="info-row">
+                    <div class="info-label">Filename</div>
+                    <div class="info-value" id="info-filename">-</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">Directory</div>
+                    <div class="info-value" id="info-directory">-</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">Date & Time</div>
+                    <div class="info-value" id="info-datetime">-</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">Location</div>
+                    <div class="info-value" id="info-location">-</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">Coordinates</div>
+                    <div class="info-value" id="info-coordinates">-</div>
+                </div>
+                <div class="mini-map-container" id="miniMapContainer" style="display: none;">
+                    <div class="mini-map-label">Map Location</div>
+                    <div id="miniMap"></div>
+                </div>
+            </div>
+
+            <!-- Similar面板 -->
+            <div class="tab-pane" id="tab-similar">
+                <div class="placeholder">Coming soon...</div>
+            </div>
+
+            <!-- Tags面板 -->
+            <div class="tab-pane" id="tab-tags">
+                <div class="tags-container" id="tags-container">
+                    <!-- Tags will be added here -->
+                </div>
+                <button class="add-tag-btn">Add Tag</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { ipcRenderer } = require('electron');
+        const L = require('leaflet');
+
+        let currentPhoto = null;
+        let scale = 1;
+        let translateX = 0;
+        let translateY = 0;
+        let isDragging = false;
+        let startX = 0;
+        let startY = 0;
+        let miniMap = null;
+        let miniMapMarker = null;
+
+        const photoContainer = document.getElementById('photoContainer');
+        const photoWrapper = document.getElementById('photoWrapper');
+        const photoImage = document.getElementById('photoImage');
+        const zoomLevel = document.getElementById('zoomLevel');
+
+        // 加载照片数据
+        ipcRenderer.on('load-photo', (event, photoData) => {
+            currentPhoto = photoData;
+            loadPhoto(photoData);
+        });
+
+        // 加载照片
+        async function loadPhoto(photo) {
+            const filePath = `${photo.directory}/${photo.filename}`;
+            const fileUrl = `file://${filePath.replace(/\\/g, '/')}`;
+            
+            photoImage.src = fileUrl;
+            
+            // 更新Info信息
+            document.getElementById('info-filename').textContent = photo.filename || '-';
+            document.getElementById('info-directory').textContent = photo.directory || '-';
+            document.getElementById('info-datetime').textContent = photo.time ? new Date(photo.time).toLocaleString() : '-';
+            
+            if (photo.lat && photo.lng) {
+                document.getElementById('info-coordinates').textContent = `${photo.lat.toFixed(6)}, ${photo.lng.toFixed(6)}`;
+                document.getElementById('info-location').textContent = 'Loading...';
+                
+                // 显示地图容器
+                document.getElementById('miniMapContainer').style.display = 'block';
+                
+                // 初始化小地图
+                initMiniMap(photo.lat, photo.lng);
+                
+                // 异步获取城市名称
+                try {
+                    const cityName = await ipcRenderer.invoke('get-city-name', { lat: photo.lat, lng: photo.lng });
+                    document.getElementById('info-location').textContent = cityName;
+                } catch (error) {
+                    console.error('Failed to get city name:', error);
+                    document.getElementById('info-location').textContent = 'Failed to load';
+                }
+            } else {
+                document.getElementById('info-coordinates').textContent = '-';
+                document.getElementById('info-location').textContent = 'No location data';
+                // 隐藏地图容器
+                document.getElementById('miniMapContainer').style.display = 'none';
+            }
+
+            // 重置缩放
+            resetZoom();
+        }
+
+        // 缩放控制
+        document.getElementById('zoomIn').addEventListener('click', () => {
+            scale = Math.min(scale + 0.25, 5);
+            updateTransform();
+        });
+
+        document.getElementById('zoomOut').addEventListener('click', () => {
+            scale = Math.max(scale - 0.25, 0.25);
+            updateTransform();
+        });
+
+        document.getElementById('zoomReset').addEventListener('click', () => {
+            resetZoom();
+        });
+
+        // 鼠标滚轮缩放
+        photoContainer.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? -0.1 : 0.1;
+            scale = Math.max(0.25, Math.min(5, scale + delta));
+            updateTransform();
+        });
+
+        // 拖动功能
+        photoContainer.addEventListener('mousedown', (e) => {
+            if (scale > 1) {
+                isDragging = true;
+                startX = e.clientX - translateX;
+                startY = e.clientY - translateY;
+                photoContainer.classList.add('dragging');
+            }
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                translateX = e.clientX - startX;
+                translateY = e.clientY - startY;
+                constrainTranslation();
+                updateTransform();
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            isDragging = false;
+            photoContainer.classList.remove('dragging');
+        });
+
+        // 限制平移范围，防止露出背景
+        function constrainTranslation() {
+            if (scale <= 1) {
+                translateX = 0;
+                translateY = 0;
+                return;
+            }
+
+            // 获取容器尺寸
+            const containerWidth = photoContainer.clientWidth;
+            const containerHeight = photoContainer.clientHeight;
+
+            // 获取照片实际显示尺寸（自然尺寸）
+            const imageWidth = photoImage.naturalWidth;
+            const imageHeight = photoImage.naturalHeight;
+
+            // 计算照片在容器中的实际渲染尺寸（考虑max-width/max-height）
+            let displayWidth = imageWidth;
+            let displayHeight = imageHeight;
+            
+            // 模拟CSS的contain行为
+            const containerAspect = containerWidth / containerHeight;
+            const imageAspect = imageWidth / imageHeight;
+            
+            if (imageAspect > containerAspect) {
+                // 图片更宽，以宽度为准
+                displayWidth = Math.min(imageWidth, containerWidth);
+                displayHeight = displayWidth / imageAspect;
+            } else {
+                // 图片更高，以高度为准
+                displayHeight = Math.min(imageHeight, containerHeight);
+                displayWidth = displayHeight * imageAspect;
+            }
+
+            // 计算缩放后的尺寸
+            const scaledWidth = displayWidth * scale;
+            const scaledHeight = displayHeight * scale;
+
+            // 计算最大允许的偏移量（缩放后的图片边缘不能超出容器）
+            const maxTranslateX = Math.max(0, (scaledWidth - containerWidth) / 2);
+            const maxTranslateY = Math.max(0, (scaledHeight - containerHeight) / 2);
+
+            // 限制平移范围
+            translateX = Math.max(-maxTranslateX, Math.min(maxTranslateX, translateX));
+            translateY = Math.max(-maxTranslateY, Math.min(maxTranslateY, translateY));
+        }
+
+        // 更新变换
+        function updateTransform() {
+            constrainTranslation();
+            photoImage.style.transform = `scale(${scale}) translate(${translateX / scale}px, ${translateY / scale}px)`;
+            zoomLevel.textContent = `${Math.round(scale * 100)}%`;
+        }
+
+        // 重置缩放
+        function resetZoom() {
+            scale = 1;
+            translateX = 0;
+            translateY = 0;
+            updateTransform();
+        }
+
+        // 初始化小地图
+        function initMiniMap(lat, lng) {
+            // 如果地图已存在，先移除
+            if (miniMap) {
+                miniMap.remove();
+                miniMap = null;
+                miniMapMarker = null;
+            }
+
+            // 等待DOM元素准备好
+            setTimeout(() => {
+                // 创建小地图
+                miniMap = L.map('miniMap', {
+                    center: [lat, lng],
+                    zoom: 13,
+                    zoomControl: false,
+                    attributionControl: false,
+                    dragging: false,
+                    scrollWheelZoom: true,
+                    doubleClickZoom: false,
+                    touchZoom: false
+                });
+
+                // 添加地图图层
+                L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                    attribution: ''
+                }).addTo(miniMap);
+
+                // 添加标签图层
+                L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png', {
+                    attribution: '',
+                    subdomains: 'abcd'
+                }).addTo(miniMap);
+
+                // 添加标记
+                miniMapMarker = L.marker([lat, lng]).addTo(miniMap);
+
+                // 缩放时保持标记在中心
+                miniMap.on('zoomend', function() {
+                    miniMap.setView([lat, lng]);
+                });
+
+                // 调整地图大小
+                setTimeout(() => {
+                    miniMap.invalidateSize();
+                }, 100);
+            }, 50);
+        }
+
+        // Tab切换
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const tabName = btn.dataset.tab;
+                
+                // 更新按钮状态
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                
+                // 更新内容显示
+                document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
+                document.getElementById(`tab-${tabName}`).classList.add('active');
+                
+                // 切换到Info tab时刷新地图
+                if (tabName === 'info' && miniMap) {
+                    setTimeout(() => {
+                        miniMap.invalidateSize();
+                    }, 50);
+                }
+            });
+        });
+
+        // 关闭按钮
+        document.getElementById('closeBtn').addEventListener('click', () => {
+            window.close();
+        });
+
+        // ESC键关闭
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                window.close();
+            }
+        });
+    </script>
+</body>
+</html>

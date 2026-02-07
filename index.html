@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>个人地理相册</title>
+    <title>GeoPhoto</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
@@ -17,10 +17,15 @@
     <!-- 加载遮罩层 -->
     <div id="loading-overlay" class="hidden">
         <div class="loading-spinner"></div>
-        <div class="loading-text">正在扫描文件...</div>
+        <div class="loading-text">Scanning files...</div>
     </div>
     <div id="map"></div>
     <div id="timeline-container">
+        <div id="timeline-arrow-left" class="timeline-arrow">
+            <svg viewBox="0 0 24 24" width="24" height="24">
+                <path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </div>
         <div id="timeline-upper-row"></div>
         <div id="timeline-lower-row"></div>
         <div id="timeline-scrollbar">
@@ -28,6 +33,11 @@
                 <div class="thumb-handle left"></div>
                 <div class="thumb-handle right"></div>
             </div>
+        </div>
+        <div id="timeline-arrow-right" class="timeline-arrow">
+            <svg viewBox="0 0 24 24" width="24" height="24">
+                <path d="M9 18l6-6-6-6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
         </div>
     </div>
 

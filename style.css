@@ -91,6 +91,49 @@ body {
     cursor: grab; /* 手型光标 */
 }
 
+/* 时间轴箭头按钮 */
+.timeline-arrow {
+    position: absolute;
+    top: 0;
+    width: 36px;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(to right, rgba(42, 42, 42, 0.9), rgba(42, 42, 42, 0.3));
+    color: rgba(255, 255, 255, 0.4);
+    cursor: pointer;
+    z-index: 10;
+    transition: color 0.2s, background 0.2s;
+}
+
+.timeline-arrow:hover {
+    color: rgba(255, 255, 255, 1);
+    background: linear-gradient(to right, rgba(60, 60, 60, 0.95), rgba(60, 60, 60, 0.5));
+}
+
+.timeline-arrow:active {
+    background: linear-gradient(to right, rgba(80, 80, 80, 1), rgba(80, 80, 80, 0.6));
+}
+
+#timeline-arrow-left {
+    left: 0;
+    background: linear-gradient(to right, rgba(42, 42, 42, 0.9), rgba(42, 42, 42, 0));
+}
+
+#timeline-arrow-left:hover {
+    background: linear-gradient(to right, rgba(60, 60, 60, 0.95), rgba(60, 60, 60, 0));
+}
+
+#timeline-arrow-right {
+    right: 0;
+    background: linear-gradient(to left, rgba(42, 42, 42, 0.9), rgba(42, 42, 42, 0));
+}
+
+#timeline-arrow-right:hover {
+    background: linear-gradient(to left, rgba(60, 60, 60, 0.95), rgba(60, 60, 60, 0));
+}
+
 #timeline-container:active {
     cursor: grabbing; /* 拖动时握拳光标 */
 }
