@@ -11,6 +11,7 @@ class PhotoWindow {
         this.parentWindow = parentWindow;
         this.photoWindow = null;
         this.currentPhoto = null;
+        this.savedBounds = null; // 保存全屏前的窗口位置
     }
 
     /**
@@ -40,6 +41,7 @@ class PhotoWindow {
             modal: true,
             frame: false,
             resizable: false,
+            fullscreenable: true,
             show: false,
             backgroundColor: '#1a1a1a',
             webPreferences: {
@@ -53,9 +55,11 @@ class PhotoWindow {
 
         // 窗口准备好后显示
         this.photoWindow.once('ready-to-show', () => {
-            this.photoWindow.show();
-            // 发送照片数据到渲染进程
-            this.photoWindow.webContents.send('load-photo', photoData);
+            if (this.photoWindow && !this.photoWindow.isDestroyed()) {
+                this.photoWindow.show();
+                // 发送照片数据到渲染进程
+                this.photoWindow.webContents.send('load-photo', photoData);
+            }
         });
 
         // 监听父窗口大小变化
@@ -102,6 +106,32 @@ class PhotoWindow {
      */
     isOpen() {
         return this.photoWindow && !this.photoWindow.isDestroyed();
+    }
+
+    /**
+     * 设置全屏状态
+     */
+    setFullScreen(isFullScreen) {
+        if (!this.photoWindow || this.photoWindow.isDestroyed()) return;
+        
+        if (isFullScreen) {
+            // 保存当前窗口位置
+            this.savedBounds = this.photoWindow.getBounds();
+            // 临时解除模态关系以实现真正全屏
+            this.photoWindow.setParentWindow(null);
+            // 设置全屏
+            this.photoWindow.setFullScreen(true);
+        } else {
+            // 退出全屏
+            this.photoWindow.setFullScreen(false);
+            // 恢复模态关系
+            this.photoWindow.setParentWindow(this.parentWindow);
+            // 恢复窗口位置
+            if (this.savedBounds) {
+                this.photoWindow.setBounds(this.savedBounds);
+                this.savedBounds = null;
+            }
+        }
     }
 }
 

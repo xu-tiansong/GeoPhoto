@@ -283,13 +283,20 @@ class DatabaseManager {
     }
 
     /**
+     * 根据目录和文件名查询单个照片
+     */
+    getPhotoByPath(directory, filename) {
+        const sql = 'SELECT * FROM photos WHERE directory = ? AND filename = ?';
+        return this.db.prepare(sql).get(directory, filename);
+    }
+
+    /**
      * 根据时间范围查询照片
      */
     queryPhotosByTimeRange(startTime, endTime) {
         const sql = `
             SELECT * FROM photos 
             WHERE time >= ? AND time <= ?
-            AND lat IS NOT NULL AND lng IS NOT NULL
         `;
         return this.db.prepare(sql).all(startTime, endTime);
     }
@@ -304,6 +311,17 @@ class DatabaseManager {
             AND lng <= ? AND lng >= ?
         `;
         return this.db.prepare(sql).all(north, south, east, west);
+    }
+
+    /**
+     * 保存照片备注
+     */
+    savePhotoRemark(directory, filename, remark) {
+        const stmt = this.db.prepare(`
+            UPDATE photos SET remark = ? 
+            WHERE directory = ? AND filename = ?
+        `);
+        return stmt.run(remark, directory, filename);
     }
 
     // ==================== 设置操作 ====================
@@ -375,6 +393,20 @@ class DatabaseManager {
      */
     getTimelineState() {
         return this.getSetting('timelineState');
+    }
+
+    /**
+     * 保存窗口状态
+     */
+    saveWindowState(state) {
+        this.saveSetting('windowState', state);
+    }
+
+    /**
+     * 读取窗口状态
+     */
+    getWindowState() {
+        return this.getSetting('windowState');
     }
 
     /**

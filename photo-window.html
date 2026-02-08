@@ -44,13 +44,32 @@
             justify-content: center;
         }
 
-        .photo-wrapper img {
+        .photo-wrapper img,
+        .photo-wrapper video {
             max-width: 100%;
             max-height: 100%;
             object-fit: contain;
             user-select: none;
             -webkit-user-drag: none;
             transition: transform 0.1s ease-out;
+        }
+
+        .photo-wrapper video {
+            display: none;
+            width: 100%;
+            height: 100%;
+        }
+
+        .photo-wrapper video.active {
+            display: block;
+        }
+
+        .photo-wrapper img.active {
+            display: block;
+        }
+
+        .photo-wrapper img:not(.active) {
+            display: none;
         }
 
         /* 缩放控制按钮 */
@@ -189,6 +208,51 @@
             word-break: break-all;
         }
 
+        /* Remark输入框样式 */
+        .remark-container {
+            margin-top: 16px;
+        }
+
+        .remark-textarea {
+            width: 100%;
+            min-height: 80px;
+            background: #1a1a1a;
+            border: 1px solid #444;
+            border-radius: 4px;
+            color: #fff;
+            padding: 8px;
+            font-size: 13px;
+            font-family: inherit;
+            resize: vertical;
+            transition: border-color 0.2s;
+        }
+
+        .remark-textarea:focus {
+            outline: none;
+            border-color: #2196f3;
+        }
+
+        .remark-save-btn {
+            margin-top: 8px;
+            padding: 6px 16px;
+            background: #2196f3;
+            border: none;
+            border-radius: 4px;
+            color: #fff;
+            cursor: pointer;
+            font-size: 13px;
+            transition: background 0.2s;
+            display: none;
+        }
+
+        .remark-save-btn.visible {
+            display: inline-block;
+        }
+
+        .remark-save-btn:hover {
+            background: #1976d2;
+        }
+
         /* Similar Photos面板 */
         .similar-photos-grid {
             display: grid;
@@ -294,7 +358,10 @@
     <!-- 左侧照片容器 -->
     <div class="photo-container" id="photoContainer">
         <div class="photo-wrapper" id="photoWrapper">
-            <img id="photoImage" src="" alt="Photo">
+            <img id="photoImage" src="" alt="Photo" class="active">
+            <video id="videoPlayer" controls preload="metadata">
+                Your browser does not support the video tag.
+            </video>
         </div>
         <div class="zoom-controls">
             <button class="zoom-btn" id="zoomOut" title="Zoom Out">−</button>
@@ -343,6 +410,11 @@
                     <div class="mini-map-label">Map Location</div>
                     <div id="miniMap"></div>
                 </div>
+                <div class="remark-container">
+                    <div class="info-label">Remark</div>
+                    <textarea class="remark-textarea" id="remark-textarea" placeholder="Add your notes here..."></textarea>
+                    <button class="remark-save-btn" id="remark-save-btn">Save</button>
+                </div>
             </div>
 
             <!-- Similar面板 -->
@@ -373,10 +445,12 @@
         let startY = 0;
         let miniMap = null;
         let miniMapMarker = null;
+        let originalRemark = '';
 
         const photoContainer = document.getElementById('photoContainer');
         const photoWrapper = document.getElementById('photoWrapper');
         const photoImage = document.getElementById('photoImage');
+        const videoPlayer = document.getElementById('videoPlayer');
         const zoomLevel = document.getElementById('zoomLevel');
 
         // 加载照片数据
@@ -387,10 +461,75 @@
 
         // 加载照片
         async function loadPhoto(photo) {
-            const filePath = `${photo.directory}/${photo.filename}`;
-            const fileUrl = `file://${filePath.replace(/\\/g, '/')}`;
+            // 建构正确的文件路径
+            const filePath = photo.directory.includes(photo.filename) 
+                ? photo.directory 
+                : `${photo.directory}\\${photo.filename}`;
             
-            photoImage.src = fileUrl;
+            // 转换为file://URL，Windows路径需要特殊处理
+            const normalizedPath = filePath.replace(/\\/g, '/');
+            const fileUrl = normalizedPath.startsWith('file://') 
+                ? normalizedPath 
+                : `file:///${normalizedPath}`;
+            
+            console.log('Loading media:', {
+                type: photo.type,
+                filename: photo.filename,
+                directory: photo.directory,
+                filePath: filePath,
+                fileUrl: fileUrl
+            });
+            
+            // 根据类型显示图片或视频
+            if (photo.type === 'video') {
+                photoImage.classList.remove('active');
+                videoPlayer.classList.add('active');
+                
+                // 直接设置视频src
+                videoPlayer.src = fileUrl;
+                
+                // 添加错误处理
+                videoPlayer.onerror = (e) => {
+                    console.error('Video error:', e);
+                    console.error('Video error details:', {
+                        error: videoPlayer.error,
+                        networkState: videoPlayer.networkState,
+                        readyState: videoPlayer.readyState,
+                        src: videoPlayer.src
+                    });
+                };
+                
+                // 等待视频元数据加载后再重置缩放
+                videoPlayer.onloadedmetadata = () => {
+                    console.log('Video metadata loaded:', {
+                        width: videoPlayer.videoWidth,
+                        height: videoPlayer.videoHeight,
+                        duration: videoPlayer.duration
+                    });
+                    resetZoom();
+                };
+                
+                // 视频全屏事件处理
+                videoPlayer.addEventListener('enterpictureinpicture', () => {
+                    console.log('Entered picture-in-picture');
+                });
+                
+                videoPlayer.load();
+            } else {
+                videoPlayer.classList.remove('active');
+                photoImage.classList.add('active');
+                photoImage.src = fileUrl;
+                
+                // 等待图片加载完成后再重置缩放
+                photoImage.onload = () => {
+                    resetZoom();
+                };
+                
+                // 如果图片已经缓存加载完成
+                if (photoImage.complete && photoImage.naturalWidth > 0) {
+                    resetZoom();
+                }
+            }
             
             // 更新Info信息
             document.getElementById('info-filename').textContent = photo.filename || '-';
@@ -422,8 +561,11 @@
                 document.getElementById('miniMapContainer').style.display = 'none';
             }
 
-            // 重置缩放
-            resetZoom();
+            // 加载remark
+            const remarkTextarea = document.getElementById('remark-textarea');
+            remarkTextarea.value = photo.remark || '';
+            originalRemark = photo.remark || '';
+            document.getElementById('remark-save-btn').classList.remove('visible');
         }
 
         // 缩放控制
@@ -433,7 +575,8 @@
         });
 
         document.getElementById('zoomOut').addEventListener('click', () => {
-            scale = Math.max(scale - 0.25, 0.25);
+            const minScale = getMinScale();
+            scale = Math.max(scale - 0.25, minScale);
             updateTransform();
         });
 
@@ -441,17 +584,56 @@
             resetZoom();
         });
 
-        // 鼠标滚轮缩放
-        photoContainer.addEventListener('wheel', (e) => {
-            e.preventDefault();
-            const delta = e.deltaY > 0 ? -0.1 : 0.1;
-            scale = Math.max(0.25, Math.min(5, scale + delta));
-            updateTransform();
-        });
+        // 鼠标滚轮缩放 - 在body上捕获所有wheel事件
+        document.body.addEventListener('wheel', function(e) {
+            // 检查鼠标是否在照片容器区域
+            const rect = photoContainer.getBoundingClientRect();
+            
+            if (e.clientX >= rect.left && e.clientX <= rect.right && 
+                e.clientY >= rect.top && e.clientY <= rect.bottom) {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                const delta = e.deltaY > 0 ? -0.1 : 0.1;
+                const minScale = getMinScale();
+                const newScale = scale + delta;
+                scale = Math.max(minScale, Math.min(5, newScale));
+                updateTransform();
+            }
+        }, { passive: false, capture: true });
 
         // 拖动功能
         photoContainer.addEventListener('mousedown', (e) => {
-            if (scale > 1) {
+            // 检查是否需要拖动（媒体超出容器）
+            const containerWidth = photoContainer.clientWidth;
+            const containerHeight = photoContainer.clientHeight;
+            
+            let imageWidth, imageHeight;
+            if (videoPlayer.classList.contains('active')) {
+                imageWidth = videoPlayer.videoWidth || containerWidth;
+                imageHeight = videoPlayer.videoHeight || containerHeight;
+            } else {
+                imageWidth = photoImage.naturalWidth || containerWidth;
+                imageHeight = photoImage.naturalHeight || containerHeight;
+            }
+            
+            // 计算实际显示尺寸
+            const containerAspect = containerWidth / containerHeight;
+            const imageAspect = imageWidth / imageHeight;
+            let displayWidth, displayHeight;
+            
+            if (imageAspect > containerAspect) {
+                displayWidth = Math.min(imageWidth, containerWidth);
+                displayHeight = displayWidth / imageAspect;
+            } else {
+                displayHeight = Math.min(imageHeight, containerHeight);
+                displayWidth = displayHeight * imageAspect;
+            }
+            
+            const scaledWidth = displayWidth * scale;
+            const scaledHeight = displayHeight * scale;
+            
+            // 如果缩放后的尺寸超出容器，允许拖动
+            if (scaledWidth > containerWidth || scaledHeight > containerHeight) {
                 isDragging = true;
                 startX = e.clientX - translateX;
                 startY = e.clientY - translateY;
@@ -475,19 +657,19 @@
 
         // 限制平移范围，防止露出背景
         function constrainTranslation() {
-            if (scale <= 1) {
-                translateX = 0;
-                translateY = 0;
-                return;
-            }
-
             // 获取容器尺寸
             const containerWidth = photoContainer.clientWidth;
             const containerHeight = photoContainer.clientHeight;
 
-            // 获取照片实际显示尺寸（自然尺寸）
-            const imageWidth = photoImage.naturalWidth;
-            const imageHeight = photoImage.naturalHeight;
+            // 获取媒体实际显示尺寸（自然尺寸）
+            let imageWidth, imageHeight;
+            if (videoPlayer.classList.contains('active')) {
+                imageWidth = videoPlayer.videoWidth || containerWidth;
+                imageHeight = videoPlayer.videoHeight || containerHeight;
+            } else {
+                imageWidth = photoImage.naturalWidth;
+                imageHeight = photoImage.naturalHeight;
+            }
 
             // 计算照片在容器中的实际渲染尺寸（考虑max-width/max-height）
             let displayWidth = imageWidth;
@@ -523,7 +705,12 @@
         // 更新变换
         function updateTransform() {
             constrainTranslation();
-            photoImage.style.transform = `scale(${scale}) translate(${translateX / scale}px, ${translateY / scale}px)`;
+            const transformValue = `scale(${scale}) translate(${translateX / scale}px, ${translateY / scale}px)`;
+            
+            // 确保正确的元素被应用transform
+            const activeElement = videoPlayer.classList.contains('active') ? videoPlayer : photoImage;
+            activeElement.style.transform = transformValue;
+            
             zoomLevel.textContent = `${Math.round(scale * 100)}%`;
         }
 
@@ -533,6 +720,44 @@
             translateX = 0;
             translateY = 0;
             updateTransform();
+        }
+
+        // 计算最小缩放值（确保至少一边等于容器）
+        function getMinScale() {
+            const containerWidth = photoContainer.clientWidth;
+            const containerHeight = photoContainer.clientHeight;
+            
+            let imageWidth, imageHeight;
+            if (videoPlayer.classList.contains('active')) {
+                imageWidth = videoPlayer.videoWidth || containerWidth;
+                imageHeight = videoPlayer.videoHeight || containerHeight;
+            } else {
+                imageWidth = photoImage.naturalWidth || containerWidth;
+                imageHeight = photoImage.naturalHeight || containerHeight;
+            }
+            
+            if (!imageWidth || !imageHeight) {
+                return 1; // 默认最小值
+            }
+            
+            // 计算contain模式下的显示尺寸
+            const containerAspect = containerWidth / containerHeight;
+            const imageAspect = imageWidth / imageHeight;
+            
+            let displayWidth, displayHeight;
+            if (imageAspect > containerAspect) {
+                // 图片更宽，以容器宽度为准
+                displayWidth = containerWidth;
+                displayHeight = containerWidth / imageAspect;
+            } else {
+                // 图片更高，以容器高度为准
+                displayHeight = containerHeight;
+                displayWidth = containerHeight * imageAspect;
+            }
+            
+            // 在scale=1时，图片已经以contain方式适配
+            // 最小scale就是1，不允许缩小，这样至少一边始终填满容器
+            return 1;
         }
 
         // 初始化小地图
@@ -606,9 +831,61 @@
             });
         });
 
+        // Remark输入变化监听
+        const remarkTextarea = document.getElementById('remark-textarea');
+        const remarkSaveBtn = document.getElementById('remark-save-btn');
+
+        remarkTextarea.addEventListener('input', () => {
+            const currentValue = remarkTextarea.value;
+            if (currentValue !== originalRemark) {
+                remarkSaveBtn.classList.add('visible');
+            } else {
+                remarkSaveBtn.classList.remove('visible');
+            }
+        });
+
+        // Remark保存按钮
+        remarkSaveBtn.addEventListener('click', async () => {
+            const remarkValue = remarkTextarea.value;
+            
+            if (!currentPhoto) return;
+            
+            try {
+                // 调用IPC保存remark
+                await ipcRenderer.invoke('save-photo-remark', {
+                    directory: currentPhoto.directory,
+                    filename: currentPhoto.filename,
+                    remark: remarkValue
+                });
+                
+                // 更新原始值和隐藏按钮
+                originalRemark = remarkValue;
+                remarkSaveBtn.classList.remove('visible');
+                
+                // 更新currentPhoto对象
+                currentPhoto.remark = remarkValue;
+                
+                console.log('Remark saved successfully');
+            } catch (error) {
+                console.error('Failed to save remark:', error);
+                alert('Failed to save remark');
+            }
+        });
+
         // 关闭按钮
         document.getElementById('closeBtn').addEventListener('click', () => {
             window.close();
+        });
+
+        // 视频全屏处理
+        document.addEventListener('fullscreenchange', () => {
+            if (document.fullscreenElement === videoPlayer) {
+                // 进入全屏，通知主进程将窗口全屏
+                ipcRenderer.invoke('set-photo-window-fullscreen', true);
+            } else if (!document.fullscreenElement) {
+                // 退出全屏，恢复窗口
+                ipcRenderer.invoke('set-photo-window-fullscreen', false);
+            }
         });
 
         // ESC键关闭

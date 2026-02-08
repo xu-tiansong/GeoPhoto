@@ -9,6 +9,7 @@ class MenuManager {
     constructor(mainWindow, handlers = {}) {
         this.mainWindow = mainWindow;
         this.handlers = handlers;
+        this.isFullScreen = false;
     }
 
     /**
@@ -34,9 +35,9 @@ class MenuManager {
             label: 'Photos',
             submenu: [
                 {
-                    label: 'Import Photo Directory',
+                    label: 'Set Photo Directory',
                     accelerator: 'CmdOrCtrl+I',
-                    click: () => this.handleMenuClick('importPhotoDirectory')
+                    click: () => this.handleMenuClick('setPhotoDirectory')
                 },
                 {
                     label: 'Photo Directory Management',
@@ -136,7 +137,7 @@ class MenuManager {
             label: 'System',
             submenu: [
                 {
-                    label: 'Fullscreen Map',
+                    label: this.isFullScreen ? 'Exit Fullscreen' : 'Fullscreen Map',
                     accelerator: 'F11',
                     click: () => this.handleMenuClick('fullscreenMap')
                 },
@@ -210,6 +211,14 @@ class MenuManager {
      */
     registerHandlers(handlers) {
         Object.assign(this.handlers, handlers);
+    }
+
+    /**
+     * 设置全屏状态
+     */
+    setFullScreenState(isFullScreen) {
+        this.isFullScreen = isFullScreen;
+        this.updateMenu();
     }
 
     /**

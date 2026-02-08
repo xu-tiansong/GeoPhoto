@@ -122,7 +122,7 @@ GeoPhoto/
 └── modules/                   # 模块目录 | Modules directory
     ├── Database.js            # 数据库管理 | Database manager
     ├── Photo.js               # 照片类 | Photo class
-    ├── PhotoManager.js        # 照片管理器 | Photo manager
+    ├── PhotoFilesManager.js   # 照片文件管理器 | Photo files manager
     ├── Timeline.js            # 时间轴管理 | Timeline manager
     ├── MapManager.js          # 地图管理 | Map manager
     ├── MenuManager.js         # 菜单管理 | Menu manager

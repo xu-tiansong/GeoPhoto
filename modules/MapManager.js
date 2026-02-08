@@ -3,6 +3,8 @@
  * 管理Leaflet地图、标记、聚合、绘图工具等
  */
 
+const ThumbnailGenerator = require('./ThumbnailGenerator');
+
 class MapManager {
     constructor(ipcRenderer, mapElementId = 'map') {
         this.ipcRenderer = ipcRenderer;
@@ -76,9 +78,7 @@ class MapManager {
                     }
                 }
             },
-            edit: {
-                featureGroup: this.drawnItems
-            }
+            edit: false // 禁用编辑和删除按钮
         });
         this.map.addControl(this.drawControl);
     }
@@ -276,9 +276,13 @@ class MapManager {
      */
     createThumbnailTooltip(photo) {
         const filePath = `${photo.directory}/${photo.filename}`;
-        const fileUrl = `file://${filePath.replace(/\\/g, '/')}`;
         const isVideo = photo.type === 'video';
         const uniqueId = `thumb-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        
+        // 获取缩略图路径
+        const thumbnailInfo = ThumbnailGenerator.getThumbnailPath(filePath);
+        const displayPath = thumbnailInfo.path;
+        const fileUrl = `file://${displayPath.replace(/\\/g, '/')}`;
         
         const { date, time } = this.formatDateTime(photo.time);
         const dateTimeStr = time ? `${date} ${time}` : date;
@@ -303,27 +307,46 @@ class MapManager {
         `;
         
         if (isVideo) {
-            return `
-                <div class="photo-tooltip">
-                    <div class="thumbnail-wrapper" id="${uniqueId}">
-                        <video src="${fileUrl}" 
-                               style="max-width: 224px; max-height: 224px; display: block;"
-                               onloadedmetadata="adjustVideoThumbnailSize(this)"
-                               onerror="this.style.display='none'; this.parentElement.innerHTML='<div style=\\'width:120px;height:90px;background:#333;display:flex;align-items:center;justify-content:center;\\'><div class=\\'video-play-icon\\'></div></div>';" 
-                               muted preload="metadata">
-                        </video>
-                        <div class="video-play-icon"></div>
+            // 如果有缩略图，直接显示图片
+            if (thumbnailInfo.isThumbnail) {
+                return `
+                    <div class="photo-tooltip">
+                        <div class="thumbnail-wrapper" id="${uniqueId}">
+                            <img src="${fileUrl}" 
+                                 style="max-width: 224px; max-height: 224px;"
+                                 onload="adjustThumbnailSize(this)"
+                                 onerror="this.style.display='none'; this.parentElement.innerHTML='<div style=\\'width:120px;height:90px;background:#333;display:flex;align-items:center;justify-content:center;\\'><div class=\\'video-play-icon\\'></div></div>';" />
+                            <div class="video-play-icon"></div>
+                        </div>
+                        ${infoHtml}
                     </div>
-                    ${infoHtml}
-                </div>
-            `;
+                `;
+            } else {
+                return `
+                    <div class="photo-tooltip">
+                        <div class="thumbnail-wrapper" id="${uniqueId}">
+                            <video src="${fileUrl}" 
+                                   style="max-width: 224px; max-height: 224px; display: block;"
+                                   data-original-path="${filePath}"
+                                   onloadedmetadata="adjustVideoThumbnailSize(this); generateVideoThumbnail(this);"
+                                   onerror="this.style.display='none'; this.parentElement.innerHTML='<div style=\\'width:120px;height:90px;background:#333;display:flex;align-items:center;justify-content:center;\\'><div class=\\'video-play-icon\\'></div></div>';" 
+                                   muted preload="metadata">
+                            </video>
+                            <div class="video-play-icon"></div>
+                        </div>
+                        ${infoHtml}
+                    </div>
+                `;
+            }
         } else {
             return `
                 <div class="photo-tooltip">
                     <div class="thumbnail-wrapper">
                         <img src="${fileUrl}" 
+                             data-original-path="${filePath}"
+                             data-is-thumbnail="${thumbnailInfo.isThumbnail}"
                              style="max-width: 224px; max-height: 224px;"
-                             onload="adjustThumbnailSize(this)"
+                             onload="adjustThumbnailSize(this); generateImageThumbnail(this);"
                              onerror="this.style.display='none'; this.parentElement.innerHTML='<div style=\\'width:100px;height:100px;background:#333;display:flex;align-items:center;justify-content:center;color:#999;\\'>无法加载</div>';">
                     </div>
                     ${infoHtml}
@@ -340,10 +363,22 @@ class MapManager {
         this.isLoadingMarkers = true;
         
         try {
+            // 确保是有效的Date对象
+            const start = startTime instanceof Date ? startTime : new Date(startTime);
+            const end = endTime instanceof Date ? endTime : new Date(endTime);
+            
+            if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+                console.error('Invalid time range:', startTime, endTime);
+                this.isLoadingMarkers = false;
+                return;
+            }
+            
             const photos = await this.ipcRenderer.invoke('query-photos-by-time', {
-                startTime: startTime.toISOString(),
-                endTime: endTime.toISOString()
+                startTime: start.toISOString(),
+                endTime: end.toISOString()
             });
+            
+            console.log(`加载照片: ${photos.length} 张 (${start.toISOString()} - ${end.toISOString()})`);
             
             this.currentPhotosCache = photos;
             this.markersLayer.clearLayers();
@@ -351,22 +386,29 @@ class MapManager {
             const locationCount = new Map();
             const markers = [];
             
+            // 默认坐标：54°24′25″S 3°17′16″E
+            const DEFAULT_LAT = -54.406944;
+            const DEFAULT_LNG = 3.287778;
+            
             photos.forEach((photo, index) => {
-                if (photo.lat && photo.lng) {
-                    const locKey = `${photo.lat.toFixed(5)},${photo.lng.toFixed(5)}`;
-                    const count = locationCount.get(locKey) || 0;
-                    locationCount.set(locKey, count + 1);
-                    
-                    let lat = photo.lat;
-                    let lng = photo.lng;
-                    if (count > 0) {
-                        const angle = count * 0.5;
-                        const offset = 0.00002 * count;
-                        lat += offset * Math.cos(angle);
-                        lng += offset * Math.sin(angle);
-                    }
-                    
-                    const marker = L.marker([lat, lng]);
+                // 如果没有有效的经纬度，使用默认坐标
+                let photoLat = (photo.lat && typeof photo.lat === 'number') ? photo.lat : DEFAULT_LAT;
+                let photoLng = (photo.lng && typeof photo.lng === 'number') ? photo.lng : DEFAULT_LNG;
+                
+                const locKey = `${photoLat.toFixed(5)},${photoLng.toFixed(5)}`;
+                const count = locationCount.get(locKey) || 0;
+                locationCount.set(locKey, count + 1);
+                
+                let lat = photoLat;
+                let lng = photoLng;
+                if (count > 0) {
+                    const angle = count * 0.5;
+                    const offset = 0.00002 * count;
+                    lat += offset * Math.cos(angle);
+                    lng += offset * Math.sin(angle);
+                }
+                
+                const marker = L.marker([lat, lng]);
                     const markerId = `marker-${photo.id || index}-${Date.now()}`;
                     marker._markerId = markerId;
                     marker.photoData = JSON.parse(JSON.stringify(photo));
@@ -385,18 +427,15 @@ class MapManager {
                         }
                     });
                     
-                    // 点击事件：打开照片窗口（仅限照片）
+                    // 点击事件：打开照片窗口（支持照片和视频）
                     marker.on('click', async function() {
                         const photoData = this.photoData;
-                        if (photoData.type !== 'video') {
-                            await this._mapManager.ipcRenderer.invoke('open-photo-window', photoData);
-                        }
+                        await this._mapManager.ipcRenderer.invoke('open-photo-window', photoData);
                     });
                     
                     marker._mapManager = this;
                     markers.push(marker);
-                }
-            });
+                });
             
             this.markersLayer.addLayers(markers);
             
@@ -420,22 +459,29 @@ class MapManager {
             const locationCount = new Map();
             const markers = [];
             
+            // 默认坐标：54°24′25″S 3°17′16″E
+            const DEFAULT_LAT = -54.406944;
+            const DEFAULT_LNG = 3.287778;
+            
             photos.forEach((photo, index) => {
-                if (photo.lat && photo.lng) {
-                    const locKey = `${photo.lat.toFixed(5)},${photo.lng.toFixed(5)}`;
-                    const count = locationCount.get(locKey) || 0;
-                    locationCount.set(locKey, count + 1);
-                    
-                    let lat = photo.lat;
-                    let lng = photo.lng;
-                    if (count > 0) {
-                        const angle = count * 0.5;
-                        const offset = 0.00002 * count;
-                        lat += offset * Math.cos(angle);
-                        lng += offset * Math.sin(angle);
-                    }
-                    
-                    const marker = L.marker([lat, lng]);
+                // 如果没有有效的经纬度，使用默认坐标
+                let photoLat = (photo.lat && typeof photo.lat === 'number') ? photo.lat : DEFAULT_LAT;
+                let photoLng = (photo.lng && typeof photo.lng === 'number') ? photo.lng : DEFAULT_LNG;
+                
+                const locKey = `${photoLat.toFixed(5)},${photoLng.toFixed(5)}`;
+                const count = locationCount.get(locKey) || 0;
+                locationCount.set(locKey, count + 1);
+                
+                let lat = photoLat;
+                let lng = photoLng;
+                if (count > 0) {
+                    const angle = count * 0.5;
+                    const offset = 0.00002 * count;
+                    lat += offset * Math.cos(angle);
+                    lng += offset * Math.sin(angle);
+                }
+                
+                const marker = L.marker([lat, lng]);
                     const markerId = `marker-${photo.id || index}-${Date.now()}`;
                     marker._markerId = markerId;
                     marker.photoData = JSON.parse(JSON.stringify(photo));
@@ -454,17 +500,14 @@ class MapManager {
                         }
                     });
                     
-                    // 点击事件：打开照片窗口（仅限照片）
+                    // 点击事件：打开照片窗口（支持照片和视频）
                     marker.on('click', async function() {
                         const photoData = this.photoData;
-                        if (photoData.type !== 'video') {
-                            await this._mapManager.ipcRenderer.invoke('open-photo-window', photoData);
-                        }
+                        await this._mapManager.ipcRenderer.invoke('open-photo-window', photoData);
                     });
                     
                     marker._mapManager = this;
                     markers.push(marker);
-                }
             });
             
             this.markersLayer.addLayers(markers);
@@ -493,7 +536,17 @@ class MapManager {
         const areaPhotos = await this.ipcRenderer.invoke('query-area', range);
         
         console.log("区域内照片列表:", areaPhotos);
-        alert(`在该矩形区域内找到 ${areaPhotos.length} 张照片。结果已打印在控制台(F12)`);
+        
+        // 如果有照片，打开照片管理窗口
+        if (areaPhotos && areaPhotos.length > 0) {
+            await this.ipcRenderer.invoke('open-photos-manage-window', {
+                tab: 'selected',
+                photos: areaPhotos,
+                bounds: range
+            });
+        } else {
+            alert('在该矩形区域内没有找到照片');
+        }
     }
 
     /**
@@ -530,6 +583,16 @@ class MapManager {
     getCachedPhotos() {
         return this.currentPhotosCache;
     }
+
+    /**
+     * 清除地图上的矩形选框
+     */
+    clearRectangle() {
+        if (this.drawnItems) {
+            this.drawnItems.clearLayers();
+            console.log('矩形选框已清除');
+        }
+    }
 }
 
 // 全局辅助函数（用于 HTML 内联事件）
@@ -560,6 +623,32 @@ window.adjustVideoThumbnailSize = function(video) {
         video.style.width = 'auto';
     }
     video.currentTime = 0.1;
+};
+
+// 生成图片缩略图
+window.generateImageThumbnail = function(img) {
+    const isThumbnail = img.dataset.isThumbnail === 'true';
+    const originalPath = img.dataset.originalPath;
+    
+    if (!isThumbnail && originalPath) {
+        // 异步生成缩略图
+        ThumbnailGenerator.generateAndSaveThumbnail(img, originalPath).catch(err => {
+            console.error('生成缩略图失败:', err);
+        });
+    }
+};
+
+// 生成视频缩略图
+window.generateVideoThumbnail = function(video) {
+    const originalPath = video.dataset.originalPath;
+    
+    if (originalPath) {
+        video.addEventListener('seeked', () => {
+            ThumbnailGenerator.generateAndSaveThumbnail(video, originalPath).catch(err => {
+                console.error('生成视频缩略图失败:', err);
+            });
+        }, { once: true });
+    }
 };
 
 // 导出

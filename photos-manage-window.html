@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Photos Management</title>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" 
+          crossorigin=""/>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #2a2a2a;
+            color: #e0e0e0;
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+        }
+
+        /* 左侧容器 */
+        .left-panel {
+            width: 250px;
+            background-color: #1e1e1e;
+            border-right: 1px solid #3a3a3a;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Tab 容器 */
+        .tabs {
+            display: flex;
+            background-color: #252525;
+            border-bottom: 1px solid #3a3a3a;
+        }
+
+        .tab {
+            flex: 1;
+            padding: 12px;
+            text-align: center;
+            cursor: pointer;
+            background-color: #252525;
+            border: none;
+            color: #888;
+            font-size: 14px;
+            transition: all 0.2s;
+            border-bottom: 2px solid transparent;
+        }
+
+        .tab:hover {
+            background-color: #2d2d2d;
+            color: #e0e0e0;
+        }
+
+        .tab.active {
+            color: #4a9eff;
+            border-bottom-color: #4a9eff;
+            background-color: #2a2a2a;
+        }
+
+        /* Tab 内容区 */
+        .tab-content {
+            flex: 1;
+            padding: 16px;
+            overflow-y: auto;
+        }
+
+        .tab-panel {
+            display: none;
+        }
+
+        .tab-panel.active {
+            display: block;
+        }
+
+        /* 地图缩略图 */
+        .map-thumbnail {
+            width: 100%;
+            height: 200px;
+            background-color: #1a1a1a;
+            border-radius: 4px;
+            margin-bottom: 16px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        #selectedMapContainer {
+            width: 100%;
+            height: 100%;
+        }
+
+        .map-overlay {
+            position: absolute;
+            bottom: 8px;
+            left: 8px;
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 6px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            color: white;
+        }
+
+        /* 右侧照片网格容器 */
+        .right-panel {
+            flex: 1;
+            background-color: #2a2a2a;
+            overflow-y: auto;
+            padding: 16px;
+        }
+
+        .photos-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, 224px);
+            gap: 16px;
+            justify-content: start;
+        }
+
+        .photo-item {
+            width: 224px;
+            height: 224px;
+            position: relative;
+            cursor: pointer;
+            border: 3px solid transparent;
+            border-radius: 4px;
+            overflow: hidden;
+            background-color: #1a1a1a;
+            transition: border-color 0.2s;
+        }
+
+        .photo-item.loading {
+            background: linear-gradient(90deg, #1a1a1a 25%, #2a2a2a 50%, #1a1a1a 75%);
+            background-size: 200% 100%;
+            animation: loading 1.5s ease-in-out infinite;
+        }
+
+        @keyframes loading {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+
+        .photo-item:hover {
+            border-color: #555;
+        }
+
+        .photo-item.selected {
+            border-color: #4a9eff;
+        }
+
+        .photo-item img,
+        .photo-item video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        .photo-item .video-overlay {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 48px;
+            height: 48px;
+            background-color: rgba(0, 0, 0, 0.6);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none;
+        }
+
+        .photo-item .video-overlay::after {
+            content: '';
+            width: 0;
+            height: 0;
+            border-left: 16px solid white;
+            border-top: 10px solid transparent;
+            border-bottom: 10px solid transparent;
+            margin-left: 4px;
+        }
+
+        .photo-item .photo-info {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(transparent, rgba(0, 0, 0, 0.8));
+            padding: 8px;
+            font-size: 11px;
+            color: #ccc;
+        }
+
+        /* 滚动条样式 */
+        ::-webkit-scrollbar {
+            width: 10px;
+            height: 10px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #1a1a1a;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #444;
+            border-radius: 5px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+
+        .info-text {
+            padding: 16px;
+            color: #888;
+            text-align: center;
+        }
+
+        /* 关闭按钮 */
+        .close-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 32px;
+            height: 32px;
+            background: #d32f2f;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-size: 20px;
+            font-weight: bold;
+            z-index: 1000;
+            transition: background 0.2s;
+        }
+
+        .close-btn:hover {
+            background: #b71c1c;
+        }
+    </style>
+</head>
+<body>
+    <!-- 关闭按钮 -->
+    <button class="close-btn" id="closeBtn">×</button>
+
+    <!-- 左侧面板 -->
+    <div class="left-panel">
+        <div class="tabs">
+            <button class="tab active" data-tab="direct">Direct</button>
+            <button class="tab" data-tab="selected">Selected</button>
+            <button class="tab" data-tab="tag">Tag</button>
+        </div>
+        <div class="tab-content">
+            <div class="tab-panel active" id="direct-panel">
+                <div class="info-text">Direct mode content will be here</div>
+            </div>
+            <div class="tab-panel" id="selected-panel">
+                <div class="map-thumbnail">
+                    <div id="selectedMapContainer"></div>
+                    <div class="map-overlay">
+                        <span id="photo-count-badge">0 photos</span>
+                    </div>
+                </div>
+                <div class="info-text">Selected: <span id="selected-count">None</span></div>
+            </div>
+            <div class="tab-panel" id="tag-panel">
+                <div class="info-text">Tag management will be here</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 右侧照片网格 -->
+    <div class="right-panel">
+        <div class="photos-grid" id="photosGrid"></div>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" 
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" 
+            crossorigin=""></script>
+
+    <script>
+        const { ipcRenderer } = require('electron');
+        const ThumbnailGenerator = require('./modules/ThumbnailGenerator');
+
+        let currentPhotos = [];
+        let selectedPhotoId = null; // 改为单选
+        let mapBounds = null;
+        let intersectionObserver = null;
+        let clickTimer = null; // 用于延迟处理单击事件
+        
+        // 缩略图生成队列
+        let thumbnailQueue = [];
+        let isProcessingThumbnail = false;
+        
+        // 小地图实例
+        let miniMap = null;
+        let miniMapMarkers = [];
+
+        // Tab 切换逻辑
+        const tabs = document.querySelectorAll('.tab');
+        const tabPanels = document.querySelectorAll('.tab-panel');
+
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                const tabName = tab.dataset.tab;
+                switchTab(tabName);
+            });
+        });
+
+        function switchTab(tabName) {
+            tabs.forEach(t => t.classList.remove('active'));
+            tabPanels.forEach(p => p.classList.remove('active'));
+
+            const activeTab = document.querySelector(`.tab[data-tab="${tabName}"]`);
+            const activePanel = document.getElementById(`${tabName}-panel`);
+
+            if (activeTab) activeTab.classList.add('active');
+            if (activePanel) activePanel.classList.add('active');
+
+            // 如果切换到 selected tab，重新绘制地图
+            if (tabName === 'selected' && mapBounds) {
+                setTimeout(() => {
+                    if (miniMap) {
+                        miniMap.invalidateSize();
+                    } else {
+                        drawMapThumbnail();
+                    }
+                }, 100);
+            }
+        }
+
+        // 初始化照片数据
+        ipcRenderer.on('init-photos', (event, options) => {
+            console.log('收到初始化数据:', options);
+            
+            if (options.tab) {
+                switchTab(options.tab);
+            }
+            
+            if (options.photos) {
+                currentPhotos = options.photos;
+                renderPhotos();
+                updateSelectedCount();
+            }
+            
+            if (options.bounds) {
+                mapBounds = options.bounds;
+                // 延迟绘制地图，确保容器已渲染
+                setTimeout(() => drawMapThumbnail(), 200);
+            }
+        });
+
+        // 更新照片数据
+        ipcRenderer.on('update-photos', (event, options) => {
+            console.log('收到更新数据:', options);
+            
+            if (options.tab) {
+                switchTab(options.tab);
+            }
+            
+            if (options.photos) {
+                currentPhotos = options.photos;
+                renderPhotos();
+            }
+            
+            if (options.bounds) {
+                mapBounds = options.bounds;
+                // 延迟绘制地图，确保容器已渲染
+                setTimeout(() => drawMapThumbnail(), 200);
+            }
+        });
+
+        // 渲染照片网格（异步分批渲染）
+        function renderPhotos() {
+            const grid = document.getElementById('photosGrid');
+            grid.innerHTML = '';
+
+            if (!currentPhotos || currentPhotos.length === 0) {
+                grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: #888;">No photos to display</div>';
+                return;
+            }
+
+            // 按时间排序
+            const sortedPhotos = [...currentPhotos].sort((a, b) => {
+                const timeA = a.time ? new Date(a.time).getTime() : 0;
+                const timeB = b.time ? new Date(b.time).getTime() : 0;
+                return timeA - timeB;
+            });
+
+            // 分批渲染，每批 20 张
+            const batchSize = 20;
+            let currentIndex = 0;
+
+            function renderBatch() {
+                const endIndex = Math.min(currentIndex + batchSize, sortedPhotos.length);
+                
+                for (let i = currentIndex; i < endIndex; i++) {
+                    const photoItem = createPhotoItem(sortedPhotos[i]);
+                    grid.appendChild(photoItem);
+                }
+
+                currentIndex = endIndex;
+
+                if (currentIndex < sortedPhotos.length) {
+                    // 使用 requestIdleCallback 或 setTimeout 继续渲染
+                    if (window.requestIdleCallback) {
+                        requestIdleCallback(renderBatch);
+                    } else {
+                        setTimeout(renderBatch, 0);
+                    }
+                } else {
+                    // 渲染完成，初始化 Intersection Observer
+                    initLazyLoading();
+                    updateSelectedCount();
+                }
+            }
+
+            renderBatch();
+        }
+
+        // 创建照片项（懒加载）
+        function createPhotoItem(photo) {
+            const div = document.createElement('div');
+            div.className = 'photo-item loading';
+            // 统一使用字符串格式的ID
+            div.dataset.photoId = photo.id ? String(photo.id) : `${photo.directory}/${photo.filename}`;
+
+            const filePath = `${photo.directory}/${photo.filename}`;
+            const isVideo = photo.type === 'video';
+
+            // 存储数据到 dataset 以便后续加载
+            div.dataset.filePath = filePath; // 存储原始路径
+            div.dataset.isVideo = isVideo;
+            div.dataset.loaded = 'false';
+
+            // 存储photo对象用于事件处理
+            div._photoData = photo;
+
+            // 添加照片信息
+            const info = document.createElement('div');
+            info.className = 'photo-info';
+            info.textContent = formatDateTime(photo.time);
+            div.appendChild(info);
+
+            // 点击事件 - 选中/取消选中（延迟执行以避免与双击冲突）
+            div.addEventListener('click', (e) => {
+                if (clickTimer) {
+                    clearTimeout(clickTimer);
+                    clickTimer = null;
+                    return; // 这是双击的第二次点击，忽略它
+                }
+                
+                clickTimer = setTimeout(() => {
+                    clickTimer = null;
+                    togglePhotoSelection(div, photo);
+                }, 250); // 250ms 内如果有第二次点击，则视为双击
+            });
+
+            // 双击事件 - 先选中再打开照片窗口
+            div.addEventListener('dblclick', async (e) => {
+                // 清除单击定时器，防止执行单击操作
+                if (clickTimer) {
+                    clearTimeout(clickTimer);
+                    clickTimer = null;
+                }
+                
+                const photoId = div.dataset.photoId;
+                
+                // 如果未选中，先选中
+                if (selectedPhotoId !== photoId) {
+                    // 取消之前的选中
+                    if (selectedPhotoId) {
+                        const prevSelected = document.querySelector(`.photo-item[data-photo-id="${selectedPhotoId}"]`);
+                        if (prevSelected) {
+                            prevSelected.classList.remove('selected');
+                        }
+                    }
+                    
+                    // 选中当前照片
+                    selectedPhotoId = photoId;
+                    div.classList.add('selected');
+                    updateSelectedCount();
+                }
+                
+                // 打开照片窗口
+                await ipcRenderer.invoke('open-photo-window', photo);
+            });
+
+            return div;
+        }
+
+        // 切换照片选中状态（单选）
+        function togglePhotoSelection(element, photo) {
+            const photoId = element.dataset.photoId;
+
+            // 取消之前的选中
+            if (selectedPhotoId) {
+                const prevSelected = document.querySelector(`.photo-item[data-photo-id="${selectedPhotoId}"]`);
+                if (prevSelected) {
+                    prevSelected.classList.remove('selected');
+                }
+            }
+
+            // 如果点击的不是已选中的照片，选中它
+            if (selectedPhotoId !== photoId) {
+                selectedPhotoId = photoId;
+                element.classList.add('selected');
+            } else {
+                // 点击已选中的照片，取消选中
+                selectedPhotoId = null;
+            }
+
+            updateSelectedCount();
+        }
+
+        // 更新选中数量显示（显示通过矩形选择的照片总数）
+        function updateSelectedCount() {
+            const countElement = document.getElementById('selected-count');
+            if (countElement) {
+                countElement.textContent = currentPhotos.length.toString();
+            }
+        }
+
+        // 初始化懒加载
+        function initLazyLoading() {
+            // 清除旧的 observer
+            if (intersectionObserver) {
+                intersectionObserver.disconnect();
+            }
+
+            // 创建 Intersection Observer
+            intersectionObserver = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        const photoItem = entry.target;
+                        if (photoItem.dataset.loaded === 'false') {
+                            loadPhotoContent(photoItem);
+                            intersectionObserver.unobserve(photoItem);
+                        }
+                    }
+                });
+            }, {
+                root: document.querySelector('.right-panel'),
+                rootMargin: '100px', // 提前 100px 开始加载
+                threshold: 0.01
+            });
+
+            // 监听所有照片项
+            const photoItems = document.querySelectorAll('.photo-item');
+            photoItems.forEach(item => {
+                intersectionObserver.observe(item);
+            });
+        }
+
+        // 处理缩略图生成队列（串行处理，一次只处理一张）
+        async function processThumbnailQueue() {
+            if (isProcessingThumbnail || thumbnailQueue.length === 0) {
+                return;
+            }
+            
+            isProcessingThumbnail = true;
+            
+            while (thumbnailQueue.length > 0) {
+                const task = thumbnailQueue.shift();
+                try {
+                    await ThumbnailGenerator.generateAndSaveThumbnail(task.element, task.path);
+                    console.log(`缩略图已生成: ${task.path}`);
+                } catch (err) {
+                    console.error('生成缩略图失败:', err);
+                }
+                
+                // 稍微延迟一下，避免占用过多CPU
+                await new Promise(resolve => setTimeout(resolve, 50));
+            }
+            
+            isProcessingThumbnail = false;
+        }
+
+        // 添加缩略图生成任务到队列
+        function enqueueThumbnailGeneration(element, path) {
+            thumbnailQueue.push({ element, path });
+            processThumbnailQueue();
+        }
+
+        // 加载照片内容
+        function loadPhotoContent(photoItem) {
+            const originalPath = photoItem.dataset.filePath;
+            const isVideo = photoItem.dataset.isVideo === 'true';
+
+            photoItem.dataset.loaded = 'true';
+
+            // 获取缩略图路径
+            const thumbnailInfo = ThumbnailGenerator.getThumbnailPath(originalPath);
+            const displayPath = thumbnailInfo.path;
+            const fileUrl = `file://${displayPath.replace(/\\/g, '/')}`;
+
+            const info = photoItem.querySelector('.photo-info');
+
+            if (isVideo) {
+                if (thumbnailInfo.isThumbnail) {
+                    // 如果有缩略图，直接显示图片而不是视频
+                    const img = document.createElement('img');
+                    img.src = fileUrl;
+                    img.onload = () => {
+                        photoItem.classList.remove('loading');
+                    };
+                    img.onerror = () => {
+                        photoItem.classList.remove('loading');
+                        photoItem.style.backgroundColor = '#333';
+                    };
+                    photoItem.insertBefore(img, info);
+
+                    const overlay = document.createElement('div');
+                    overlay.className = 'video-overlay';
+                    photoItem.insertBefore(overlay, info);
+                } else {
+                    // 没有缩略图，加载视频并加入缩略图生成队列
+                    const video = document.createElement('video');
+                    video.src = fileUrl;
+                    video.preload = 'metadata';
+                    video.muted = true;
+                    video.addEventListener('loadedmetadata', () => {
+                        video.currentTime = 0.1;
+                        photoItem.classList.remove('loading');
+                    });
+                    video.addEventListener('seeked', () => {
+                        // 将缩略图生成任务加入队列
+                        enqueueThumbnailGeneration(video, originalPath);
+                    }, { once: true });
+                    video.onerror = () => {
+                        photoItem.classList.remove('loading');
+                        photoItem.style.backgroundColor = '#333';
+                    };
+                    photoItem.insertBefore(video, info);
+
+                    const overlay = document.createElement('div');
+                    overlay.className = 'video-overlay';
+                    photoItem.insertBefore(overlay, info);
+                }
+            } else {
+                const img = document.createElement('img');
+                img.src = fileUrl;
+                img.onload = () => {
+                    photoItem.classList.remove('loading');
+                    // 如果不是缩略图，将生成任务加入队列
+                    if (!thumbnailInfo.isThumbnail) {
+                        enqueueThumbnailGeneration(img, originalPath);
+                    }
+                };
+                img.onerror = () => {
+                    photoItem.classList.remove('loading');
+                    photoItem.style.backgroundColor = '#333';
+                    const errorDiv = document.createElement('div');
+                    errorDiv.style.cssText = 'display:flex;align-items:center;justify-content:center;height:100%;color:#666;';
+                    errorDiv.textContent = 'Failed to load';
+                    photoItem.insertBefore(errorDiv, photoItem.firstChild);
+                };
+                photoItem.insertBefore(img, info);
+            }
+        }
+
+        // 绘制地图缩略图
+        function drawMapThumbnail() {
+            if (!mapBounds || !currentPhotos || currentPhotos.length === 0) return;
+
+            const mapContainer = document.getElementById('selectedMapContainer');
+            if (!mapContainer) return;
+
+            // 如果地图已存在，先清除
+            if (miniMap) {
+                miniMap.remove();
+                miniMap = null;
+                miniMapMarkers = [];
+            }
+
+            // 计算地图中心和缩放级别
+            const { north, south, east, west } = mapBounds;
+            const centerLat = (north + south) / 2;
+            const centerLng = (east + west) / 2;
+            
+            // 创建小地图
+            miniMap = L.map('selectedMapContainer', {
+                center: [centerLat, centerLng],
+                zoom: 12,
+                zoomControl: false,
+                dragging: false,
+                scrollWheelZoom: false,
+                doubleClickZoom: false,
+                boxZoom: false,
+                keyboard: false,
+                attributionControl: false
+            });
+
+            // 添加卫星底图
+            L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                attribution: ''
+            }).addTo(miniMap);
+
+            // 添加标签图层
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png', {
+                attribution: '',
+                subdomains: 'abcd',
+                pane: 'overlayPane'
+            }).addTo(miniMap);
+
+            // 绘制矩形选框
+            L.rectangle([[south, west], [north, east]], {
+                color: '#ff7800',
+                weight: 2,
+                fill: false
+            }).addTo(miniMap);
+
+            // 添加照片标记
+            currentPhotos.forEach(photo => {
+                if (photo.lat && photo.lng) {
+                    const marker = L.circleMarker([photo.lat, photo.lng], {
+                        radius: 5,
+                        fillColor: '#4a9eff',
+                        color: '#fff',
+                        weight: 2,
+                        opacity: 1,
+                        fillOpacity: 0.8
+                    });
+                    marker.addTo(miniMap);
+                    miniMapMarkers.push(marker);
+                }
+            });
+
+            // 自动调整视图以适应矩形范围
+            miniMap.fitBounds([[south, west], [north, east]], { padding: [10, 10] });
+
+            // 强制刷新地图尺寸
+            setTimeout(() => {
+                if (miniMap) {
+                    miniMap.invalidateSize();
+                }
+            }, 100);
+
+            // 更新照片数量徽章
+            const badge = document.getElementById('photo-count-badge');
+            if (badge) {
+                badge.textContent = `${currentPhotos.length} photo${currentPhotos.length !== 1 ? 's' : ''}`;
+            }
+        }
+
+        // 格式化日期时间
+        function formatDateTime(timeStr) {
+            if (!timeStr) return 'Unknown Date';
+            const d = new Date(timeStr);
+            if (isNaN(d.getTime())) return 'Unknown Date';
+            
+            return `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+        }
+
+        // 窗口 resize 时重新调整地图大小
+        window.addEventListener('resize', () => {
+            if (miniMap) {
+                setTimeout(() => {
+                    miniMap.invalidateSize();
+                }, 100);
+            }
+        });
+
+        // 关闭按钮
+        document.getElementById('closeBtn').addEventListener('click', () => {
+            // 清理 observer
+            if (intersectionObserver) {
+                intersectionObserver.disconnect();
+            }
+            // 清理地图实例
+            if (miniMap) {
+                miniMap.remove();
+                miniMap = null;
+                miniMapMarkers = [];
+            }
+            window.close();
+        });
+    </script>
+</body>
+</html>

@@ -26,7 +26,24 @@ function hideLoading() {
 
 // ==================== IPC 事件监听 ====================
 ipcRenderer.on('scan-started', () => {
-    showLoading('正在扫描文件...');
+    showLoading('Scanning files...');
+});
+
+ipcRenderer.on('scan-progress', (event, progress) => {
+    if (progress.phase === 'directory') {
+        showLoading(`Scanning directories... (${progress.count} found)`);
+    } else if (progress.phase === 'metadata') {
+        showLoading(`Processing ${progress.current}/${progress.total} media files...`);
+    } else if (progress.phase === 'database') {
+        showLoading('Writing to database...');
+    }
+});
+
+// 监听清除矩形选框的消息
+ipcRenderer.on('clear-map-rectangle', () => {
+    if (mapManager) {
+        mapManager.clearRectangle();
+    }
 });
 
 ipcRenderer.on('scan-completed', (event, data) => {
@@ -45,15 +62,17 @@ ipcRenderer.on('scan-completed', (event, data) => {
         
         if (newFiles > 0) {
             message += `其中新增 ${data.newPhotos} 张照片和 ${data.newVideos} 个视频`;
-            // 有新文件时刷新地图
-            if (timeline) {
-                const range = timeline.getSelectedRange();
-                mapManager.loadMarkersByTimeRange(range.start, range.end);
-            } else {
-                mapManager.loadAllMarkers();
-            }
         } else {
             message += `没有新增文件（${data.skippedFiles} 个文件已存在）`;
+        }
+        
+        // 扫描完成后刷新地图（根据当前时间轴范围）
+        if (timeline) {
+            const range = timeline.getSelectedRange();
+            mapManager.loadMarkersByTimeRange(range.start, range.end);
+        } else {
+            // 时间轴未初始化，加载所有照片
+            mapManager.loadAllMarkers();
         }
     }
     
