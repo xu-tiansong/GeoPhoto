@@ -114,6 +114,7 @@
             background-color: #2a2a2a;
             overflow-y: auto;
             padding: 16px;
+            outline: none; /* 移除焦点时的默认轮廓 */
         }
 
         .photos-grid {
@@ -198,6 +199,16 @@
             color: #ccc;
         }
 
+        .photo-item .like-icon {
+            position: absolute;
+            top: 6px;
+            right: 6px;
+            color: #ff6b6b;
+            font-size: 14px;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+            z-index: 5;
+        }
+
         /* 滚动条样式 */
         ::-webkit-scrollbar {
             width: 10px;
@@ -280,7 +291,7 @@
     </div>
 
     <!-- 右侧照片网格 -->
-    <div class="right-panel">
+    <div class="right-panel" tabindex="0">
         <div class="photos-grid" id="photosGrid"></div>
     </div>
 
@@ -307,36 +318,89 @@
         let miniMap = null;
         let miniMapMarkers = [];
 
-        // Tab 切换逻辑
-        const tabs = document.querySelectorAll('.tab');
-        const tabPanels = document.querySelectorAll('.tab-panel');
-
-        tabs.forEach(tab => {
-            tab.addEventListener('click', () => {
-                const tabName = tab.dataset.tab;
-                switchTab(tabName);
-            });
+        // 等待DOM加载完成后再初始化
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('DOM加载完成，开始初始化...');
+            initializeApp();
         });
 
+        function initializeApp() {
+            // Tab 切换逻辑
+            const tabs = document.querySelectorAll('.tab');
+            const tabPanels = document.querySelectorAll('.tab-panel');
+
+            tabs.forEach(tab => {
+                tab.addEventListener('click', () => {
+                    const tabName = tab.dataset.tab;
+                    switchTab(tabName);
+                });
+            });
+
+            // 关闭按钮
+            const closeBtn = document.getElementById('closeBtn');
+            if (closeBtn) {
+                closeBtn.addEventListener('click', () => {
+                    console.log('关闭按钮被点击');
+                    // 清理 observer
+                    if (intersectionObserver) {
+                        intersectionObserver.disconnect();
+                    }
+                    // 清理地图实例
+                    if (miniMap) {
+                        miniMap.remove();
+                        miniMap = null;
+                        miniMapMarkers = [];
+                    }
+                    window.close();
+                });
+            } else {
+                console.error('找不到关闭按钮！');
+            }
+
+            // 页面加载完成后，给右侧面板设置焦点
+            const rightPanel = document.querySelector('.right-panel');
+            if (rightPanel) {
+                setTimeout(() => {
+                    rightPanel.focus();
+                }, 200);
+            }
+        }
+
         function switchTab(tabName) {
+            console.log('切换到tab:', tabName);
+            const tabs = document.querySelectorAll('.tab');
+            const tabPanels = document.querySelectorAll('.tab-panel');
+            
             tabs.forEach(t => t.classList.remove('active'));
             tabPanels.forEach(p => p.classList.remove('active'));
 
             const activeTab = document.querySelector(`.tab[data-tab="${tabName}"]`);
             const activePanel = document.getElementById(`${tabName}-panel`);
 
-            if (activeTab) activeTab.classList.add('active');
-            if (activePanel) activePanel.classList.add('active');
+            if (activeTab) {
+                activeTab.classList.add('active');
+            } else {
+                console.error('找不到tab:', tabName);
+            }
+            
+            if (activePanel) {
+                activePanel.classList.add('active');
+            } else {
+                console.error('找不到tab panel:', tabName);
+            }
 
             // 如果切换到 selected tab，重新绘制地图
             if (tabName === 'selected' && mapBounds) {
+                console.log('准备绘制地图...');
                 setTimeout(() => {
                     if (miniMap) {
+                        console.log('地图已存在，刷新尺寸');
                         miniMap.invalidateSize();
                     } else {
+                        console.log('绘制新地图');
                         drawMapThumbnail();
                     }
-                }, 100);
+                }, 150);
             }
         }
 
@@ -344,20 +408,29 @@
         ipcRenderer.on('init-photos', (event, options) => {
             console.log('收到初始化数据:', options);
             
-            if (options.tab) {
-                switchTab(options.tab);
-            }
-            
+            // 先设置数据
             if (options.photos) {
                 currentPhotos = options.photos;
-                renderPhotos();
-                updateSelectedCount();
+                console.log('设置照片数量:', currentPhotos.length);
             }
             
             if (options.bounds) {
                 mapBounds = options.bounds;
-                // 延迟绘制地图，确保容器已渲染
-                setTimeout(() => drawMapThumbnail(), 200);
+                console.log('设置地图边界:', mapBounds);
+            }
+            
+            // 然后切换tab
+            if (options.tab) {
+                console.log('切换到tab:', options.tab);
+                switchTab(options.tab);
+            }
+            
+            // 最后渲染照片
+            if (options.photos) {
+                setTimeout(() => {
+                    renderPhotos();
+                    updateSelectedCount();
+                }, 50);
             }
         });
 
@@ -365,28 +438,73 @@
         ipcRenderer.on('update-photos', (event, options) => {
             console.log('收到更新数据:', options);
             
-            if (options.tab) {
-                switchTab(options.tab);
-            }
-            
+            // 先设置数据
             if (options.photos) {
                 currentPhotos = options.photos;
-                renderPhotos();
             }
             
             if (options.bounds) {
                 mapBounds = options.bounds;
-                // 延迟绘制地图，确保容器已渲染
-                setTimeout(() => drawMapThumbnail(), 200);
+            }
+            
+            // 然后切换tab
+            if (options.tab) {
+                switchTab(options.tab);
+            }
+            
+            // 渲染照片
+            if (options.photos) {
+                setTimeout(() => {
+                    renderPhotos();
+                    updateSelectedCount();
+                }, 50);
+            }
+            
+            // 处理Like状态变化
+            if (options.likeChanged) {
+                const { directory, filename, like } = options.likeChanged;
+                // 更新当前数据中的like状态
+                const photo = currentPhotos.find(p => p.directory === directory && p.filename === filename);
+                if (photo) {
+                    photo.like = like;
+                }
+                // 更新缩略图中的like图标
+                const grid = document.getElementById('photosGrid');
+                const thumbnails = grid.querySelectorAll('.photo-item');
+                thumbnails.forEach(thumb => {
+                    const dir = thumb.dataset.directory;
+                    const file = thumb.dataset.filename;
+                    if (dir === directory && file === filename) {
+                        // 移除现有的like图标
+                        const existingIcon = thumb.querySelector('.like-icon');
+                        if (existingIcon) {
+                            existingIcon.remove();
+                        }
+                        // 如果like为true，添加图标
+                        if (like) {
+                            const likeIcon = document.createElement('span');
+                            likeIcon.className = 'like-icon';
+                            likeIcon.textContent = '♥';
+                            thumb.appendChild(likeIcon);
+                        }
+                    }
+                });
             }
         });
 
         // 渲染照片网格（异步分批渲染）
         function renderPhotos() {
+            console.log('renderPhotos被调用，当前照片数量:', currentPhotos?.length);
             const grid = document.getElementById('photosGrid');
+            if (!grid) {
+                console.error('找不到photosGrid元素！');
+                return;
+            }
+            
             grid.innerHTML = '';
 
             if (!currentPhotos || currentPhotos.length === 0) {
+                console.log('没有照片可显示');
                 grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: #888;">No photos to display</div>';
                 return;
             }
@@ -398,6 +516,8 @@
                 return timeA - timeB;
             });
 
+            console.log('开始渲染', sortedPhotos.length, '张照片');
+            
             // 分批渲染，每批 20 张
             const batchSize = 20;
             let currentIndex = 0;
@@ -436,16 +556,26 @@
             // 统一使用字符串格式的ID
             div.dataset.photoId = photo.id ? String(photo.id) : `${photo.directory}/${photo.filename}`;
 
-            const filePath = `${photo.directory}/${photo.filename}`;
+            const filePath = photo.fullPath || `${photo.directory}/${photo.filename}`;
             const isVideo = photo.type === 'video';
 
             // 存储数据到 dataset 以便后续加载
-            div.dataset.filePath = filePath; // 存储原始路径
+            div.dataset.filePath = filePath; // 存储完整路径
+            div.dataset.directory = photo.directory; // 存储相对目录
+            div.dataset.filename = photo.filename; // 存储文件名
             div.dataset.isVideo = isVideo;
             div.dataset.loaded = 'false';
 
             // 存储photo对象用于事件处理
             div._photoData = photo;
+
+            // 添加Like图标（如果已点赞）
+            if (photo.like) {
+                const likeIcon = document.createElement('span');
+                likeIcon.className = 'like-icon';
+                likeIcon.textContent = '♥';
+                div.appendChild(likeIcon);
+            }
 
             // 添加照片信息
             const info = document.createElement('div');
@@ -603,7 +733,7 @@
             // 获取缩略图路径
             const thumbnailInfo = ThumbnailGenerator.getThumbnailPath(originalPath);
             const displayPath = thumbnailInfo.path;
-            const fileUrl = `file://${displayPath.replace(/\\/g, '/')}`;
+            const fileUrl = ThumbnailGenerator.toFileUrl(displayPath);
 
             const info = photoItem.querySelector('.photo-info');
 
@@ -672,13 +802,21 @@
 
         // 绘制地图缩略图
         function drawMapThumbnail() {
-            if (!mapBounds || !currentPhotos || currentPhotos.length === 0) return;
+            console.log('drawMapThumbnail被调用');
+            if (!mapBounds || !currentPhotos || currentPhotos.length === 0) {
+                console.log('drawMapThumbnail跳过: mapBounds=', mapBounds, 'currentPhotos.length=', currentPhotos?.length);
+                return;
+            }
 
             const mapContainer = document.getElementById('selectedMapContainer');
-            if (!mapContainer) return;
+            if (!mapContainer) {
+                console.error('找不到selectedMapContainer元素！');
+                return;
+            }
 
             // 如果地图已存在，先清除
             if (miniMap) {
+                console.log('清除现有地图');
                 miniMap.remove();
                 miniMap = null;
                 miniMapMarkers = [];
@@ -689,6 +827,7 @@
             const centerLat = (north + south) / 2;
             const centerLng = (east + west) / 2;
             
+            console.log('创建小地图，中心:', [centerLat, centerLng]);
             // 创建小地图
             miniMap = L.map('selectedMapContainer', {
                 center: [centerLat, centerLng],
@@ -721,7 +860,18 @@
                 fill: false
             }).addTo(miniMap);
 
+            // 禁用地图容器的键盘事件（已经获取了mapContainer，不需要重复获取）
+            mapContainer.addEventListener('keydown', (e) => {
+                if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
+            });
+            // 确保地图容器不能获得焦点
+            mapContainer.setAttribute('tabindex', '-1');
+
             // 添加照片标记
+            console.log('添加', currentPhotos.length, '个照片标记');
             currentPhotos.forEach(photo => {
                 if (photo.lat && photo.lng) {
                     const marker = L.circleMarker([photo.lat, photo.lng], {
@@ -743,6 +893,7 @@
             // 强制刷新地图尺寸
             setTimeout(() => {
                 if (miniMap) {
+                    console.log('刷新地图尺寸');
                     miniMap.invalidateSize();
                 }
             }, 100);
@@ -751,6 +902,9 @@
             const badge = document.getElementById('photo-count-badge');
             if (badge) {
                 badge.textContent = `${currentPhotos.length} photo${currentPhotos.length !== 1 ? 's' : ''}`;
+                console.log('更新徽章:', badge.textContent);
+            } else {
+                console.error('找不到photo-count-badge元素！');
             }
         }
 
@@ -772,20 +926,145 @@
             }
         });
 
-        // 关闭按钮
-        document.getElementById('closeBtn').addEventListener('click', () => {
-            // 清理 observer
-            if (intersectionObserver) {
-                intersectionObserver.disconnect();
+        // 监听窗口焦点，当从照片窗口返回时重新聚焦到照片网格
+        window.addEventListener('focus', () => {
+            console.log('窗口获得焦点');
+            // 立即聚焦到右侧面板，确保键盘事件能正确处理
+            const rightPanel = document.querySelector('.right-panel');
+            if (rightPanel) {
+                // 使用更短的延迟确保焦点快速返回
+                setTimeout(() => {
+                    rightPanel.focus();
+                    console.log('右侧面板已聚焦');
+                }, 50);
             }
-            // 清理地图实例
-            if (miniMap) {
-                miniMap.remove();
-                miniMap = null;
-                miniMapMarkers = [];
-            }
-            window.close();
         });
+
+        // 键盘导航功能
+        document.addEventListener('keydown', async (e) => {
+            // 只处理方向键和回车键
+            if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Enter'].includes(e.key)) {
+                return;
+            }
+
+            console.log('键盘事件:', e.key);
+            
+            // 如果当前没有选中的照片，不处理
+            if (!selectedPhotoId) {
+                console.log('没有选中的照片，忽略键盘事件');
+                return;
+            }
+
+            const currentSelected = document.querySelector(`.photo-item[data-photo-id="${selectedPhotoId}"]`);
+            if (!currentSelected) {
+                return;
+            }
+
+            // 获取所有照片元素
+            const allPhotos = Array.from(document.querySelectorAll('.photo-item'));
+            const currentIndex = allPhotos.indexOf(currentSelected);
+            
+            if (currentIndex === -1) {
+                return;
+            }
+
+            // 获取网格的列数
+            const grid = document.getElementById('photosGrid');
+            const gridStyle = window.getComputedStyle(grid);
+            const gridTemplateColumns = gridStyle.gridTemplateColumns.split(' ').length;
+            
+            let nextIndex = -1;
+            
+            switch(e.key) {
+                case 'ArrowLeft':
+                    // 向左切换
+                    e.preventDefault();
+                    e.stopPropagation();
+                    nextIndex = currentIndex - 1;
+                    if (nextIndex >= 0) {
+                        selectPhotoByIndex(allPhotos, nextIndex);
+                    }
+                    break;
+                    
+                case 'ArrowRight':
+                    // 向右切换
+                    e.preventDefault();
+                    e.stopPropagation();
+                    nextIndex = currentIndex + 1;
+                    if (nextIndex < allPhotos.length) {
+                        selectPhotoByIndex(allPhotos, nextIndex);
+                    }
+                    break;
+                    
+                case 'ArrowUp':
+                    // 向上切换（上一行）
+                    e.preventDefault();
+                    e.stopPropagation();
+                    nextIndex = currentIndex - gridTemplateColumns;
+                    if (nextIndex >= 0) {
+                        selectPhotoByIndex(allPhotos, nextIndex);
+                    }
+                    break;
+                    
+                case 'ArrowDown':
+                    // 向下切换（下一行）
+                    e.preventDefault();
+                    e.stopPropagation();
+                    nextIndex = currentIndex + gridTemplateColumns;
+                    if (nextIndex < allPhotos.length) {
+                        selectPhotoByIndex(allPhotos, nextIndex);
+                    }
+                    break;
+                    
+                case 'Enter':
+                    // 回车键打开照片
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const photoData = currentSelected._photoData;
+                    if (photoData) {
+                        console.log('打开照片窗口:', photoData.filename);
+                        await ipcRenderer.invoke('open-photo-window', photoData);
+                        // 焦点会在照片窗口关闭时通过 window focus 事件自动恢复
+                    }
+                    break;
+            }
+        });
+
+        // 根据索引选中照片并滚动到可见区域
+        function selectPhotoByIndex(allPhotos, index) {
+            const nextPhoto = allPhotos[index];
+            if (!nextPhoto) {
+                return;
+            }
+            
+            // 取消之前的选中
+            if (selectedPhotoId) {
+                const prevSelected = document.querySelector(`.photo-item[data-photo-id="${selectedPhotoId}"]`);
+                if (prevSelected) {
+                    prevSelected.classList.remove('selected');
+                }
+            }
+            
+            // 选中新照片
+            selectedPhotoId = nextPhoto.dataset.photoId;
+            nextPhoto.classList.add('selected');
+            
+            // 滚动到可见区域
+            const rightPanel = document.querySelector('.right-panel');
+            const photoRect = nextPhoto.getBoundingClientRect();
+            const panelRect = rightPanel.getBoundingClientRect();
+            
+            // 检查照片是否在可视区域内
+            if (photoRect.top < panelRect.top || photoRect.bottom > panelRect.bottom) {
+                nextPhoto.scrollIntoView({ 
+                    behavior: 'smooth', 
+                    block: 'center',
+                    inline: 'center'
+                });
+            }
+            
+            updateSelectedCount();
+        }
     </script>
 </body>
 </html>

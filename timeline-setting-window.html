@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Timeline Settings</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            background: #1a1a1a;
+            color: #fff;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .title-bar {
+            -webkit-app-region: drag;
+            height: 40px;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 15px;
+            border-bottom: 1px solid #333;
+        }
+
+        .title-bar-text {
+            font-size: 14px;
+            font-weight: 500;
+            color: #fff;
+        }
+
+        .title-bar-button {
+            -webkit-app-region: no-drag;
+            width: 32px;
+            height: 32px;
+            background: #d32f2f;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-size: 20px;
+            font-weight: bold;
+            transition: background 0.2s;
+        }
+
+        .title-bar-button:hover {
+            background: #b71c1c;
+        }
+
+        .content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+        }
+
+        .tab {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #333;
+        }
+
+        .tab button {
+            background: transparent;
+            border: none;
+            outline: none;
+            cursor: pointer;
+            padding: 10px 20px;
+            transition: all 0.2s;
+            color: #999;
+            font-size: 14px;
+            border-bottom: 2px solid transparent;
+        }
+
+        .tab button:hover {
+            color: #fff;
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .tab button.active {
+            color: #fff;
+            border-bottom-color: #4a9eff;
+        }
+
+        .tabcontent {
+            display: none;
+            flex: 1;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            color: #888;
+            font-size: 12px;
+            margin-left: 8px;
+        }
+
+        .form-group input[type="radio"] {
+            cursor: pointer;
+        }
+
+        .form-group input[type="datetime-local"],
+        .form-group input[type="date"],
+        .form-group input[type="month"] {
+            background: #2a2a2a;
+            border: 1px solid #444;
+            color: #fff;
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-size: 13px;
+            font-family: inherit;
+            margin-left: 5px;
+        }
+
+        .form-group input[type="datetime-local"]:focus,
+        .form-group input[type="date"]:focus,
+        .form-group input[type="month"]:focus {
+            outline: none;
+            border-color: #4a9eff;
+        }
+
+        .range-inputs {
+            display: flex;
+            flex-direction: row;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .range-inputs p {
+            color: #888;
+            font-size: 12px;
+        }
+
+        .buttons {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            padding-top: 20px;
+            border-top: 1px solid #333;
+        }
+
+        .buttons button {
+            background: #333;
+            border: none;
+            color: #fff;
+            padding: 8px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+
+        .buttons button:hover {
+            background: #444;
+        }
+
+        .buttons button#ok-btn {
+            background: #4a9eff;
+        }
+
+        .buttons button#ok-btn:hover {
+            background: #3a8eef;
+        }
+    </style>
+</head>
+<body>
+    <div class="title-bar">
+        <div class="title-bar-text">Timeline Settings</div>
+        <div class="title-bar-button" id="close-btn">&times;</div>
+    </div>
+
+    <div class="content">
+        <div class="tab">
+            <button class="tablinks active" onclick="openTab(event, 'TimeLine')">Time Line</button>
+            <button class="tablinks" onclick="openTab(event, 'TimeRange')">Time Range</button>
+        </div>
+
+        <div id="TimeLine" class="tabcontent" style="display: block;">
+            <div class="form-group">
+                <input type="radio" id="hour" name="timelineMode" value="hour">
+                <label for="hour">Hourly</label>
+            </div>
+            <div class="form-group">
+                <input type="radio" id="day" name="timelineMode" value="day">
+                <label for="day">Daily</label>
+            </div>
+            <div class="form-group">
+                <input type="radio" id="month" name="timelineMode" value="month">
+                <label for="month">Monthly</label>
+            </div>
+        </div>
+
+        <div id="TimeRange" class="tabcontent">
+            <div class="range-inputs" id="hour-range">
+                <p>From: <input type="datetime-local" id="hour-start"> To: <input type="datetime-local" id="hour-end"></p>
+            </div>
+            <div class="range-inputs" id="day-range" style="display: none;">
+                <p>From: <input type="date" id="day-start"> To: <input type="date" id="day-end"></p>
+            </div>
+            <div class="range-inputs" id="month-range" style="display: none;">
+                <p>From: <input type="month" id="month-start"> To: <input type="month" id="month-end"></p>
+            </div>
+        </div>
+
+        <div class="buttons">
+            <button id="cancel-btn">Cancel</button>
+            <button id="ok-btn">OK</button>
+        </div>
+    </div>
+
+    <script>
+        let lastMode = null;
+
+        function openTab(evt, tabName) {
+            var i, tabcontent, tablinks;
+            tabcontent = document.getElementsByClassName("tabcontent");
+            for (i = 0; i < tabcontent.length; i++) {
+                tabcontent[i].style.display = "none";
+            }
+            tablinks = document.getElementsByClassName("tablinks");
+            for (i = 0; i < tablinks.length; i++) {
+                tablinks[i].className = tablinks[i].className.replace(" active", "");
+            }
+            document.getElementById(tabName).style.display = "block";
+            evt.currentTarget.className += " active";
+            updateRangeVisibility();
+        }
+
+        function convertTimeRange(fromMode, toMode, startValue, endValue) {
+            if (!startValue || !endValue) return { start: '', end: '' };
+            
+            let startDate, endDate;
+            
+            // 解析当前值到 Date 对象
+            if (fromMode === 'hour') {
+                startDate = new Date(startValue);
+                endDate = new Date(endValue);
+            } else if (fromMode === 'day') {
+                startDate = new Date(startValue + 'T00:00');
+                endDate = new Date(endValue + 'T23:59');
+            } else if (fromMode === 'month') {
+                startDate = new Date(startValue + '-01T00:00');
+                // 获取该月的最后一天
+                const [year, month] = endValue.split('-').map(Number);
+                const lastDay = new Date(year, month, 0).getDate();
+                endDate = new Date(endValue + '-' + lastDay.toString().padStart(2, '0') + 'T23:59');
+            }
+            
+            if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+                return { start: '', end: '' };
+            }
+            
+            // 转换到目标格式 (use local time, not UTC)
+            let newStart, newEnd;
+            
+            function toLocalISO(d) {
+                const pad = n => n.toString().padStart(2, '0');
+                return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
+                    + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+            }
+            
+            if (toMode === 'hour') {
+                newStart = toLocalISO(startDate);
+                newEnd = toLocalISO(endDate);
+            } else if (toMode === 'day') {
+                newStart = toLocalISO(startDate).slice(0, 10);
+                newEnd = toLocalISO(endDate).slice(0, 10);
+            } else if (toMode === 'month') {
+                newStart = toLocalISO(startDate).slice(0, 7);
+                newEnd = toLocalISO(endDate).slice(0, 7);
+            }
+            
+            return { start: newStart, end: newEnd };
+        }
+
+        function getCurrentRangeValues(mode) {
+            if (mode === 'hour') {
+                return {
+                    start: document.getElementById('hour-start').value,
+                    end: document.getElementById('hour-end').value
+                };
+            } else if (mode === 'day') {
+                return {
+                    start: document.getElementById('day-start').value,
+                    end: document.getElementById('day-end').value
+                };
+            } else if (mode === 'month') {
+                return {
+                    start: document.getElementById('month-start').value,
+                    end: document.getElementById('month-end').value
+                };
+            }
+            return { start: '', end: '' };
+        }
+
+        function updateRangeVisibility() {
+            const mode = document.querySelector('input[name="timelineMode"]:checked').value;
+            
+            // 如果模式改变了，转换时间范围
+            if (lastMode && lastMode !== mode) {
+                const oldRange = getCurrentRangeValues(lastMode);
+                if (oldRange.start && oldRange.end) {
+                    const newRange = convertTimeRange(lastMode, mode, oldRange.start, oldRange.end);
+                    
+                    // 填充新模式的输入框
+                    if (mode === 'hour') {
+                        document.getElementById('hour-start').value = newRange.start;
+                        document.getElementById('hour-end').value = newRange.end;
+                    } else if (mode === 'day') {
+                        document.getElementById('day-start').value = newRange.start;
+                        document.getElementById('day-end').value = newRange.end;
+                    } else if (mode === 'month') {
+                        document.getElementById('month-start').value = newRange.start;
+                        document.getElementById('month-end').value = newRange.end;
+                    }
+                }
+            }
+            
+            lastMode = mode;
+            
+            // 显示/隐藏对应的范围输入框
+            document.getElementById('hour-range').style.display = mode === 'hour' ? 'block' : 'none';
+            document.getElementById('day-range').style.display = mode === 'day' ? 'block' : 'none';
+            document.getElementById('month-range').style.display = mode === 'month' ? 'block' : 'none';
+        }
+
+        document.getElementById('close-btn').addEventListener('click', () => {
+            window.electronAPI.send('close-timeline-setting-window');
+        });
+        document.getElementById('cancel-btn').addEventListener('click', () => {
+            window.electronAPI.send('close-timeline-setting-window');
+        });
+
+        document.getElementById('ok-btn').addEventListener('click', () => {
+            const mode = document.querySelector('input[name="timelineMode"]:checked').value;
+            let start, end;
+            if (mode === 'hour') {
+                start = document.getElementById('hour-start').value;
+                end = document.getElementById('hour-end').value;
+            } else if (mode === 'day') {
+                start = document.getElementById('day-start').value;
+                end = document.getElementById('day-end').value;
+            } else {
+                start = document.getElementById('month-start').value;
+                end = document.getElementById('month-end').value;
+            }
+            
+            window.electronAPI.send('timeline-setting-form-submit', { mode, start, end });
+        });
+
+        window.electronAPI.on('init-data', (data) => {
+            console.log('Received init data:', data);
+            
+            // 选中当前模式的单选框
+            const modeRadio = document.getElementById(data.currentMode);
+            if (modeRadio) {
+                modeRadio.checked = true;
+            } else {
+                console.error('Mode radio button not found:', data.currentMode);
+            }
+            
+            // 设置初始模式
+            lastMode = data.currentMode;
+            
+            // 填充时间范围
+            if(data.range) {
+                console.log('Setting range:', data.range);
+                if (data.currentMode === 'hour') {
+                    document.getElementById('hour-start').value = data.range.start.slice(0, 16);
+                    document.getElementById('hour-end').value = data.range.end.slice(0, 16);
+                } else if (data.currentMode === 'day') {
+                    document.getElementById('day-start').value = data.range.start.slice(0, 10);
+                    document.getElementById('day-end').value = data.range.end.slice(0, 10);
+                } else if (data.currentMode === 'month') {
+                    document.getElementById('month-start').value = data.range.start.slice(0, 7);
+                    document.getElementById('month-end').value = data.range.end.slice(0, 7);
+                }
+            } else {
+                console.warn('No range data received');
+            }
+
+            updateRangeVisibility();
+        });
+
+        window.electronAPI.on('validation-error', (message) => {
+            alert(message);
+        });
+        
+        document.querySelectorAll('input[name="timelineMode"]').forEach(radio => {
+            radio.addEventListener('change', updateRangeVisibility);
+        });
+
+        // ESC键关闭
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                window.electronAPI.send('close-timeline-setting-window');
+            }
+        });
+
+        window.electronAPI.send('timeline-setting-window-ready');
+    </script>
+</body>
+</html>

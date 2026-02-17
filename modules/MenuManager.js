@@ -39,27 +39,14 @@ class MenuManager {
                     accelerator: 'CmdOrCtrl+I',
                     click: () => this.handleMenuClick('setPhotoDirectory')
                 },
+                { type: 'separator' },
                 {
                     label: 'Photo Directory Management',
                     click: () => this.handleMenuClick('photoDirectoryManagement')
                 },
-                { type: 'separator' },
                 {
                     label: 'Tag Management',
-                    submenu: [
-                        {
-                            label: 'People Tags',
-                            click: () => this.handleMenuClick('tagManagementPeople')
-                        },
-                        {
-                            label: 'Scene Tags',
-                            click: () => this.handleMenuClick('tagManagementScenes')
-                        },
-                        {
-                            label: 'Event Tags',
-                            click: () => this.handleMenuClick('tagManagementEvents')
-                        }
-                    ]
+                    click: () => this.handleMenuClick('tagManagement')
                 },
                 { type: 'separator' },
                 {

@@ -5,12 +5,22 @@
 
 const Database = require('better-sqlite3');
 const path = require('path');
+const fs = require('fs');
 
 class DatabaseManager {
     constructor(dbPath = 'photos.db') {
+        // 检查数据库文件是否存在
+        const dbExists = fs.existsSync(dbPath);
+        
         this.db = new Database(dbPath);
+        this.pathExistsCache = new Map();
         this.initTables();
         this.createIndexes();
+        
+        // 仅在数据库文件不存在（新创建）时插入默认数据
+        if (!dbExists) {
+            this.insertDefaultData();
+        }
     }
 
     /**
@@ -27,7 +37,7 @@ class DatabaseManager {
                 lat REAL,
                 lng REAL,
                 remark TEXT,
-                tags TEXT,
+                like INTEGER DEFAULT 0,
                 type TEXT DEFAULT 'photo',
                 UNIQUE(directory, filename)
             )
@@ -45,13 +55,50 @@ class DatabaseManager {
         `);
 
         // 3. 标签定义表 (对应菜单 1.3)
+        // 3.1. 基础标签表：支撑所有分类和层级
         this.db.exec(`
             CREATE TABLE IF NOT EXISTS tags (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT UNIQUE,
-                category TEXT, -- 'person', 'scene', 'event'
+                category TEXT CHECK(category IN ('face', 'event', 'common')), 
                 parent_id INTEGER,
-                color TEXT
+                remark TEXT,           -- 简单描述
+                color TEXT,            -- UI显示的标签颜色
+                FOREIGN KEY (parent_id) REFERENCES tags(id)
+            )
+        `);
+
+        // 3.2. 扩展：人物/宠物特征表 (解决识别持久化)
+        this.db.exec(`
+            CREATE TABLE IF NOT EXISTS tag_faces (
+                tag_id INTEGER PRIMARY KEY,
+                descriptor TEXT,       -- 存储 128维/更多维度的特征向量 (JSON字符串)
+                preview_path TEXT,     -- 代表性头像的路径
+                is_pet INTEGER DEFAULT 0, -- 0:人, 1:宠物
+                FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+            )
+        `);
+
+        // 3.3. 扩展：事件属性表 (解决时间属性)
+        this.db.exec(`
+            CREATE TABLE IF NOT EXISTS tag_events (
+                tag_id INTEGER PRIMARY KEY,
+                start_time DATETIME,
+                end_time DATETIME,
+                location_name TEXT,    -- 事件发生的大致地点名称
+                FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+            )
+        `);
+
+        // 3.4. 扩展：地点属性表 (解决地理位置属性)
+        this.db.exec(`
+            CREATE TABLE IF NOT EXISTS tag_locations (
+                tag_id INTEGER PRIMARY KEY,
+                lat REAL,              -- 中心点纬度
+                lng REAL,              -- 中心点经度
+                radius REAL,           -- 覆盖半径（米），用于自动打标签
+                address TEXT,          -- 详细地址描述
+                FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
             )
         `);
 
@@ -87,58 +134,38 @@ class DatabaseManager {
             )
         `);
 
-        // 检查并迁移旧数据
-        this.migrateColumns();
-
         console.log('数据库表结构已初始化');
     }
 
+
     /**
-     * 迁移旧数据库结构
+     * 默认初始数据添加
      */
-    migrateColumns() {
-        try {
-            const tableInfo = this.db.prepare("PRAGMA table_info(photos)").all();
-            const hasTypeColumn = tableInfo.some(col => col.name === 'type');
-            const hasDirectoryColumn = tableInfo.some(col => col.name === 'directory');
-            const hasFilenameColumn = tableInfo.some(col => col.name === 'filename');
-            const hasPathColumn = tableInfo.some(col => col.name === 'path');
-            
-            if (!hasTypeColumn) {
-                this.db.exec("ALTER TABLE photos ADD COLUMN type TEXT DEFAULT 'photo'");
-                console.log('已添加 type 列到 photos 表');
-            }
-            if (!hasDirectoryColumn) {
-                this.db.exec("ALTER TABLE photos ADD COLUMN directory TEXT");
-                console.log('已添加 directory 列到 photos 表');
-            }
-            if (!hasFilenameColumn) {
-                this.db.exec("ALTER TABLE photos ADD COLUMN filename TEXT");
-                console.log('已添加 filename 列到 photos 表');
-            }
-            
-            // 仅在存在旧的 path 列时才进行迁移
-            if (hasPathColumn) {
-                const oldRecords = this.db.prepare(
-                    "SELECT id, path FROM photos WHERE path IS NOT NULL AND (directory IS NULL OR filename IS NULL)"
-                ).all();
-                
-                const updateStmt = this.db.prepare("UPDATE photos SET directory = ?, filename = ? WHERE id = ?");
-                for (const record of oldRecords) {
-                    if (record.path) {
-                        const dir = path.dirname(record.path);
-                        const file = path.basename(record.path);
-                        updateStmt.run(dir, file, record.id);
-                    }
-                }
-                if (oldRecords.length > 0) {
-                    console.log(`已迁移 ${oldRecords.length} 条旧记录`);
-                }
-            }
-        } catch (err) {
-            console.log('检查/添加列时出错:', err);
+    insertDefaultData() {
+
+        // 插入默认face标签
+        const defaultFaces = ['Family', 'Friends', 'Work Related', 'Pets'];
+        const stmt = this.db.prepare('INSERT OR IGNORE INTO tags (name, category, color) VALUES (?, ?, ?)');
+        for (const name of defaultFaces) {
+            stmt.run(name, 'face', '#e74c3c');
         }
+
+        // 插入默认event标签
+        const defaultEvents = ['Travel', 'Ceremony', 'Meeting', 'Sports'];
+        const stmtEvent = this.db.prepare('INSERT OR IGNORE INTO tags (name, category, color) VALUES (?, ?, ?)');
+        for (const name of defaultEvents) {
+            stmtEvent.run(name, 'event', '#3498db');
+        }   
+
+        // 插入默认Common标签
+        const defaultCommons = ['Scenery', 'Food', 'Architecture'];
+        const stmtCommon = this.db.prepare('INSERT OR IGNORE INTO tags (name, category, color) VALUES (?, ?, ?)');
+        for (const name of defaultCommons) {
+            stmtCommon.run(name, 'common', '#2ecc71');
+        }   
     }
+
+
 
     /**
      * 创建数据库索引
@@ -166,6 +193,11 @@ class DatabaseManager {
         return stmt.run(dirPath, new Date().toISOString(), null);
     }
 
+    hasDirectory(dirPath) {
+        const row = this.db.prepare('SELECT 1 FROM directories WHERE path = ?').get(dirPath);
+        return !!row;
+    }
+
     getAllDirectories() {
         return this.db.prepare('SELECT * FROM directories').all();
     }
@@ -182,7 +214,25 @@ class DatabaseManager {
 
     // ==================== 新增：标签管理 (1.3/1.7) ====================
 
-    addTag(name, category = 'scene', color = '#3498db') {
+    /**
+     * 获取某个分类下的完整树结构
+     */
+    getTreeByCategory(category) {
+        const allTags = this.db.prepare('SELECT * FROM tags WHERE category = ?').all(category);
+        
+        const buildTree = (parentId = null) => {
+            return allTags
+                .filter(tag => tag.parent_id === parentId)
+                .map(tag => ({
+                    ...tag,
+                    children: buildTree(tag.id)
+                }));
+        };
+        
+        return buildTree();
+    }
+
+    addTag(name, category = 'common', color = '#3498db') {
         const stmt = this.db.prepare('INSERT OR IGNORE INTO tags (name, category, color) VALUES (?, ?, ?)');
         return stmt.run(name, category, color);
     }
@@ -276,10 +326,80 @@ class DatabaseManager {
     }
 
     /**
+     * 给照片数据添加完整路径
+     */
+    addFullPathToPhoto(photo) {
+        if (!photo) return photo;
+        const photoDir = this.getPhotoDirectory();
+
+        const directory = photo.directory || '';
+        const filename = photo.filename || '';
+        const candidates = [];
+
+        if (directory) {
+            if (path.isAbsolute(directory)) {
+                if (filename && path.basename(directory) !== filename) {
+                    candidates.push(path.join(directory, filename));
+                }
+                candidates.push(directory);
+            } else {
+                if (photoDir) {
+                    candidates.push(path.join(photoDir, directory, filename));
+                }
+                if (filename) {
+                    candidates.push(path.join(directory, filename));
+                } else {
+                    candidates.push(directory);
+                }
+            }
+        }
+
+        if (photoDir && filename) {
+            candidates.push(path.join(photoDir, filename));
+        }
+
+        const uniqueCandidates = [...new Set(candidates.filter(Boolean))];
+        const existingPath = uniqueCandidates.find(candidate => this.fileExistsCached(candidate));
+
+        photo.fullPath = existingPath || null;
+        photo.isMissing = !existingPath;
+        return photo;
+    }
+
+    fileExistsCached(filePath) {
+        if (!filePath) return false;
+        if (this.pathExistsCache.has(filePath)) {
+            return this.pathExistsCache.get(filePath);
+        }
+
+        let exists = false;
+        try {
+            exists = fs.existsSync(filePath);
+        } catch (err) {
+            exists = false;
+        }
+
+        this.pathExistsCache.set(filePath, exists);
+        return exists;
+    }
+
+    /**
+     * 给照片数组添加完整路径
+     */
+    addFullPathToPhotos(photos) {
+        return photos.map(photo => this.addFullPathToPhoto(photo));
+    }
+
+    filterExistingPhotos(photos) {
+        return photos.filter(photo => photo && photo.fullPath && !photo.isMissing);
+    }
+
+    /**
      * 获取所有照片
      */
     getAllPhotos() {
-        return this.db.prepare('SELECT * FROM photos').all();
+        const photos = this.db.prepare('SELECT * FROM photos').all();
+        return this.filterExistingPhotos(this.addFullPathToPhotos(photos));
     }
 
     /**
@@ -287,7 +407,9 @@ class DatabaseManager {
      */
     getPhotoByPath(directory, filename) {
         const sql = 'SELECT * FROM photos WHERE directory = ? AND filename = ?';
-        return this.db.prepare(sql).get(directory, filename);
+        const photo = this.db.prepare(sql).get(directory, filename);
+        const enriched = this.addFullPathToPhoto(photo);
+        return enriched && !enriched.isMissing ? enriched : null;
     }
 
     /**
@@ -298,7 +420,8 @@ class DatabaseManager {
             SELECT * FROM photos 
             WHERE time >= ? AND time <= ?
         `;
-        return this.db.prepare(sql).all(startTime, endTime);
+        const photos = this.db.prepare(sql).all(startTime, endTime);
+        return this.filterExistingPhotos(this.addFullPathToPhotos(photos));
     }
 
     /**
@@ -310,7 +433,8 @@ class DatabaseManager {
             WHERE lat <= ? AND lat >= ? 
             AND lng <= ? AND lng >= ?
         `;
-        return this.db.prepare(sql).all(north, south, east, west);
+        const photos = this.db.prepare(sql).all(north, south, east, west);
+        return this.filterExistingPhotos(this.addFullPathToPhotos(photos));
     }
 
     /**
@@ -322,6 +446,17 @@ class DatabaseManager {
             WHERE directory = ? AND filename = ?
         `);
         return stmt.run(remark, directory, filename);
+    }
+
+    /**
+     * 更新照片Like状态
+     */
+    updatePhotoLike(directory, filename, like) {
+        const stmt = this.db.prepare(`
+            UPDATE photos SET like = ? 
+            WHERE directory = ? AND filename = ?
+        `);
+        return stmt.run(like ? 1 : 0, directory, filename);
     }
 
     // ==================== 设置操作 ====================
@@ -344,11 +479,18 @@ class DatabaseManager {
     getSetting(key) {
         const row = this.db.prepare('SELECT value FROM settings WHERE key = ?').get(key);
         if (row) {
-            try {
-                return JSON.parse(row.value);
-            } catch (e) {
-                return row.value;
+            // 只尝试解析看起来像JSON的字符串（以 { 或 [ 开头）
+            const value = row.value;
+            if (typeof value === 'string' && (value.trim().startsWith('{') || value.trim().startsWith('['))) {
+                try {
+                    return JSON.parse(value);
+                } catch (e) {
+                    // JSON解析失败，返回原始值
+                    return value;
+                }
             }
+            // 对于非JSON字符串，直接返回
+            return value;
         }
         return null;
     }

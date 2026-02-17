@@ -5,6 +5,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { pathToFileURL } = require('url');
 
 class ThumbnailGenerator {
     constructor() {
@@ -28,6 +29,14 @@ class ThumbnailGenerator {
         }
 
         return { path: originalPath, isThumbnail: false };
+    }
+
+    toFileUrl(filePath) {
+        try {
+            return pathToFileURL(path.resolve(filePath)).href;
+        } catch (err) {
+            return `file:///${String(filePath).replace(/\\/g, '/')}`;
+        }
     }
 
     /**
@@ -111,7 +120,7 @@ class ThumbnailGenerator {
      */
     setImageThumbnail(img, originalPath) {
         const { path: filePath, isThumbnail } = this.getThumbnailPath(originalPath);
-        const fileUrl = `file://${filePath.replace(/\\/g, '/')}`;
+        const fileUrl = this.toFileUrl(filePath);
 
         img.src = fileUrl;
 
@@ -151,7 +160,7 @@ class ThumbnailGenerator {
             return img;
         } else {
             // 使用原始视频
-            const fileUrl = `file://${originalPath.replace(/\\/g, '/')}`;
+            const fileUrl = this.toFileUrl(originalPath);
             video.src = fileUrl;
             video.preload = 'metadata';
             video.muted = true;

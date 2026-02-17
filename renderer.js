@@ -84,6 +84,18 @@ ipcRenderer.on('scan-error', (event, data) => {
     alert(`扫描出错: ${data.error}`);
 });
 
+// 监听照片Like状态变化，刷新地图上的markers
+ipcRenderer.on('photo-like-changed', async (event, { directory, filename, like }) => {
+    console.log('照片Like状态变化:', directory, filename, like);
+    // 重新加载当前时间范围的markers以刷新tooltip
+    if (mapManager && timeline) {
+        const currentRange = timeline.getCurrentRange();
+        if (currentRange) {
+            await mapManager.loadMarkersByTimeRange(currentRange.start, currentRange.end);
+        }
+    }
+});
+
 // 监听菜单动作
 ipcRenderer.on('menu-action', (event, action) => {
     handleMenuAction(action);
@@ -178,3 +190,43 @@ window.onload = async () => {
         mapManager.loadMarkersByTimeRange(range.start, range.end);
     }, 100);
 };
+
+// 监听时间轴状态
+ipcRenderer.on('get-timeline-state', () => {
+    if (!timeline) {
+        console.warn('Timeline not initialized yet');
+        // 发送默认值
+        ipcRenderer.send('timeline-state', {
+            currentMode: 'day',
+            range: {
+                start: new Date().toISOString(),
+                end: new Date().toISOString()
+            }
+        });
+        return;
+    }
+    
+    const timelineState = {
+        currentMode: timeline.getCurrentMode(),
+        range: timeline.getCurrentRange()
+    };
+    console.log('Sending timeline state:', timelineState);
+    ipcRenderer.send('timeline-state', timelineState);
+});
+
+ipcRenderer.on('update-timeline', (event, data) => {
+    if (!timeline) {
+        console.warn('Timeline not initialized yet, cannot update');
+        return;
+    }
+    
+    // updateMode with skipRender=true to avoid double render/save
+    timeline.updateMode(data.mode, true);
+    if (data.start && data.end) {
+        // Pass raw strings so updateRange can parse per mode (local time)
+        timeline.updateRange(data.start, data.end);
+    } else {
+        // No range provided, just re-render with new mode
+        timeline.onResize();
+    }
+});

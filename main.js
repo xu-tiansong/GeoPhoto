@@ -10,6 +10,7 @@ const PhotoFilesManager = require('./modules/PhotoFilesManager');
 const MenuManager = require('./modules/MenuManager');
 const PhotoWindow = require('./modules/PhotoWindow');
 const PhotosManageWindow = require('./modules/PhotosManageWindow');
+const TimeLineSettingWindow = require('./modules/TimeLineSettingWindow');
 
 // ==================== 全局变量 ====================
 let mainWindow;
@@ -18,6 +19,7 @@ let photoManager;
 let menuManager;
 let photoWindow;
 let photosManageWindow;
+let timelineSettingWindow;
 let currentPhotoDirectory = null;
 
 // 逆地理编码缓存和速率限制
@@ -32,6 +34,13 @@ function initializeModules() {
     
     // 初始化照片管理器
     photoManager = new PhotoFilesManager(db);
+    
+    // 初始化菜单管理器并注册处理器
+    menuManager = new MenuManager(mainWindow);
+    menuManager.registerHandler('setPhotoDirectory', handleSetPhotoDirectory);
+    menuManager.registerHandler('timelineSettings', () => {
+        mainWindow.webContents.send('get-timeline-state');
+    });
     
     // 读取已保存的照片目录
     currentPhotoDirectory = db.getPhotoDirectory();
@@ -120,18 +129,24 @@ function createWindow() {
     // 创建照片窗口管理器
     photoWindow = new PhotoWindow(mainWindow);
     
+    // 设置照片窗口关闭回调：如果 PhotosManageWindow 打开，则聚焦到它
+    photoWindow.setOnCloseCallback(() => {
+        if (photosManageWindow && photosManageWindow.isOpen()) {
+            const manageWin = photosManageWindow.manageWindow;
+            if (manageWin && !manageWin.isDestroyed()) {
+                manageWin.focus();
+            }
+        }
+    });
+    
     // 创建照片管理窗口管理器
     photosManageWindow = new PhotosManageWindow(mainWindow);
     
     // 创建菜单管理器并注册处理器
-    menuManager = new MenuManager(mainWindow, {
-        setPhotoDirectory: handleSetPhotoDirectory,
-        fullscreenMap: () => {
-            mainWindow.setFullScreen(!mainWindow.isFullScreen());
-        },
-        about: () => {
-            mainWindow.webContents.send('show-about-dialog');
-        }
+    menuManager = new MenuManager(mainWindow);
+    menuManager.registerHandler('setPhotoDirectory', handleSetPhotoDirectory);
+    menuManager.registerHandler('timelineSettings', () => {
+        mainWindow.webContents.send('get-timeline-state');
     });
     
     // 设置初始全屏状态
@@ -236,9 +251,12 @@ function registerIpcHandlers() {
         if (photoWindow) {
             // 从数据库获取最新的照片数据（包括最新的remark）
             const latestPhotoData = db.getPhotoByPath(photoData.directory, photoData.filename);
-            photoWindow.show(latestPhotoData || photoData);
+            if (!latestPhotoData) {
+                return { success: false, error: '文件不存在或已移动，请重新扫描目录。' };
+            }
+            photoWindow.show(latestPhotoData);
         }
-        return true;
+        return { success: true };
     });
 
     // 打开照片管理窗口
@@ -256,6 +274,28 @@ function registerIpcHandlers() {
             return { success: true };
         } catch (error) {
             console.error('Failed to save remark:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    // 切换照片Like状态
+    ipcMain.handle('toggle-photo-like', (event, { directory, filename, like }) => {
+        try {
+            db.updatePhotoLike(directory, filename, like);
+            
+            // 通知主窗口刷新地图缩略图
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('photo-like-changed', { directory, filename, like });
+            }
+            
+            // 通知PhotosManageWindow刷新缩略图
+            if (photosManageWindow && photosManageWindow.isOpen()) {
+                photosManageWindow.updatePhotos({ likeChanged: { directory, filename, like } });
+            }
+            
+            return { success: true, like };
+        } catch (error) {
+            console.error('Failed to toggle like:', error);
             return { success: false, error: error.message };
         }
     });
@@ -317,6 +357,15 @@ function registerIpcHandlers() {
         } catch (error) {
             console.log('逆地理编码失败:', error.message);
             return 'Unknown Location';
+        }
+    });
+
+    // 打开时间轴设置窗口
+    ipcMain.on('timeline-state', (event, timelineState) => {
+        if (!timelineSettingWindow || !timelineSettingWindow.window || timelineSettingWindow.window.isDestroyed()) {
+            timelineSettingWindow = new TimeLineSettingWindow(mainWindow, timelineState);
+        } else {
+            timelineSettingWindow.window.focus();
         }
     });
 }

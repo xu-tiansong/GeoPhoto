@@ -12,6 +12,14 @@ class PhotoWindow {
         this.photoWindow = null;
         this.currentPhoto = null;
         this.savedBounds = null; // 保存全屏前的窗口位置
+        this.onCloseCallback = null; // 窗口关闭时的回调
+    }
+
+    /**
+     * 设置窗口关闭时的回调函数
+     */
+    setOnCloseCallback(callback) {
+        this.onCloseCallback = callback;
     }
 
     /**
@@ -89,6 +97,11 @@ class PhotoWindow {
             this.parentWindow.removeListener('move', this.parentResizeListener);
             this.photoWindow = null;
             this.currentPhoto = null;
+            
+            // 触发关闭回调
+            if (this.onCloseCallback) {
+                this.onCloseCallback();
+            }
         });
     }
 

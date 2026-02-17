@@ -253,6 +253,47 @@
             background: #1976d2;
         }
 
+        /* Like按钮 */
+        .like-container {
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid #333;
+        }
+
+        .like-btn {
+            width: 100%;
+            padding: 10px;
+            background: #333;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            color: #888;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .like-btn:hover {
+            background: #444;
+            color: #ff6b6b;
+        }
+
+        .like-btn.liked {
+            background: #ff6b6b;
+            color: #fff;
+        }
+
+        .like-btn.liked:hover {
+            background: #ff5252;
+        }
+
+        .like-btn .heart-icon {
+            font-size: 18px;
+        }
+
         /* Similar Photos面板 */
         .similar-photos-grid {
             display: grid;
@@ -415,6 +456,12 @@
                     <textarea class="remark-textarea" id="remark-textarea" placeholder="Add your notes here..."></textarea>
                     <button class="remark-save-btn" id="remark-save-btn">Save</button>
                 </div>
+                <div class="like-container">
+                    <button class="like-btn" id="likeBtn">
+                        <span class="heart-icon">♥</span>
+                        <span class="like-text">Like this photo</span>
+                    </button>
+                </div>
             </div>
 
             <!-- Similar面板 -->
@@ -435,6 +482,7 @@
     <script>
         const { ipcRenderer } = require('electron');
         const L = require('leaflet');
+        const { pathToFileURL } = require('url');
 
         let currentPhoto = null;
         let scale = 1;
@@ -461,16 +509,14 @@
 
         // 加载照片
         async function loadPhoto(photo) {
-            // 建构正确的文件路径
-            const filePath = photo.directory.includes(photo.filename) 
-                ? photo.directory 
-                : `${photo.directory}\\${photo.filename}`;
+            // 使用fullPath如果存在，否则拼接路径
+            const filePath = photo.fullPath || 
+                (photo.directory.includes(photo.filename) 
+                    ? photo.directory 
+                    : `${photo.directory}\\${photo.filename}`);
             
-            // 转换为file://URL，Windows路径需要特殊处理
-            const normalizedPath = filePath.replace(/\\/g, '/');
-            const fileUrl = normalizedPath.startsWith('file://') 
-                ? normalizedPath 
-                : `file:///${normalizedPath}`;
+            // 转换为标准 file URL
+            const fileUrl = pathToFileURL(filePath).href;
             
             console.log('Loading media:', {
                 type: photo.type,
@@ -566,6 +612,17 @@
             remarkTextarea.value = photo.remark || '';
             originalRemark = photo.remark || '';
             document.getElementById('remark-save-btn').classList.remove('visible');
+
+            // 加载Like状态
+            const likeBtn = document.getElementById('likeBtn');
+            const likeText = likeBtn.querySelector('.like-text');
+            if (photo.like) {
+                likeBtn.classList.add('liked');
+                likeText.textContent = 'Liked';
+            } else {
+                likeBtn.classList.remove('liked');
+                likeText.textContent = 'Like this photo';
+            }
         }
 
         // 缩放控制
@@ -875,6 +932,36 @@
         // 关闭按钮
         document.getElementById('closeBtn').addEventListener('click', () => {
             window.close();
+        });
+
+        // Like按钮
+        document.getElementById('likeBtn').addEventListener('click', async () => {
+            if (!currentPhoto) return;
+            
+            const likeBtn = document.getElementById('likeBtn');
+            const likeText = likeBtn.querySelector('.like-text');
+            const newLikeState = !currentPhoto.like;
+            
+            try {
+                const result = await ipcRenderer.invoke('toggle-photo-like', {
+                    directory: currentPhoto.directory,
+                    filename: currentPhoto.filename,
+                    like: newLikeState
+                });
+                
+                if (result.success) {
+                    currentPhoto.like = newLikeState;
+                    if (newLikeState) {
+                        likeBtn.classList.add('liked');
+                        likeText.textContent = 'Liked';
+                    } else {
+                        likeBtn.classList.remove('liked');
+                        likeText.textContent = 'Like this photo';
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to toggle like:', error);
+            }
         });
 
         // 视频全屏处理

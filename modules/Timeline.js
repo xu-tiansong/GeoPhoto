@@ -203,6 +203,83 @@ class Timeline {
         return snapped;
     }
 
+    addTicks(baseTime, ticks) {
+        const result = new Date(baseTime);
+        if (this.scaleMode === 'day') {
+            result.setDate(result.getDate() + ticks);
+        } else if (this.scaleMode === 'hour') {
+            result.setHours(result.getHours() + ticks);
+        } else if (this.scaleMode === 'month') {
+            result.setMonth(result.getMonth() + ticks);
+            result.setDate(1);
+            result.setHours(0, 0, 0, 0);
+        }
+        return result;
+    }
+
+    roundToNearestTick(time) {
+        const lower = this.snapToTick(time, false);
+        const upper = this.addTicks(lower, 1);
+
+        const toLower = Math.abs(time.getTime() - lower.getTime());
+        const toUpper = Math.abs(upper.getTime() - time.getTime());
+        return toLower <= toUpper ? lower : upper;
+    }
+
+    getTickDistance(startTime, endTime) {
+        if (this.scaleMode === 'day') {
+            const msPerDay = 24 * 60 * 60 * 1000;
+            return Math.max(1, Math.round((endTime.getTime() - startTime.getTime()) / msPerDay));
+        }
+
+        if (this.scaleMode === 'hour') {
+            const msPerHour = 60 * 60 * 1000;
+            return Math.max(1, Math.round((endTime.getTime() - startTime.getTime()) / msPerHour));
+        }
+
+        let distance = 0;
+        let cursor = new Date(startTime);
+        while (cursor < endTime) {
+            cursor = this.addTicks(cursor, 1);
+            distance++;
+            if (distance > 5000) break;
+        }
+        return Math.max(1, distance);
+    }
+
+    getScaleUnitMs(mode = this.scaleMode) {
+        if (mode === 'hour') {
+            return 60 * 60 * 1000;
+        }
+        if (mode === 'day') {
+            return 24 * 60 * 60 * 1000;
+        }
+        if (mode === 'month') {
+            return null;
+        }
+        return null;
+    }
+
+    getTickDistanceByMode(startTime, endTime, mode) {
+        const unitMs = this.getScaleUnitMs(mode);
+        if (unitMs) {
+            return Math.max(1, Math.ceil((endTime.getTime() - startTime.getTime()) / unitMs));
+        }
+
+        let distance = 0;
+        let cursor = new Date(startTime);
+        while (cursor < endTime) {
+            if (mode === 'month') {
+                cursor.setMonth(cursor.getMonth() + 1);
+                cursor.setDate(1);
+                cursor.setHours(0, 0, 0, 0);
+            }
+            distance++;
+            if (distance > 5000) break;
+        }
+        return Math.max(1, distance);
+    }
+
     /**
      * 获取星期几名称
      */
@@ -235,10 +312,27 @@ class Timeline {
             const hours = (timeMs - startMs) / (60 * 60 * 1000);
             return hours * this.tickWidth;
         } else {
-            const totalMs = this.timelineEnd.getTime() - startMs;
-            const offsetMs = timeMs - startMs;
-            const containerWidth = this.container.offsetWidth;
-            return (offsetMs / totalMs) * containerWidth;
+            // 对齐到月初，与渲染一致
+            const baseMonthStart = new Date(this.timelineStart);
+            baseMonthStart.setDate(1);
+            baseMonthStart.setHours(0, 0, 0, 0);
+            
+            const timeMonthStart = new Date(time);
+            timeMonthStart.setDate(1);
+            timeMonthStart.setHours(0, 0, 0, 0);
+            
+            const yearDiff = timeMonthStart.getFullYear() - baseMonthStart.getFullYear();
+            const monthDiff = timeMonthStart.getMonth() - baseMonthStart.getMonth();
+            const monthOffset = yearDiff * 12 + monthDiff;
+            
+            // 增加月内偏移（日期部分）
+            const timeInMonth = time.getTime() - timeMonthStart.getTime();
+            const nextMonth = new Date(timeMonthStart);
+            nextMonth.setMonth(nextMonth.getMonth() + 1);
+            const monthDuration = nextMonth.getTime() - timeMonthStart.getTime();
+            const fractional = monthDuration > 0 ? timeInMonth / monthDuration : 0;
+            
+            return (monthOffset + fractional) * this.tickWidth;
         }
     }
 
@@ -256,10 +350,26 @@ class Timeline {
             const hours = pixel / this.tickWidth;
             return new Date(startMs + hours * 60 * 60 * 1000);
         } else {
-            const totalMs = this.timelineEnd.getTime() - startMs;
-            const containerWidth = this.container.offsetWidth;
-            const offsetMs = (pixel / containerWidth) * totalMs;
-            return new Date(startMs + offsetMs);
+            // 对齐到月初基准
+            const baseMonthStart = new Date(this.timelineStart);
+            baseMonthStart.setDate(1);
+            baseMonthStart.setHours(0, 0, 0, 0);
+            
+            const monthOffset = pixel / this.tickWidth;
+            const wholeMonths = monthOffset >= 0 ? Math.floor(monthOffset) : Math.ceil(monthOffset);
+            const fractional = monthOffset - wholeMonths;
+
+            const targetMonthStart = new Date(baseMonthStart);
+            targetMonthStart.setMonth(targetMonthStart.getMonth() + wholeMonths);
+            
+            if (fractional === 0) {
+                return targetMonthStart;
+            }
+
+            const nextMonth = new Date(targetMonthStart);
+            nextMonth.setMonth(nextMonth.getMonth() + 1);
+            const monthDuration = nextMonth.getTime() - targetMonthStart.getTime();
+            return new Date(targetMonthStart.getTime() + fractional * monthDuration);
         }
     }
 
@@ -456,7 +566,7 @@ class Timeline {
         const left = this.timeToPixel(this.selectionStart);
         const right = this.timeToPixel(this.selectionEnd);
         
-        if (shouldSnap) {
+        if (shouldSnap && this.scaleMode !== 'month') {
             const snappedLeft = Math.round(left / this.tickWidth) * this.tickWidth;
             const snappedRight = Math.round(right / this.tickWidth) * this.tickWidth;
             
@@ -475,15 +585,26 @@ class Timeline {
         // 鼠标滚轮切换精度
         this.container.addEventListener('wheel', (e) => {
             e.preventDefault();
+            const oldSelectionStart = new Date(this.selectionStart);
+            const oldSelectionEnd = new Date(this.selectionEnd);
+            const oldTimelineStart = new Date(this.timelineStart);
+            const oldTimelineEnd = new Date(this.timelineEnd);
+
             if (e.deltaY > 0) {
                 this.scaleModeIndex = Math.min(this.scaleModeIndex + 1, this.scaleModes.length - 1);
             } else {
                 this.scaleModeIndex = Math.max(this.scaleModeIndex - 1, 0);
             }
+
+            const oldMode = this.scaleMode;
             this.scaleMode = this.scaleModes[this.scaleModeIndex];
-            this.adjustTimelineForScale();
+
+            if (oldMode !== this.scaleMode) {
+                this.adjustTimelineForScale(oldSelectionStart, oldSelectionEnd, oldTimelineStart, oldTimelineEnd);
+            }
+
             this.render();
-            this.saveState();
+            this.notifySelectionChange();
         });
         
         // 左侧手柄拖动
@@ -553,9 +674,30 @@ class Timeline {
         document.addEventListener('mouseup', () => {
             stopArrowScroll();
             if (this.isDragging) {
-                if (this.dragType === 'left' || this.dragType === 'right' || this.dragType === 'move') {
+                if (this.dragType === 'left' || this.dragType === 'right') {
                     this.selectionStart = this.snapToTick(this.selectionStart, false);
                     this.selectionEnd = this.snapToTick(this.selectionEnd, true);
+                    this.updateThumb(true);
+                    this.notifySelectionChange();
+                }
+                if (this.dragType === 'move') {
+                    const spanTicks = this.getTickDistance(this.dragStartSelectionStart, this.dragStartSelectionEnd);
+
+                    let snappedStart = this.roundToNearestTick(this.selectionStart);
+                    let snappedEnd = this.addTicks(snappedStart, spanTicks);
+
+                    if (snappedStart < this.timelineStart) {
+                        snappedStart = this.snapToTick(this.timelineStart, false);
+                        snappedEnd = this.addTicks(snappedStart, spanTicks);
+                    }
+
+                    if (snappedEnd > this.timelineEnd) {
+                        snappedEnd = this.snapToTick(this.timelineEnd, true);
+                        snappedStart = this.addTicks(snappedEnd, -spanTicks);
+                    }
+
+                    this.selectionStart = snappedStart;
+                    this.selectionEnd = snappedEnd;
                     this.updateThumb(true);
                     this.notifySelectionChange();
                 }
@@ -587,43 +729,33 @@ class Timeline {
     /**
      * 根据精度调整时间轴范围
      */
-    adjustTimelineForScale() {
+    adjustTimelineForScale(oldSelectionStart = this.selectionStart, oldSelectionEnd = this.selectionEnd, oldTimelineStart = this.timelineStart, oldTimelineEnd = this.timelineEnd) {
         const containerWidth = this.container.offsetWidth || window.innerWidth;
-        const today = new Date();
-        today.setHours(23, 59, 59, 999);
-        
-        if (this.scaleMode === 'hour') {
-            const numHours = Math.floor(containerWidth / this.tickWidth);
-            this.timelineEnd = new Date(today);
-            this.timelineEnd.setHours(this.timelineEnd.getHours() + 1);
-            this.timelineStart = new Date(this.timelineEnd);
-            this.timelineStart.setHours(this.timelineStart.getHours() - numHours);
-            
-            this.selectionEnd = new Date(this.timelineEnd);
-            this.selectionStart = new Date(this.selectionEnd);
-            this.selectionStart.setHours(this.selectionStart.getHours() - 24);
-        } else if (this.scaleMode === 'day') {
-            const numDays = Math.floor(containerWidth / this.tickWidth);
-            this.timelineEnd = new Date(today);
-            this.timelineEnd.setDate(this.timelineEnd.getDate() + 1);
-            this.timelineStart = new Date(this.timelineEnd);
-            this.timelineStart.setDate(this.timelineStart.getDate() - numDays);
-            
-            this.selectionEnd = new Date(this.timelineEnd);
-            this.selectionStart = new Date(this.selectionEnd);
-            this.selectionStart.setDate(this.selectionStart.getDate() - 7);
-        } else if (this.scaleMode === 'month') {
-            const numMonths = Math.floor(containerWidth / this.tickWidth);
-            this.timelineEnd = new Date(today);
-            this.timelineEnd.setMonth(this.timelineEnd.getMonth() + 1);
-            this.timelineEnd.setDate(1);
-            this.timelineStart = new Date(this.timelineEnd);
-            this.timelineStart.setMonth(this.timelineStart.getMonth() - numMonths);
-            
-            this.selectionEnd = new Date(this.timelineEnd);
-            this.selectionStart = new Date(this.selectionEnd);
-            this.selectionStart.setMonth(this.selectionStart.getMonth() - 3);
+        const visibleTicks = Math.max(7, Math.floor(containerWidth / this.tickWidth));
+
+        const newSelectionStart = this.snapToTick(oldSelectionStart, false);
+        const selectionTicks = this.getTickDistanceByMode(oldSelectionStart, oldSelectionEnd, this.scaleMode);
+        const newSelectionEnd = this.addTicks(newSelectionStart, selectionTicks);
+
+        const timelineCenterMs = (oldTimelineStart.getTime() + oldTimelineEnd.getTime()) / 2;
+        const newTimelineCenter = this.snapToTick(new Date(timelineCenterMs), false);
+        let newTimelineStart = this.addTicks(newTimelineCenter, -Math.floor(visibleTicks / 2));
+        let newTimelineEnd = this.addTicks(newTimelineStart, visibleTicks);
+
+        if (newSelectionStart < newTimelineStart) {
+            newTimelineStart = new Date(newSelectionStart);
+            newTimelineEnd = this.addTicks(newTimelineStart, visibleTicks);
         }
+
+        if (newSelectionEnd > newTimelineEnd) {
+            newTimelineEnd = new Date(newSelectionEnd);
+            newTimelineStart = this.addTicks(newTimelineEnd, -visibleTicks);
+        }
+
+        this.selectionStart = newSelectionStart;
+        this.selectionEnd = newSelectionEnd;
+        this.timelineStart = newTimelineStart;
+        this.timelineEnd = newTimelineEnd;
     }
 
     /**
@@ -649,52 +781,43 @@ class Timeline {
     onDrag(e) {
         const deltaX = e.clientX - this.dragStartX;
         
-        let deltaMs;
-        if (this.scaleMode === 'day') {
-            const msPerDay = 24 * 60 * 60 * 1000;
-            deltaMs = (deltaX / this.tickWidth) * msPerDay;
-        } else if (this.scaleMode === 'hour') {
-            const msPerHour = 60 * 60 * 1000;
-            deltaMs = (deltaX / this.tickWidth) * msPerHour;
-        } else {
-            const containerWidth = this.container.offsetWidth;
-            const totalMs = this.dragStartTimelineEnd.getTime() - this.dragStartTimelineStart.getTime();
-            deltaMs = (deltaX / containerWidth) * totalMs;
-        }
-        
         if (this.dragType === 'left') {
-            const newStart = new Date(this.dragStartSelectionStart.getTime() + deltaMs);
+            const startPixel = this.timeToPixel(this.dragStartSelectionStart);
+            const newStart = this.pixelToTime(startPixel + deltaX);
             if (newStart < this.selectionEnd && newStart >= this.timelineStart) {
                 this.selectionStart = newStart;
             }
             this.updateThumb(false);
         } else if (this.dragType === 'right') {
-            const newEnd = new Date(this.dragStartSelectionEnd.getTime() + deltaMs);
+            const endPixel = this.timeToPixel(this.dragStartSelectionEnd);
+            const newEnd = this.pixelToTime(endPixel + deltaX);
             if (newEnd > this.selectionStart && newEnd <= this.timelineEnd) {
                 this.selectionEnd = newEnd;
             }
             this.updateThumb(false);
         } else if (this.dragType === 'move') {
-            const duration = this.dragStartSelectionEnd.getTime() - this.dragStartSelectionStart.getTime();
-            let newStart = new Date(this.dragStartSelectionStart.getTime() + deltaMs);
-            let newEnd = new Date(newStart.getTime() + duration);
+            const spanTicks = this.getTickDistance(this.dragStartSelectionStart, this.dragStartSelectionEnd);
+            const startPixel = this.timeToPixel(this.dragStartSelectionStart);
+            let newStart = this.pixelToTime(startPixel + deltaX);
+            let newEnd = this.addTicks(newStart, spanTicks);
             
             if (newStart < this.timelineStart) {
                 newStart = new Date(this.timelineStart);
-                newEnd = new Date(newStart.getTime() + duration);
+                newEnd = this.addTicks(newStart, spanTicks);
             }
             if (newEnd > this.timelineEnd) {
                 newEnd = new Date(this.timelineEnd);
-                newStart = new Date(newEnd.getTime() - duration);
+                newStart = this.addTicks(newEnd, -spanTicks);
             }
             
             this.selectionStart = newStart;
             this.selectionEnd = newEnd;
             this.updateThumb(false);
         } else if (this.dragType === 'pan') {
-            const timelineDuration = this.dragStartTimelineEnd.getTime() - this.dragStartTimelineStart.getTime();
-            this.timelineStart = new Date(this.dragStartTimelineStart.getTime() - deltaMs);
-            this.timelineEnd = new Date(this.timelineStart.getTime() + timelineDuration);
+            const visibleTicks = this.getTickDistance(this.dragStartTimelineStart, this.dragStartTimelineEnd);
+            const startPixel = this.timeToPixel(this.dragStartTimelineStart);
+            this.timelineStart = this.pixelToTime(startPixel - deltaX);
+            this.timelineEnd = this.addTicks(this.timelineStart, visibleTicks);
             
             this.render();
             return;
@@ -705,20 +828,8 @@ class Timeline {
      * 箭头按钮平移时间轴
      */
     panTimeline(direction) {
-        let deltaMs;
-        if (this.scaleMode === 'day') {
-            deltaMs = 24 * 60 * 60 * 1000;
-        } else if (this.scaleMode === 'hour') {
-            deltaMs = 60 * 60 * 1000;
-        } else if (this.scaleMode === 'month') {
-            deltaMs = 30 * 24 * 60 * 60 * 1000;
-        }
-        
-        const offset = direction * deltaMs;
-        const timelineDuration = this.timelineEnd.getTime() - this.timelineStart.getTime();
-        
-        this.timelineStart = new Date(this.timelineStart.getTime() + offset);
-        this.timelineEnd = new Date(this.timelineStart.getTime() + timelineDuration);
+        this.timelineStart = this.addTicks(this.timelineStart, direction);
+        this.timelineEnd = this.addTicks(this.timelineEnd, direction);
         
         this.render();
         this.saveState();
@@ -763,6 +874,120 @@ class Timeline {
             this.selectionChangeCallback(this.selectionStart, this.selectionEnd);
         }
         this.saveState();
+    }
+
+    /**
+     * 获取当前模式
+     */
+    getCurrentMode() {
+        return this.scaleMode;
+    }
+
+    /**
+     * 格式化日期为本地 ISO 格式字符串（避免 UTC 时区偏移）
+     */
+    toLocalISOString(date) {
+        const year = date.getFullYear();
+        const month = (date.getMonth() + 1).toString().padStart(2, '0');
+        const day = date.getDate().toString().padStart(2, '0');
+        const hours = date.getHours().toString().padStart(2, '0');
+        const minutes = date.getMinutes().toString().padStart(2, '0');
+        const seconds = date.getSeconds().toString().padStart(2, '0');
+        return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+    }
+
+    /**
+     * 获取当前选择范围
+     * month 模式下，selectionEnd 落在月初零点表示"到上月底"，
+     * 需要减一个月才能正确显示最后覆盖的月份
+     */
+    getCurrentRange() {
+        let endForDisplay = new Date(this.selectionEnd);
+        
+        if (this.scaleMode === 'month' &&
+            endForDisplay.getDate() === 1 &&
+            endForDisplay.getHours() === 0 &&
+            endForDisplay.getMinutes() === 0 &&
+            endForDisplay.getSeconds() === 0 &&
+            endForDisplay.getMilliseconds() === 0) {
+            // 月初零点 → 上一个月才是最后覆盖的月
+            endForDisplay.setMonth(endForDisplay.getMonth() - 1);
+        }
+        
+        return {
+            start: this.toLocalISOString(this.selectionStart),
+            end: this.toLocalISOString(endForDisplay)
+        };
+    }
+
+    /**
+     * 更新模式
+     */
+    updateMode(mode, skipRender = false) {
+        const modeIndex = this.scaleModes.indexOf(mode);
+        if (modeIndex !== -1) {
+            this.scaleModeIndex = modeIndex;
+            this.scaleMode = mode;
+            if (!skipRender) {
+                this.onResize(); // Re-calculate and render
+            }
+        }
+    }
+
+    /**
+     * 更新范围
+     */
+    /**
+     * Parse a date string as local time based on the current scale mode.
+     * - Month mode (YYYY-MM): first of month, local midnight
+     * - Day mode (YYYY-MM-DD): local midnight
+     * - Hour mode (YYYY-MM-DDTHH:mm): already parsed as local by new Date()
+     * - Date objects: used as-is
+     */
+    parseLocalDate(value) {
+        if (value instanceof Date) return new Date(value);
+        const s = String(value);
+        if (/^\d{4}-\d{2}$/.test(s)) {
+            // YYYY-MM → local midnight on 1st
+            return new Date(s + '-01T00:00:00');
+        }
+        if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+            // YYYY-MM-DD → local midnight
+            return new Date(s + 'T00:00:00');
+        }
+        return new Date(s);
+    }
+
+    updateRange(start, end) {
+        this.selectionStart = this.parseLocalDate(start);
+        this.selectionEnd = this.parseLocalDate(end);
+
+        // Month mode: YYYY-MM end means the START of that month,
+        // so advance to the start of the next month to include it
+        if (this.scaleMode === 'month' && typeof end === 'string' && /^\d{4}-\d{2}$/.test(end)) {
+            this.selectionEnd.setMonth(this.selectionEnd.getMonth() + 1);
+        }
+
+        // Ensure the timeline encompasses the new range
+        // Recalculate the visible timeline window around the selection
+        const containerWidth = this.container.offsetWidth;
+        const numTicks = Math.max(7, Math.floor(containerWidth / this.tickWidth));
+
+        // Center the timeline around the selection, with some padding
+        this.timelineEnd = this.addTicks(this.selectionEnd, 2);
+        this.timelineStart = this.addTicks(this.timelineEnd, -numTicks);
+
+        // Make sure selection start is visible
+        if (this.selectionStart < this.timelineStart) {
+            this.timelineStart = this.addTicks(this.selectionStart, -1);
+            this.timelineEnd = this.addTicks(this.timelineStart, numTicks);
+        }
+
+        this.render();
+        this.saveState();
+        if (this.selectionChangeCallback) {
+            this.selectionChangeCallback(this.selectionStart, this.selectionEnd);
+        }
     }
 }
 

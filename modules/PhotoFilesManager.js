@@ -14,11 +14,31 @@ class PhotoFilesManager {
     }
 
     /**
+     * 计算相对于基础目录的相对路径
+     */
+    getRelativePath(fullPath, baseDir) {
+        const relativePath = path.relative(baseDir, fullPath);
+        return relativePath === '' ? '' : relativePath;
+    }
+
+    /**
+     * 拼接完整路径（基础目录 + 相对目录）
+     */
+    getFullPath(relativeDir, filename, baseDir = null) {
+        const photoDir = baseDir || this.db.getPhotoDirectory();
+        if (!photoDir) {
+            return path.join(relativeDir || '', filename);
+        }
+        return path.join(photoDir, relativeDir || '', filename);
+    }
+
+    /**
      * 递归获取目录下的所有文件（包括子目录）
      * skipScanned: 是否跳过已扫描的目录
      * progressCallback: 进度回调函数
+     * baseDir: 基础目录，用于计算相对路径
      */
-    getAllFilesRecursively(dirPath, fileList = [], skipScanned = false, visitedDirs = new Set(), progressCallback = null) {
+    getAllFilesRecursively(dirPath, fileList = [], skipScanned = false, visitedDirs = new Set(), progressCallback = null, baseDir = null) {
         // 获取真实路径以避免软链接循环
         let realPath;
         try {
@@ -64,20 +84,25 @@ class PhotoFilesManager {
                         continue;
                     }
                     
-                    // 将子目录添加到数据库
-                    this.db.addDirectory(fullPath);
-                    
-                    // 检查子目录是否已扫描
-                    if (skipScanned && this.db.isDirectoryScanned(fullPath)) {
+                    const relativeSubDir = baseDir ? this.getRelativePath(fullPath, baseDir) : fullPath;
+
+                    // 跳过 directories 表中已存在的目录（仅对子目录生效）
+                    if (skipScanned && this.db.hasDirectory(relativeSubDir)) {
                         continue;
                     }
+
+                    // 将新发现的子目录添加到数据库（使用相对路径）
+                    this.db.addDirectory(relativeSubDir);
+
                     // 递归处理子目录，传递visitedDirs和progressCallback
-                    this.getAllFilesRecursively(fullPath, fileList, skipScanned, visitedDirs, progressCallback);
+                    this.getAllFilesRecursively(fullPath, fileList, skipScanned, visitedDirs, progressCallback, baseDir);
                 } else if (stat.isFile()) {
                     // 只收集媒体文件，跳过不需要的文件
                     if (Photo.isMediaFile(item)) {
+                        // 计算相对目录路径
+                        const relativeDir = baseDir ? this.getRelativePath(dirPath, baseDir) : dirPath;
                         fileList.push({
-                            directory: dirPath,
+                            directory: relativeDir,
                             filename: item,
                             fullPath: fullPath
                         });
@@ -93,41 +118,130 @@ class PhotoFilesManager {
 
     /**
      * 从文件读取EXIF元数据（带超时保护）
+     * 完全静默处理所有错误，确保扫描不会中断
      */
     async extractMetadata(fullPath, filename) {
+        // 记录当前正在处理的文件（在调用 exifr 之前打印，方便调试）
+        console.log(`[EXIF] 正在处理: ${fullPath}`);
+        
+        // 检查是否为不支持 EXIF 的文件格式（GIF、BMP、WebP 等）
+        const noExifFormats = /\.(gif|bmp|webp|png)$/i;
+        if (noExifFormats.test(filename)) {
+            console.log(`[EXIF] 跳过不支持EXIF的格式: ${filename}`);
+            return { time: null, lat: null, lng: null };
+        }
+        
+        // 在最外层就准备好错误处理上下文
+        const errorContext = {
+            fullPath: fullPath,
+            filename: filename,
+            timestamp: new Date().toISOString()
+        };
+        
+        // 将当前文件信息保存到全局，以便在异常时可以查看
+        global._currentProcessingFile = errorContext;
+        
         try {
-            // 添加超时保护，5秒超时
-            const timeoutPromise = new Promise((_, reject) => {
-                setTimeout(() => reject(new Error('EXIF读取超时')), 5000);
+            // 超时控制变量
+            let timeoutId = null;
+            let isTimedOut = false;
+            
+            // 添加超时保护，30秒超时（增加时间，避免误判）
+            const timeoutPromise = new Promise((resolve) => {
+                timeoutId = setTimeout(() => {
+                    isTimedOut = true;
+                    console.error(`========== EXIF读取超时 (30秒) ==========`);
+                    console.error(`文件路径: ${errorContext.fullPath}`);
+                    console.error(`文件名: ${errorContext.filename}`);
+                    console.error(`提示: 文件过大或损坏，将使用文件修改时间`);
+                    console.error(`========================================`);
+                    resolve(null);
+                }, 30000); // 增加到30秒
             });
             
-            const exifPromise = exifr.parse(fullPath, {
-                // 只提取我们需要的字段，提高性能
-                pick: ['DateTimeOriginal', 'CreateDate', 'latitude', 'longitude'],
-                // 跳过缩略图等大数据
-                skip: ['thumbnail'],
-                // 快速模式
-                tiff: true,
-                exif: true,
-                gps: true,
-                // 其他格式禁用以提高速度
-                iptc: false,
-                icc: false,
-                jfif: false
+            // 多层包装 exifr.parse，确保所有错误都能捕获并记录文件信息
+            const exifPromise = (async () => {
+                try {
+                    // 检查是否为 HEIC 格式
+                    const isHEIC = /\.heic$/i.test(filename);
+                    
+                    const result = await exifr.parse(fullPath, {
+                        pick: ['DateTimeOriginal', 'CreateDate', 'latitude', 'longitude'],
+                        skip: ['thumbnail'],
+                        tiff: true,
+                        exif: true,
+                        gps: true,
+                        // 明确启用 HEIC 支持
+                        heic: isHEIC,
+                        iptc: false,
+                        icc: false,
+                        jfif: false,
+                        silentErrors: true
+                    });
+                    return result;
+                } catch (parseError) {
+                    // 第一层捕获：exifr.parse 直接抛出的错误
+                    const errorMsg = parseError.message || String(parseError);
+                    const isHEIC = /\.heic$/i.test(errorContext.filename);
+                    
+                    if (isHEIC) {
+                        console.error(`========== HEIC文件EXIF读取失败 ==========`);
+                        console.error(`文件路径: ${errorContext.fullPath}`);
+                        console.error(`文件名: ${errorContext.filename}`);
+                        console.error(`错误信息: ${errorMsg}`);
+                        console.error(`提示: 将使用文件修改时间代替EXIF时间`);
+                        console.error(`==========================================`);
+                    } else {
+                        console.error(`========== EXIF解析错误 ==========`);
+                        console.error(`文件路径: ${errorContext.fullPath}`);
+                        console.error(`文件名: ${errorContext.filename}`);
+                        console.error(`错误信息: ${errorMsg}`);
+                        console.error(`错误类型: ${parseError.name || 'Error'}`);
+                        console.error(`时间戳: ${errorContext.timestamp}`);
+                        console.error(`====================================`);
+                    }
+                    return null;
+                }
+            })().catch(asyncError => {
+                // 第二层捕获：async 函数内部的错误
+                const errorMsg = asyncError.message || String(asyncError);
+                console.error(`========== EXIF异步错误 ==========`);
+                console.error(`文件路径: ${errorContext.fullPath}`);
+                console.error(`文件名: ${errorContext.filename}`);
+                console.error(`错误信息: ${errorMsg}`);
+                console.error(`====================================`);
+                return null;
             });
             
+            // 使用 Promise.race 处理超时
             const meta = await Promise.race([exifPromise, timeoutPromise]);
             
+            // 清理超时定时器，避免资源泄漏
+            if (timeoutId) {
+                clearTimeout(timeoutId);
+            }
+            
+            // 安全返回结果
+            if (!meta || typeof meta !== 'object') {
+                return { time: null, lat: null, lng: null };
+            }
+            
             return {
-                time: meta?.DateTimeOriginal || meta?.CreateDate || null,
-                lat: meta?.latitude || null,
-                lng: meta?.longitude || null
+                time: meta.DateTimeOriginal || meta.CreateDate || null,
+                lat: meta.latitude || null,
+                lng: meta.longitude || null
             };
         } catch (err) {
-            // 静默失败，返回空元数据
-            if (err.message === 'EXIF读取超时') {
-                console.log(`EXIF读取超时: ${filename}`);
+            // 最外层兜底错误处理
+            console.error(`========== EXIF致命错误 ==========`);
+            console.error(`文件路径: ${errorContext.fullPath}`);
+            console.error(`文件名: ${errorContext.filename}`);
+            console.error(`错误类型: ${err.name || 'Error'}`);
+            console.error(`错误信息: ${err.message || String(err)}`);
+            if (err.stack) {
+                console.error(`错误堆栈:\n${err.stack}`);
             }
+            console.error(`====================================`);
             return { time: null, lat: null, lng: null };
         }
     }
@@ -182,30 +296,17 @@ class PhotoFilesManager {
         console.log('目录路径:', dirPath);
         console.log('跳过已扫描:', skipScanned);
         
-        // 检查目录是否已扫描
-        if (skipScanned && this.db.isDirectoryScanned(dirPath)) {
-            console.log('目录已扫描，跳过:', dirPath);
-            return {
-                totalPhotos: 0,
-                totalVideos: 0,
-                newPhotos: 0,
-                newVideos: 0,
-                skippedFiles: 0,
-                skippedDirectory: true
-            };
-        }
-        
-        // 添加目录到数据库
-        this.db.addDirectory(dirPath);
+        // 添加目录到数据库（根目录存储为空字符串）
+        this.db.addDirectory('');
         
         console.log('正在遍历目录获取媒体文件列表...');
-        // 递归获取所有媒体文件（跳过已扫描的子目录），传递进度回调
-        const mediaItems = this.getAllFilesRecursively(dirPath, [], skipScanned, new Set(), progressCallback);
+        // 递归获取所有媒体文件（跳过已扫描的子目录），传递进度回调和基础目录
+        const mediaItems = this.getAllFilesRecursively(dirPath, [], skipScanned, new Set(), progressCallback, dirPath);
         console.log(`目录遍历完成，找到 ${mediaItems.length} 个媒体文件`);
         
         if (mediaItems.length === 0) {
             console.log('没有找到媒体文件，跳过处理');
-            this.db.updateScanTime(dirPath);
+            this.db.updateScanTime('');
             return {
                 totalPhotos: 0,
                 totalVideos: 0,
@@ -234,70 +335,77 @@ class PhotoFilesManager {
         for (const item of mediaItems) {
             const { directory, filename, fullPath } = item;
             
-            if (Photo.isPhotoExtension(filename)) {
-                totalPhotos++;
-                
-                // 检查是否已存在
-                if (this.db.isFileExists(directory, filename)) {
-                    skippedFiles++;
-                    processedCount++;
-                    // 发送进度更新
-                    if (progressCallback && processedCount % 10 === 0) {
-                        progressCallback({ phase: 'metadata', current: processedCount, total: mediaItems.length });
+            try {
+                if (Photo.isPhotoExtension(filename)) {
+                    totalPhotos++;
+                    
+                    // 检查是否已存在
+                    if (this.db.isFileExists(directory, filename)) {
+                        skippedFiles++;
+                        processedCount++;
+                        // 发送进度更新
+                        if (progressCallback && processedCount % 10 === 0) {
+                            progressCallback({ phase: 'metadata', current: processedCount, total: mediaItems.length });
+                        }
+                        continue;
                     }
-                    continue;
-                }
-                
-                const meta = await this.extractMetadata(fullPath, filename);
-                if (meta.time || meta.lat) {  // 至少有时间或位置信息
+                    
+                    const meta = await this.extractMetadata(fullPath, filename);
+                    
+                    // 始终保存文件信息，即使 EXIF 提取失败
                     photoMetaList.push({
                         path: fullPath,
                         directory: directory,
                         filename: filename,
-                        time: meta.time,
+                        time: meta.time || this.getFileModifiedTime(fullPath),
                         lat: meta.lat,
                         lng: meta.lng,
                         type: 'photo'
                     });
-                } else {
-                    // 没有EXIF信息，使用文件修改时间
-                    photoMetaList.push({
+                    
+                    processedCount++;
+                } else if (Photo.isVideoExtension(filename)) {
+                    totalVideos++;
+                    
+                    // 检查是否已存在
+                    if (this.db.isFileExists(directory, filename)) {
+                        skippedFiles++;
+                        processedCount++;
+                        // 发送进度更新
+                        if (progressCallback && processedCount % 10 === 0) {
+                            progressCallback({ phase: 'metadata', current: processedCount, total: mediaItems.length });
+                        }
+                        continue;
+                    }
+                    
+                    // 视频文件：exifr不支持大部分视频格式，直接使用文件修改时间
+                    videoMetaList.push({
                         path: fullPath,
                         directory: directory,
                         filename: filename,
                         time: this.getFileModifiedTime(fullPath),
                         lat: null,
                         lng: null,
-                        type: 'photo'
+                        type: 'video'
                     });
-                }
-                
-                processedCount++;
-            } else if (Photo.isVideoExtension(filename)) {
-                totalVideos++;
-                
-                // 检查是否已存在
-                if (this.db.isFileExists(directory, filename)) {
-                    skippedFiles++;
+                    
                     processedCount++;
-                    // 发送进度更新
-                    if (progressCallback && processedCount % 10 === 0) {
-                        progressCallback({ phase: 'metadata', current: processedCount, total: mediaItems.length });
-                    }
-                    continue;
                 }
+            } catch (error) {
+                // 捕获处理单个文件时的所有异常，记录详细信息后继续处理下一个文件
+                console.error(`========== 文件处理异常 ==========`);
+                console.error(`文件路径: ${fullPath}`);
+                console.error(`相对目录: ${directory}`);
+                console.error(`文件名: ${filename}`);
+                console.error(`错误类型: ${error.name || 'Error'}`);
+                console.error(`错误信息: ${error.message}`);
+                if (error.stack) {
+                    console.error(`错误堆栈: ${error.stack}`);
+                }
+                console.error(`=====================================`);
                 
-                const meta = await this.extractMetadata(fullPath, filename);
-                videoMetaList.push({
-                    path: fullPath,
-                    directory: directory,
-                    filename: filename,
-                    time: meta.time || this.getFileModifiedTime(fullPath),
-                    lat: meta.lat,
-                    lng: meta.lng,
-                    type: 'video'
-                });
-                
+                // 记录为跳过的文件
+                skippedFiles++;
                 processedCount++;
             }
             
@@ -372,8 +480,8 @@ class PhotoFilesManager {
         newVideos = videoMetaList.length;
         
         console.log(`数据库写入完成！`);
-        // 更新目录扫描时间
-        this.db.updateScanTime(dirPath);
+        // 更新目录扫描时间（根目录用空字符串）
+        this.db.updateScanTime('');
         
         // 输出扫描结果摘要
         console.log('========== 扫描完成 ==========');

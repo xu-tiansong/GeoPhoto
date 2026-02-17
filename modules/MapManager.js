@@ -275,19 +275,21 @@ class MapManager {
      * 创建缩略图 Tooltip HTML
      */
     createThumbnailTooltip(photo) {
-        const filePath = `${photo.directory}/${photo.filename}`;
-        const isVideo = photo.type === 'video';
         const uniqueId = `thumb-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const cityId = `city-${uniqueId}`;
         
         // 获取缩略图路径
+        const filePath = photo.fullPath || `${photo.directory}/${photo.filename}`;
+        const isVideo = photo.type === 'video';
         const thumbnailInfo = ThumbnailGenerator.getThumbnailPath(filePath);
         const displayPath = thumbnailInfo.path;
-        const fileUrl = `file://${displayPath.replace(/\\/g, '/')}`;
+        const fileUrl = ThumbnailGenerator.toFileUrl(displayPath);
         
         const { date, time } = this.formatDateTime(photo.time);
         const dateTimeStr = time ? `${date} ${time}` : date;
         
-        const cityId = `city-${uniqueId}`;
+        // Like图标
+        const likeIcon = photo.like ? '<span style="color:#ff6b6b;margin-left:6px;">♥</span>' : '';
         
         if (photo.lat && photo.lng) {
             setTimeout(async () => {
@@ -301,7 +303,7 @@ class MapManager {
         
         const infoHtml = `
             <div class="tooltip-info">
-                <div class="tooltip-datetime">${dateTimeStr}</div>
+                <div class="tooltip-datetime">${dateTimeStr}${likeIcon}</div>
                 <div class="tooltip-city" id="${cityId}">${photo.lat && photo.lng ? '加载中...' : '无位置信息'}</div>
             </div>
         `;
@@ -311,11 +313,11 @@ class MapManager {
             if (thumbnailInfo.isThumbnail) {
                 return `
                     <div class="photo-tooltip">
-                        <div class="thumbnail-wrapper" id="${uniqueId}">
+                        <div class="thumbnail-wrapper" id="${uniqueId}" style="width:224px;height:224px;overflow:hidden;display:flex;align-items:center;justify-content:center;background:#000;position:relative;">
                             <img src="${fileUrl}" 
-                                 style="max-width: 224px; max-height: 224px;"
-                                 onload="adjustThumbnailSize(this)"
-                                 onerror="this.style.display='none'; this.parentElement.innerHTML='<div style=\\'width:120px;height:90px;background:#333;display:flex;align-items:center;justify-content:center;\\'><div class=\\'video-play-icon\\'></div></div>';" />
+                                 style="width:224px;height:224px;object-fit:cover;"
+                                 onload="generateImageThumbnail(this)"
+                                 onerror="this.style.display='none'; this.parentElement.innerHTML='<div style=\\'width:224px;height:224px;background:#333;display:flex;align-items:center;justify-content:center;\\'><div class=\\'video-play-icon\\'></div></div>';" />
                             <div class="video-play-icon"></div>
                         </div>
                         ${infoHtml}
@@ -324,12 +326,12 @@ class MapManager {
             } else {
                 return `
                     <div class="photo-tooltip">
-                        <div class="thumbnail-wrapper" id="${uniqueId}">
+                        <div class="thumbnail-wrapper" id="${uniqueId}" style="width:224px;height:224px;overflow:hidden;display:flex;align-items:center;justify-content:center;background:#000;position:relative;">
                             <video src="${fileUrl}" 
-                                   style="max-width: 224px; max-height: 224px; display: block;"
+                                   style="width:224px;height:224px;object-fit:cover;"
                                    data-original-path="${filePath}"
-                                   onloadedmetadata="adjustVideoThumbnailSize(this); generateVideoThumbnail(this);"
-                                   onerror="this.style.display='none'; this.parentElement.innerHTML='<div style=\\'width:120px;height:90px;background:#333;display:flex;align-items:center;justify-content:center;\\'><div class=\\'video-play-icon\\'></div></div>';" 
+                                   onloadedmetadata="generateVideoThumbnail(this);"
+                                   onerror="this.style.display='none'; this.parentElement.innerHTML='<div style=\\'width:224px;height:224px;background:#333;display:flex;align-items:center;justify-content:center;\\'><div class=\\'video-play-icon\\'></div></div>';" 
                                    muted preload="metadata">
                             </video>
                             <div class="video-play-icon"></div>
@@ -341,13 +343,13 @@ class MapManager {
         } else {
             return `
                 <div class="photo-tooltip">
-                    <div class="thumbnail-wrapper">
+                    <div class="thumbnail-wrapper" style="width:224px;height:224px;overflow:hidden;display:flex;align-items:center;justify-content:center;background:#000;">
                         <img src="${fileUrl}" 
                              data-original-path="${filePath}"
                              data-is-thumbnail="${thumbnailInfo.isThumbnail}"
-                             style="max-width: 224px; max-height: 224px;"
-                             onload="adjustThumbnailSize(this); generateImageThumbnail(this);"
-                             onerror="this.style.display='none'; this.parentElement.innerHTML='<div style=\\'width:100px;height:100px;background:#333;display:flex;align-items:center;justify-content:center;color:#999;\\'>无法加载</div>';">
+                             style="width:224px;height:224px;object-fit:cover;"
+                             onload="generateImageThumbnail(this);"
+                             onerror="this.style.display='none'; this.parentElement.innerHTML='<div style=\\'width:224px;height:224px;background:#333;display:flex;align-items:center;justify-content:center;color:#999;\\'>无法加载</div>';">
                     </div>
                     ${infoHtml}
                 </div>
@@ -596,34 +598,7 @@ class MapManager {
 }
 
 // 全局辅助函数（用于 HTML 内联事件）
-window.adjustThumbnailSize = function(img) {
-    const naturalWidth = img.naturalWidth;
-    const naturalHeight = img.naturalHeight;
-    const maxSize = 224;
-    
-    if (naturalWidth > naturalHeight) {
-        img.style.width = maxSize + 'px';
-        img.style.height = 'auto';
-    } else {
-        img.style.height = maxSize + 'px';
-        img.style.width = 'auto';
-    }
-};
-
-window.adjustVideoThumbnailSize = function(video) {
-    const videoWidth = video.videoWidth;
-    const videoHeight = video.videoHeight;
-    const maxSize = 224;
-    
-    if (videoWidth > videoHeight) {
-        video.style.width = maxSize + 'px';
-        video.style.height = 'auto';
-    } else {
-        video.style.height = maxSize + 'px';
-        video.style.width = 'auto';
-    }
-    video.currentTime = 0.1;
-};
+// 缩略图已使用固定正方形尺寸和 object-fit:cover，不再需要动态调整
 
 // 生成图片缩略图
 window.generateImageThumbnail = function(img) {
