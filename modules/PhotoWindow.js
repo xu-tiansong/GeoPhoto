@@ -13,6 +13,8 @@ class PhotoWindow {
         this.currentPhoto = null;
         this.savedBounds = null; // 保存全屏前的窗口位置
         this.onCloseCallback = null; // 窗口关闭时的回调
+        this.navPhotos = null;    // 导航列表 [{directory, filename}, ...]
+        this.currentIndex = -1;   // 当前照片在导航列表中的位置
     }
 
     /**
@@ -24,13 +26,18 @@ class PhotoWindow {
 
     /**
      * 显示照片窗口
+     * @param {object} photoData - 照片数据
+     * @param {Array|null} navPhotos - 导航列表 [{directory, filename}, ...]，为 null 时不显示翻页箭头
+     * @param {number} currentIndex - 当前照片在导航列表中的索引
      */
-    show(photoData) {
+    show(photoData, navPhotos = null, currentIndex = -1) {
         if (this.photoWindow) {
             this.photoWindow.close();
         }
 
         this.currentPhoto = photoData;
+        this.navPhotos = navPhotos;
+        this.currentIndex = currentIndex;
 
         // 获取父窗口尺寸和位置
         const parentBounds = this.parentWindow.getBounds();
@@ -67,6 +74,13 @@ class PhotoWindow {
                 this.photoWindow.show();
                 // 发送照片数据到渲染进程
                 this.photoWindow.webContents.send('load-photo', photoData);
+                // 发送翻页导航信息（如果有）
+                if (navPhotos && navPhotos.length > 1) {
+                    this.photoWindow.webContents.send('set-navigation', {
+                        currentIndex,
+                        total: navPhotos.length
+                    });
+                }
             }
         });
 
@@ -97,12 +111,30 @@ class PhotoWindow {
             this.parentWindow.removeListener('move', this.parentResizeListener);
             this.photoWindow = null;
             this.currentPhoto = null;
+            this.navPhotos = null;
+            this.currentIndex = -1;
             
             // 触发关闭回调
             if (this.onCloseCallback) {
                 this.onCloseCallback();
             }
         });
+    }
+
+    /**
+     * 切换到指定照片（由翻页箭头触发）
+     */
+    navigateTo(newPhotoData, newIndex) {
+        if (!this.photoWindow || this.photoWindow.isDestroyed()) return;
+        this.currentPhoto = newPhotoData;
+        this.currentIndex = newIndex;
+        this.photoWindow.webContents.send('load-photo', newPhotoData);
+        if (this.navPhotos) {
+            this.photoWindow.webContents.send('set-navigation', {
+                currentIndex: newIndex,
+                total: this.navPhotos.length
+            });
+        }
     }
 
     /**

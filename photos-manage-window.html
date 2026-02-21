@@ -18,19 +18,48 @@
         }
 
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
             background-color: #2a2a2a;
             color: #e0e0e0;
             overflow: hidden;
             height: 100vh;
             display: flex;
+            flex-direction: column;
+            user-select: none;
         }
+
+        /* ── Title Bar ─────────────────────────────────── */
+        .title-bar {
+            -webkit-app-region: drag;
+            height: 40px;
+            background: rgba(0,0,0,0.45);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 14px;
+            border-bottom: 1px solid #2e2e2e;
+            flex-shrink: 0;
+        }
+        .title-bar-text { font-size: 14px; font-weight: 500; color: #ddd; }
+        .title-bar-close {
+            -webkit-app-region: no-drag;
+            width: 30px; height: 30px;
+            background: #c62828;
+            border: none; border-radius: 4px;
+            cursor: pointer; color: #fff; font-size: 18px; line-height: 1;
+            display: flex; align-items: center; justify-content: center;
+            transition: background 0.15s;
+        }
+        .title-bar-close:hover { background: #b71c1c; }
+
+        /* ── Main Layout ───────────────────────────────── */
+        .main { flex: 1; display: flex; overflow: hidden; }
 
         /* 左侧容器 */
         .left-panel {
             width: 250px;
-            background-color: #1e1e1e;
-            border-right: 1px solid #3a3a3a;
+            background-color: #1a1a1a;
+            border-right: 1px solid #2e2e2e;
             display: flex;
             flex-direction: column;
         }
@@ -38,32 +67,33 @@
         /* Tab 容器 */
         .tabs {
             display: flex;
-            background-color: #252525;
-            border-bottom: 1px solid #3a3a3a;
+            background-color: #1f1f1f;
+            border-bottom: 1px solid #2e2e2e;
         }
 
         .tab {
             flex: 1;
-            padding: 12px;
+            padding: 10px 0;
             text-align: center;
             cursor: pointer;
-            background-color: #252525;
+            background: transparent;
             border: none;
-            color: #888;
-            font-size: 14px;
-            transition: all 0.2s;
+            color: #666;
+            font-size: 12px;
+            font-family: inherit;
+            transition: all 0.18s;
             border-bottom: 2px solid transparent;
         }
 
         .tab:hover {
-            background-color: #2d2d2d;
-            color: #e0e0e0;
+            background: rgba(255,255,255,0.04);
+            color: #bbb;
         }
 
         .tab.active {
-            color: #4a9eff;
+            color: #e0e0e0;
             border-bottom-color: #4a9eff;
-            background-color: #2a2a2a;
+            background: transparent;
         }
 
         /* Tab 内容区 */
@@ -210,23 +240,9 @@
         }
 
         /* 滚动条样式 */
-        ::-webkit-scrollbar {
-            width: 10px;
-            height: 10px;
-        }
-
-        ::-webkit-scrollbar-track {
-            background: #1a1a1a;
-        }
-
-        ::-webkit-scrollbar-thumb {
-            background: #444;
-            border-radius: 5px;
-        }
-
-        ::-webkit-scrollbar-thumb:hover {
-            background: #555;
-        }
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 3px; }
 
         .info-text {
             padding: 16px;
@@ -234,46 +250,26 @@
             text-align: center;
         }
 
-        /* 关闭按钮 */
-        .close-btn {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            width: 32px;
-            height: 32px;
-            background: #d32f2f;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #fff;
-            font-size: 20px;
-            font-weight: bold;
-            z-index: 1000;
-            transition: background 0.2s;
-        }
-
-        .close-btn:hover {
-            background: #b71c1c;
-        }
     </style>
 </head>
 <body>
-    <!-- 关闭按钮 -->
-    <button class="close-btn" id="closeBtn">×</button>
+    <!-- 顶部标题栏 -->
+    <div class="title-bar">
+        <div class="title-bar-text" data-i18n="manage.title">Photos Management</div>
+        <button class="title-bar-close" id="closeBtn">×</button>
+    </div>
 
+    <div class="main">
     <!-- 左侧面板 -->
     <div class="left-panel">
         <div class="tabs">
-            <button class="tab active" data-tab="direct">Direct</button>
-            <button class="tab" data-tab="selected">Selected</button>
-            <button class="tab" data-tab="tag">Tag</button>
+            <button class="tab active" data-tab="direct" data-i18n="manage.tabDirect">Direct</button>
+            <button class="tab" data-tab="selected" data-i18n="manage.tabSelected">Selected</button>
+            <button class="tab" data-tab="tag" data-i18n="manage.tabTag">Tag</button>
         </div>
         <div class="tab-content">
             <div class="tab-panel active" id="direct-panel">
-                <div class="info-text">Direct mode content will be here</div>
+                <div class="info-text" data-i18n="manage.directPlaceholder">Direct mode content will be here</div>
             </div>
             <div class="tab-panel" id="selected-panel">
                 <div class="map-thumbnail">
@@ -282,10 +278,10 @@
                         <span id="photo-count-badge">0 photos</span>
                     </div>
                 </div>
-                <div class="info-text">Selected: <span id="selected-count">None</span></div>
+                <div class="info-text"><span data-i18n="manage.selected">Selected: </span><span id="selected-count">-</span></div>
             </div>
             <div class="tab-panel" id="tag-panel">
-                <div class="info-text">Tag management will be here</div>
+                <div class="info-text" data-i18n="manage.tagPlaceholder">Tag management will be here</div>
             </div>
         </div>
     </div>
@@ -294,6 +290,7 @@
     <div class="right-panel" tabindex="0">
         <div class="photos-grid" id="photosGrid"></div>
     </div>
+    </div><!-- /.main -->
 
     <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" 
@@ -303,8 +300,19 @@
     <script>
         const { ipcRenderer } = require('electron');
         const ThumbnailGenerator = require('./modules/ThumbnailGenerator');
+        const i18n = require('./modules/i18n');
+
+        // i18n 初始化
+        (async () => {
+            const lang = await ipcRenderer.invoke('get-language');
+            i18n.applyToDOM(document, lang);
+        })();
+        ipcRenderer.on('language-changed', (_event, lang) => {
+            i18n.applyToDOM(document, lang);
+        });
 
         let currentPhotos = [];
+        let sortedCurrentPhotos = []; // 按时间排序后的照片列表，用于照片预览窗口翻页
         let selectedPhotoId = null; // 改为单选
         let mapBounds = null;
         let intersectionObserver = null;
@@ -505,16 +513,17 @@
 
             if (!currentPhotos || currentPhotos.length === 0) {
                 console.log('没有照片可显示');
-                grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: #888;">No photos to display</div>';
+                grid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: #888;">${i18n.t('manage.noPhotos')}</div>`;
                 return;
             }
 
-            // 按时间排序
-            const sortedPhotos = [...currentPhotos].sort((a, b) => {
+            // 按时间排序，并保存到全局变量供翻页导航使用
+            sortedCurrentPhotos = [...currentPhotos].sort((a, b) => {
                 const timeA = a.time ? new Date(a.time).getTime() : 0;
                 const timeB = b.time ? new Date(b.time).getTime() : 0;
                 return timeA - timeB;
             });
+            const sortedPhotos = sortedCurrentPhotos;
 
             console.log('开始渲染', sortedPhotos.length, '张照片');
             
@@ -623,8 +632,10 @@
                     updateSelectedCount();
                 }
                 
-                // 打开照片窗口
-                await ipcRenderer.invoke('open-photo-window', photo);
+                // 打开照片窗口（传递导航上下文）
+                const navIndex = sortedCurrentPhotos.indexOf(photo);
+                const navPhotos = sortedCurrentPhotos.map(p => ({ directory: p.directory, filename: p.filename }));
+                await ipcRenderer.invoke('open-photo-window', { photo, navPhotos, currentIndex: navIndex });
             });
 
             return div;
@@ -901,7 +912,7 @@
             // 更新照片数量徽章
             const badge = document.getElementById('photo-count-badge');
             if (badge) {
-                badge.textContent = `${currentPhotos.length} photo${currentPhotos.length !== 1 ? 's' : ''}`;
+                badge.textContent = i18n.t('manage.photoCount', { count: currentPhotos.length });
                 console.log('更新徽章:', badge.textContent);
             } else {
                 console.error('找不到photo-count-badge元素！');
@@ -1023,7 +1034,9 @@
                     const photoData = currentSelected._photoData;
                     if (photoData) {
                         console.log('打开照片窗口:', photoData.filename);
-                        await ipcRenderer.invoke('open-photo-window', photoData);
+                        const navIndex = sortedCurrentPhotos.indexOf(photoData);
+                        const navPhotos = sortedCurrentPhotos.map(p => ({ directory: p.directory, filename: p.filename }));
+                        await ipcRenderer.invoke('open-photo-window', { photo: photoData, navPhotos, currentIndex: navIndex });
                         // 焦点会在照片窗口关闭时通过 window focus 事件自动恢复
                     }
                     break;

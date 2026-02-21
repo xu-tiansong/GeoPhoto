@@ -6,21 +6,46 @@
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="node_modules/leaflet/dist/leaflet.css" />
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
             background: #1a1a1a;
-            color: #fff;
+            color: #e0e0e0;
             overflow: hidden;
             width: 100vw;
             height: 100vh;
             display: flex;
+            flex-direction: column;
+            user-select: none;
         }
+
+        /* ── Title Bar ─────────────────────────────────── */
+        .title-bar {
+            -webkit-app-region: drag;
+            height: 40px;
+            background: rgba(0,0,0,0.45);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 14px;
+            border-bottom: 1px solid #2e2e2e;
+            flex-shrink: 0;
+        }
+        .title-bar-text { font-size: 14px; font-weight: 500; color: #ddd; }
+        .title-bar-close {
+            -webkit-app-region: no-drag;
+            width: 30px; height: 30px;
+            background: #c62828;
+            border: none; border-radius: 4px;
+            cursor: pointer; color: #fff; font-size: 18px; line-height: 1;
+            display: flex; align-items: center; justify-content: center;
+            transition: background 0.15s;
+        }
+        .title-bar-close:hover { background: #b71c1c; }
+
+        /* ── Main Layout ───────────────────────────────── */
+        .main { flex: 1; display: flex; overflow: hidden; }
 
         /* 左侧照片容器 */
         .photo-container {
@@ -72,6 +97,39 @@
             display: none;
         }
 
+        /* 翻页导航箭头 */
+        .nav-arrow {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 48px;
+            height: 96px;
+            background: rgba(0, 0, 0, 0.28);
+            color: rgba(255, 255, 255, 0.75);
+            font-size: 36px;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            border-radius: 6px;
+            z-index: 20;
+            transition: background 0.18s, color 0.18s;
+            user-select: none;
+            -webkit-app-region: no-drag;
+        }
+
+        .nav-arrow:hover {
+            background: rgba(0, 0, 0, 0.72);
+            color: #fff;
+        }
+
+        .nav-arrow.visible {
+            display: flex;
+        }
+
+        .nav-prev { left: 12px; }
+        .nav-next { right: 12px; }
+
         /* 缩放控制按钮 */
         .zoom-controls {
             position: absolute;
@@ -87,22 +145,22 @@
         }
 
         .zoom-btn {
-            background: #333;
-            border: none;
-            color: #fff;
-            width: 32px;
-            height: 32px;
+            background: #2a2a2a;
+            border: 1px solid #383838;
+            color: #e0e0e0;
+            width: 30px;
+            height: 30px;
             border-radius: 4px;
             cursor: pointer;
             font-size: 18px;
             display: flex;
             align-items: center;
             justify-content: center;
-            transition: background 0.2s;
+            transition: background 0.15s;
         }
 
         .zoom-btn:hover {
-            background: #444;
+            background: #333;
         }
 
         .zoom-level {
@@ -119,32 +177,6 @@
             background: #2a2a2a;
             display: flex;
             flex-direction: column;
-            position: relative;
-        }
-
-        /* 关闭按钮 */
-        .close-btn {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            width: 32px;
-            height: 32px;
-            background: #d32f2f;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #fff;
-            font-size: 20px;
-            font-weight: bold;
-            z-index: 100;
-            transition: background 0.2s;
-        }
-
-        .close-btn:hover {
-            background: #b71c1c;
         }
 
         /* Tab导航 */
@@ -160,20 +192,22 @@
             padding: 10px;
             background: transparent;
             border: none;
-            color: #888;
+            color: #666;
             cursor: pointer;
             border-bottom: 2px solid transparent;
-            transition: all 0.2s;
-            font-size: 13px;
+            transition: all 0.18s;
+            font-size: 12px;
+            font-family: inherit;
         }
 
         .tab-btn:hover {
-            color: #aaa;
+            color: #bbb;
+            background: rgba(255,255,255,0.04);
         }
 
         .tab-btn.active {
-            color: #fff;
-            border-bottom-color: #2196f3;
+            color: #e0e0e0;
+            border-bottom-color: #4a9eff;
         }
 
         /* Tab内容 */
@@ -197,13 +231,13 @@
         }
 
         .info-label {
-            color: #888;
-            font-size: 12px;
+            color: #777;
+            font-size: 11px;
             margin-bottom: 4px;
         }
 
         .info-value {
-            color: #fff;
+            color: #e0e0e0;
             font-size: 14px;
             word-break: break-all;
         }
@@ -216,32 +250,33 @@
         .remark-textarea {
             width: 100%;
             min-height: 80px;
-            background: #1a1a1a;
-            border: 1px solid #444;
+            background: #222;
+            border: 1px solid #383838;
             border-radius: 4px;
-            color: #fff;
+            color: #ddd;
             padding: 8px;
             font-size: 13px;
             font-family: inherit;
             resize: vertical;
-            transition: border-color 0.2s;
+            outline: none;
+            transition: border-color 0.15s;
         }
 
         .remark-textarea:focus {
-            outline: none;
-            border-color: #2196f3;
+            border-color: #4a9eff;
         }
 
         .remark-save-btn {
             margin-top: 8px;
             padding: 6px 16px;
-            background: #2196f3;
+            background: #4a9eff;
             border: none;
             border-radius: 4px;
             color: #fff;
             cursor: pointer;
             font-size: 13px;
-            transition: background 0.2s;
+            font-family: inherit;
+            transition: background 0.15s;
             display: none;
         }
 
@@ -250,34 +285,35 @@
         }
 
         .remark-save-btn:hover {
-            background: #1976d2;
+            background: #3a8eef;
         }
 
         /* Like按钮 */
         .like-container {
             margin-top: 16px;
             padding-top: 16px;
-            border-top: 1px solid #333;
+            border-top: 1px solid #2e2e2e;
         }
 
         .like-btn {
             width: 100%;
             padding: 10px;
-            background: #333;
-            border: none;
+            background: #2a2a2a;
+            border: 1px solid #383838;
             border-radius: 4px;
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
             gap: 8px;
-            color: #888;
-            font-size: 14px;
-            transition: all 0.2s;
+            color: #777;
+            font-size: 13px;
+            font-family: inherit;
+            transition: all 0.15s;
         }
 
         .like-btn:hover {
-            background: #444;
+            background: #333;
             color: #ff6b6b;
         }
 
@@ -327,26 +363,65 @@
             gap: 8px;
         }
 
-        .tag {
-            background: #3a3a3a;
-            padding: 6px 12px;
+        .tag-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: #2a2a2a;
+            border: 1px solid #383838;
+            padding: 4px 8px 4px 10px;
             border-radius: 16px;
-            font-size: 13px;
-            color: #fff;
+            font-size: 12px;
+            color: #e0e0e0;
+        }
+        .tag-pill .tag-dot {
+            width: 6px; height: 6px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+        .tag-pill .tag-remove {
+            width: 16px; height: 16px;
+            background: transparent;
+            border: none;
+            color: #666;
+            cursor: pointer;
+            font-size: 14px;
+            line-height: 1;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+        }
+        .tag-pill .tag-remove:hover {
+            color: #ff5252;
+            background: rgba(255,82,82,0.15);
         }
 
-        .add-tag-btn {
-            background: #2196f3;
+        .tag-btn-row {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+        }
+        .add-tag-btn, .match-tag-btn {
+            background: #4a9eff;
             border: none;
-            padding: 8px 16px;
+            padding: 6px 16px;
             border-radius: 4px;
             color: #fff;
             cursor: pointer;
-            margin-top: 10px;
+            font-size: 13px;
+            font-family: inherit;
+            transition: background 0.15s;
         }
+        .match-tag-btn {
+            background: #4caf50;
+        }
+        .match-tag-btn:hover { background: #43a047; }
+        .match-tag-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
         .add-tag-btn:hover {
-            background: #1976d2;
+            background: #3a8eef;
         }
 
         /* 小地图样式 */
@@ -358,8 +433,8 @@
         }
 
         .mini-map-label {
-            color: #888;
-            font-size: 12px;
+            color: #777;
+            font-size: 11px;
             margin-bottom: 8px;
         }
 
@@ -377,27 +452,25 @@
         }
 
         /* 滚动条样式 */
-        .tab-content::-webkit-scrollbar {
-            width: 8px;
-        }
-
-        .tab-content::-webkit-scrollbar-track {
-            background: #1a1a1a;
-        }
-
-        .tab-content::-webkit-scrollbar-thumb {
-            background: #444;
-            border-radius: 4px;
-        }
-
-        .tab-content::-webkit-scrollbar-thumb:hover {
-            background: #555;
-        }
+        .tab-content::-webkit-scrollbar { width: 5px; }
+        .tab-content::-webkit-scrollbar-track { background: transparent; }
+        .tab-content::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 3px; }
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1/dist/face-api.js"></script>
 </head>
 <body>
+    <!-- 顶部标题栏 -->
+    <div class="title-bar">
+        <div class="title-bar-text" data-i18n="photo.title">Photo</div>
+        <button class="title-bar-close" id="closeBtn">×</button>
+    </div>
+
+    <div class="main">
     <!-- 左侧照片容器 -->
     <div class="photo-container" id="photoContainer">
+        <!-- 翻页导航箭头 -->
+        <div class="nav-arrow nav-prev" id="navPrev">&#8249;</div>
+        <div class="nav-arrow nav-next" id="navNext">&#8250;</div>
         <div class="photo-wrapper" id="photoWrapper">
             <img id="photoImage" src="" alt="Photo" class="active">
             <video id="videoPlayer" controls preload="metadata">
@@ -405,22 +478,20 @@
             </video>
         </div>
         <div class="zoom-controls">
-            <button class="zoom-btn" id="zoomOut" title="Zoom Out">−</button>
+            <button class="zoom-btn" id="zoomOut" data-i18n-title="photo.zoomOut" title="Zoom Out">−</button>
             <span class="zoom-level" id="zoomLevel">100%</span>
-            <button class="zoom-btn" id="zoomIn" title="Zoom In">+</button>
-            <button class="zoom-btn" id="zoomReset" title="Reset">⟲</button>
+            <button class="zoom-btn" id="zoomIn" data-i18n-title="photo.zoomIn" title="Zoom In">+</button>
+            <button class="zoom-btn" id="zoomReset" data-i18n-title="photo.reset" title="Reset">⟲</button>
         </div>
     </div>
 
     <!-- 右侧容器 -->
     <div class="sidebar">
-        <button class="close-btn" id="closeBtn">×</button>
-        
         <!-- Tab导航 -->
         <div class="tab-nav">
-            <button class="tab-btn active" data-tab="info">Info</button>
-            <button class="tab-btn" data-tab="similar">Similar</button>
-            <button class="tab-btn" data-tab="tags">Tags</button>
+            <button class="tab-btn active" data-tab="info" data-i18n="photo.tabInfo">Info</button>
+            <button class="tab-btn" data-tab="similar" data-i18n="photo.tabSimilar">Similar</button>
+            <button class="tab-btn" data-tab="tags" data-i18n="photo.tabTags">Tags</button>
         </div>
 
         <!-- Tab内容 -->
@@ -428,45 +499,45 @@
             <!-- Info面板 -->
             <div class="tab-pane active" id="tab-info">
                 <div class="info-row">
-                    <div class="info-label">Filename</div>
+                    <div class="info-label" data-i18n="photo.filename">Filename</div>
                     <div class="info-value" id="info-filename">-</div>
                 </div>
                 <div class="info-row">
-                    <div class="info-label">Directory</div>
+                    <div class="info-label" data-i18n="photo.directory">Directory</div>
                     <div class="info-value" id="info-directory">-</div>
                 </div>
                 <div class="info-row">
-                    <div class="info-label">Date & Time</div>
+                    <div class="info-label" data-i18n="photo.datetime">Date & Time</div>
                     <div class="info-value" id="info-datetime">-</div>
                 </div>
                 <div class="info-row">
-                    <div class="info-label">Location</div>
+                    <div class="info-label" data-i18n="photo.location">Location</div>
                     <div class="info-value" id="info-location">-</div>
                 </div>
                 <div class="info-row">
-                    <div class="info-label">Coordinates</div>
+                    <div class="info-label" data-i18n="photo.coordinates">Coordinates</div>
                     <div class="info-value" id="info-coordinates">-</div>
                 </div>
                 <div class="mini-map-container" id="miniMapContainer" style="display: none;">
-                    <div class="mini-map-label">Map Location</div>
+                    <div class="mini-map-label" data-i18n="photo.mapLocation">Map Location</div>
                     <div id="miniMap"></div>
                 </div>
                 <div class="remark-container">
-                    <div class="info-label">Remark</div>
-                    <textarea class="remark-textarea" id="remark-textarea" placeholder="Add your notes here..."></textarea>
-                    <button class="remark-save-btn" id="remark-save-btn">Save</button>
+                    <div class="info-label" data-i18n="photo.remark">Remark</div>
+                    <textarea class="remark-textarea" id="remark-textarea" data-i18n-placeholder="photo.remarkPlaceholder" placeholder="Add your notes here..."></textarea>
+                    <button class="remark-save-btn" id="remark-save-btn" data-i18n="photo.save">Save</button>
                 </div>
                 <div class="like-container">
                     <button class="like-btn" id="likeBtn">
                         <span class="heart-icon">♥</span>
-                        <span class="like-text">Like this photo</span>
+                        <span class="like-text" data-i18n="photo.like">Like this photo</span>
                     </button>
                 </div>
             </div>
 
             <!-- Similar面板 -->
             <div class="tab-pane" id="tab-similar">
-                <div class="placeholder">Coming soon...</div>
+                <div class="placeholder" data-i18n="photo.comingSoon">Coming soon...</div>
             </div>
 
             <!-- Tags面板 -->
@@ -474,17 +545,33 @@
                 <div class="tags-container" id="tags-container">
                     <!-- Tags will be added here -->
                 </div>
-                <button class="add-tag-btn">Add Tag</button>
+                <div class="tag-btn-row">
+                    <button class="add-tag-btn" data-i18n="photo.addTag">Add Tag</button>
+                    <button class="match-tag-btn" data-i18n="photo.matchTag">Match Tags</button>
+                </div>
             </div>
         </div>
     </div>
+    </div><!-- /.main -->
 
     <script>
         const { ipcRenderer } = require('electron');
         const L = require('leaflet');
         const { pathToFileURL } = require('url');
+        const i18n = require('./modules/i18n');
+
+        // i18n 初始化
+        (async () => {
+            const lang = await ipcRenderer.invoke('get-language');
+            i18n.applyToDOM(document, lang);
+        })();
+        ipcRenderer.on('language-changed', (_event, lang) => {
+            i18n.applyToDOM(document, lang);
+        });
 
         let currentPhoto = null;
+        let navTotal = 0;
+        let navCurrentIndex = -1;
         let scale = 1;
         let translateX = 0;
         let translateY = 0;
@@ -505,6 +592,27 @@
         ipcRenderer.on('load-photo', (event, photoData) => {
             currentPhoto = photoData;
             loadPhoto(photoData);
+        });
+
+        // 翻页导航信息
+        ipcRenderer.on('set-navigation', (event, { currentIndex, total }) => {
+            navCurrentIndex = currentIndex;
+            navTotal = total;
+            const prevArrow = document.getElementById('navPrev');
+            const nextArrow = document.getElementById('navNext');
+            prevArrow.classList.toggle('visible', currentIndex > 0);
+            nextArrow.classList.toggle('visible', currentIndex < total - 1);
+        });
+
+        // 翻页箭头点击
+        document.getElementById('navPrev').addEventListener('click', async (e) => {
+            e.stopPropagation();
+            await ipcRenderer.invoke('navigate-photo', 'prev');
+        });
+
+        document.getElementById('navNext').addEventListener('click', async (e) => {
+            e.stopPropagation();
+            await ipcRenderer.invoke('navigate-photo', 'next');
         });
 
         // 加载照片
@@ -584,25 +692,25 @@
             
             if (photo.lat && photo.lng) {
                 document.getElementById('info-coordinates').textContent = `${photo.lat.toFixed(6)}, ${photo.lng.toFixed(6)}`;
-                document.getElementById('info-location').textContent = 'Loading...';
-                
+                document.getElementById('info-location').textContent = i18n.t('photo.loading');
+
                 // 显示地图容器
                 document.getElementById('miniMapContainer').style.display = 'block';
-                
+
                 // 初始化小地图
                 initMiniMap(photo.lat, photo.lng);
-                
+
                 // 异步获取城市名称
                 try {
                     const cityName = await ipcRenderer.invoke('get-city-name', { lat: photo.lat, lng: photo.lng });
                     document.getElementById('info-location').textContent = cityName;
                 } catch (error) {
                     console.error('Failed to get city name:', error);
-                    document.getElementById('info-location').textContent = 'Failed to load';
+                    document.getElementById('info-location').textContent = i18n.t('photo.failedLoad');
                 }
             } else {
                 document.getElementById('info-coordinates').textContent = '-';
-                document.getElementById('info-location').textContent = 'No location data';
+                document.getElementById('info-location').textContent = i18n.t('photo.noLocation');
                 // 隐藏地图容器
                 document.getElementById('miniMapContainer').style.display = 'none';
             }
@@ -618,11 +726,14 @@
             const likeText = likeBtn.querySelector('.like-text');
             if (photo.like) {
                 likeBtn.classList.add('liked');
-                likeText.textContent = 'Liked';
+                likeText.textContent = i18n.t('photo.liked');
             } else {
                 likeBtn.classList.remove('liked');
-                likeText.textContent = 'Like this photo';
+                likeText.textContent = i18n.t('photo.like');
             }
+
+            // 加载标签
+            if (photo.id) loadPhotoTags(photo.id);
         }
 
         // 缩放控制
@@ -925,7 +1036,7 @@
                 console.log('Remark saved successfully');
             } catch (error) {
                 console.error('Failed to save remark:', error);
-                alert('Failed to save remark');
+                alert(i18n.t('photo.failedSave'));
             }
         });
 
@@ -953,10 +1064,10 @@
                     currentPhoto.like = newLikeState;
                     if (newLikeState) {
                         likeBtn.classList.add('liked');
-                        likeText.textContent = 'Liked';
+                        likeText.textContent = i18n.t('photo.liked');
                     } else {
                         likeBtn.classList.remove('liked');
-                        likeText.textContent = 'Like this photo';
+                        likeText.textContent = i18n.t('photo.like');
                     }
                 }
             } catch (error) {
@@ -979,6 +1090,190 @@
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
                 window.close();
+            }
+        });
+
+        // ── Tag Management ───────────────────────────────────
+        async function loadPhotoTags(photoId) {
+            const container = document.getElementById('tags-container');
+            container.innerHTML = '';
+            try {
+                const res = await ipcRenderer.invoke('get-photo-tags', { photoId });
+                if (res.success && res.tags.length > 0) {
+                    res.tags.forEach(tag => container.appendChild(createTagPill(tag, photoId)));
+                }
+            } catch (e) {
+                console.error('Failed to load tags:', e);
+            }
+        }
+
+        function createTagPill(tag, photoId) {
+            const pill = document.createElement('div');
+            pill.className = 'tag-pill';
+            pill.dataset.tagId = tag.id;
+            pill.style.borderColor = tag.color || '#383838';
+
+            const dot = document.createElement('span');
+            dot.className = 'tag-dot';
+            dot.style.backgroundColor = tag.color || '#3498db';
+            pill.appendChild(dot);
+
+            const name = document.createElement('span');
+            name.textContent = tag.name;
+            pill.appendChild(name);
+
+            const removeBtn = document.createElement('button');
+            removeBtn.className = 'tag-remove';
+            removeBtn.textContent = '\u00d7';
+            removeBtn.addEventListener('click', async () => {
+                const res = await ipcRenderer.invoke('unlink-tag-from-photo', { photoId, tagId: tag.id });
+                if (res.success) pill.remove();
+            });
+            pill.appendChild(removeBtn);
+
+            return pill;
+        }
+
+        document.querySelector('.add-tag-btn').addEventListener('click', async () => {
+            if (!currentPhoto || !currentPhoto.id) return;
+            await ipcRenderer.invoke('open-tag-select-window', { photoId: currentPhoto.id });
+        });
+
+        ipcRenderer.on('tag-added', (_event, tagInfo) => {
+            if (!currentPhoto) return;
+            const container = document.getElementById('tags-container');
+            if (container.querySelector(`[data-tag-id="${tagInfo.tagId}"]`)) return;
+            container.appendChild(createTagPill({
+                id: tagInfo.tagId,
+                name: tagInfo.tagName,
+                color: tagInfo.tagColor
+            }, currentPhoto.id));
+        });
+
+        // ── Match Tags ───────────────────────────────────
+        let faceApiLoaded = false;
+
+        async function ensureFaceApiLoaded() {
+            if (faceApiLoaded) return true;
+            if (typeof faceapi === 'undefined') return false;
+            try {
+                const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1/model';
+                await Promise.all([
+                    faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL),
+                    faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+                    faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
+                ]);
+                faceApiLoaded = true;
+                return true;
+            } catch (err) {
+                console.error('face-api model load error:', err);
+                return false;
+            }
+        }
+
+        function euclideanDistance(a, b) {
+            let sum = 0;
+            for (let i = 0; i < a.length; i++) {
+                const d = a[i] - b[i];
+                sum += d * d;
+            }
+            return Math.sqrt(sum);
+        }
+
+        document.querySelector('.match-tag-btn').addEventListener('click', async () => {
+            if (!currentPhoto || !currentPhoto.id) return;
+
+            const btn = document.querySelector('.match-tag-btn');
+            const originalText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = i18n.t('photo.matching');
+
+            try {
+                let matchedFaceTagIds = [];
+
+                // Rule 1: Face matching (in renderer process)
+                if (currentPhoto.type !== 'video') {
+                    const loaded = await ensureFaceApiLoaded();
+                    if (loaded) {
+                        try {
+                            const img = document.getElementById('photoImage');
+                            // Create a canvas for detection (resize large images)
+                            const maxDim = 800;
+                            let canvas = document.createElement('canvas');
+                            const scale = Math.min(1, maxDim / Math.max(img.naturalWidth, img.naturalHeight));
+                            canvas.width = img.naturalWidth * scale;
+                            canvas.height = img.naturalHeight * scale;
+                            const ctx = canvas.getContext('2d');
+                            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+                            const detections = await faceapi
+                                .detectAllFaces(canvas)
+                                .withFaceLandmarks()
+                                .withFaceDescriptors();
+
+                            if (detections.length > 0) {
+                                // Get all face tags with descriptors
+                                const faceRes = await ipcRenderer.invoke('get-all-face-descriptors');
+                                if (faceRes.success && faceRes.faceTags.length > 0) {
+                                    const THRESHOLD = 0.6;
+                                    const matchedIds = new Set();
+
+                                    for (const det of detections) {
+                                        const photoDesc = Array.from(det.descriptor);
+                                        let bestMatch = null;
+                                        let bestDist = Infinity;
+
+                                        for (const faceTag of faceRes.faceTags) {
+                                            for (const sample of faceTag.descriptors) {
+                                                const dist = euclideanDistance(photoDesc, sample.descriptor);
+                                                if (dist < bestDist) {
+                                                    bestDist = dist;
+                                                    bestMatch = faceTag;
+                                                }
+                                            }
+                                        }
+
+                                        if (bestMatch && bestDist < THRESHOLD) {
+                                            matchedIds.add(bestMatch.id);
+                                        }
+                                    }
+
+                                    matchedFaceTagIds = Array.from(matchedIds);
+                                }
+                            }
+                        } catch (faceErr) {
+                            console.error('Face matching error:', faceErr);
+                        }
+                    }
+                }
+
+                // Rules 2 & 3: Event + Location matching (in main process)
+                const res = await ipcRenderer.invoke('match-tags-for-photo', {
+                    photoId: currentPhoto.id,
+                    matchedFaceTagIds
+                });
+
+                if (res.success && res.matchedTags.length > 0) {
+                    const container = document.getElementById('tags-container');
+                    for (const tag of res.matchedTags) {
+                        if (!container.querySelector(`[data-tag-id="${tag.id}"]`)) {
+                            container.appendChild(createTagPill(tag, currentPhoto.id));
+                        }
+                    }
+                    btn.textContent = i18n.t('photo.matchResult', { count: res.matchedTags.length });
+                } else {
+                    btn.textContent = i18n.t('photo.matchNone');
+                }
+
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.disabled = false;
+                }, 2000);
+
+            } catch (err) {
+                console.error('Match tags error:', err);
+                btn.textContent = originalText;
+                btn.disabled = false;
             }
         });
     </script>

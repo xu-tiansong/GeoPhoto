@@ -60,7 +60,7 @@ class DatabaseManager {
             CREATE TABLE IF NOT EXISTS tags (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT UNIQUE,
-                category TEXT CHECK(category IN ('face', 'event', 'common')), 
+                category TEXT CHECK(category IN ('face', 'event', 'location', 'common')),
                 parent_id INTEGER,
                 remark TEXT,           -- 简单描述
                 color TEXT,            -- UI显示的标签颜色
@@ -68,14 +68,26 @@ class DatabaseManager {
             )
         `);
 
-        // 3.2. 扩展：人物/宠物特征表 (解决识别持久化)
+        // 3.2. 扩展：人物/宠物元信息表
         this.db.exec(`
             CREATE TABLE IF NOT EXISTS tag_faces (
                 tag_id INTEGER PRIMARY KEY,
-                descriptor TEXT,       -- 存储 128维/更多维度的特征向量 (JSON字符串)
                 preview_path TEXT,     -- 代表性头像的路径
                 is_pet INTEGER DEFAULT 0, -- 0:人, 1:宠物
                 FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+            )
+        `);
+
+        // 3.2.1. 人脸特征样本表：每行一条特征向量，一个人物可有多条样本
+        this.db.exec(`
+            CREATE TABLE IF NOT EXISTS tag_face_descriptors (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tag_id INTEGER NOT NULL,
+                descriptor TEXT NOT NULL,  -- 单条特征向量（JSON数组，128维或更多维）
+                photo_id INTEGER,          -- 样本来源照片（可为空）
+                created_at DATETIME DEFAULT (datetime('now')),
+                FOREIGN KEY (tag_id) REFERENCES tag_faces(tag_id) ON DELETE CASCADE,
+                FOREIGN KEY (photo_id) REFERENCES photos(id) ON DELETE SET NULL
             )
         `);
 
@@ -89,6 +101,11 @@ class DatabaseManager {
                 FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
             )
         `);
+
+        // 3.3.1 迁移：为 tag_events 添加 location_tag_id 列
+        try {
+            this.db.exec(`ALTER TABLE tag_events ADD COLUMN location_tag_id INTEGER REFERENCES tags(id) ON DELETE SET NULL`);
+        } catch (_) { /* 列已存在则忽略 */ }
 
         // 3.4. 扩展：地点属性表 (解决地理位置属性)
         this.db.exec(`
@@ -177,6 +194,7 @@ class DatabaseManager {
             this.db.exec(`CREATE INDEX IF NOT EXISTS idx_photos_time_geo ON photos(time, lat, lng)`);
             this.db.exec(`CREATE INDEX IF NOT EXISTS idx_directories_path ON directories(path)`);
             this.db.exec(`CREATE INDEX IF NOT EXISTS idx_tags_category ON tags(category)`);
+            this.db.exec(`CREATE INDEX IF NOT EXISTS idx_face_descriptors_tag ON tag_face_descriptors(tag_id)`);
             console.log('数据库索引已创建/验证');
         } catch (err) {
             console.log('创建索引时出错:', err);
@@ -232,9 +250,302 @@ class DatabaseManager {
         return buildTree();
     }
 
-    addTag(name, category = 'common', color = '#3498db') {
-        const stmt = this.db.prepare('INSERT OR IGNORE INTO tags (name, category, color) VALUES (?, ?, ?)');
-        return stmt.run(name, category, color);
+    addTag(name, category = 'common', color = '#3498db', parentId = null) {
+        const stmt = this.db.prepare(
+            'INSERT OR IGNORE INTO tags (name, category, color, parent_id) VALUES (?, ?, ?, ?)'
+        );
+        return stmt.run(name, category, color, parentId);
+    }
+
+    /**
+     * 完整保存一个 Tag 实例（基础表 + 对应扩展表）
+     * @param {import('./Tag').Tag} tag
+     */
+    saveTag(tag) {
+        const upsertBase = this.db.prepare(`
+            INSERT INTO tags (name, category, color, parent_id, remark)
+            VALUES (@name, @category, @color, @parent_id, @remark)
+            ON CONFLICT(name) DO UPDATE SET
+                category  = excluded.category,
+                color     = excluded.color,
+                parent_id = excluded.parent_id,
+                remark    = excluded.remark
+        `);
+
+        const saveAll = this.db.transaction(() => {
+            const result = upsertBase.run({
+                name:      tag.name,
+                category:  tag.category,
+                color:     tag.color,
+                parent_id: tag.parentId,
+                remark:    tag.remark
+            });
+            const id = result.lastInsertRowid
+                || this.db.prepare('SELECT id FROM tags WHERE name = ?').get(tag.name).id;
+
+            switch (tag.category) {
+                case 'face':
+                    // 写入人物元信息
+                    this.db.prepare(`
+                        INSERT INTO tag_faces (tag_id, preview_path, is_pet)
+                        VALUES (?, ?, ?)
+                        ON CONFLICT(tag_id) DO UPDATE SET
+                            preview_path = excluded.preview_path,
+                            is_pet       = excluded.is_pet
+                    `).run(id, tag.previewPath, tag.isPet ? 1 : 0);
+                    // 写入新增的特征向量样本（不覆盖已有样本）
+                    if (Array.isArray(tag.descriptors) && tag.descriptors.length > 0) {
+                        const insertDesc = this.db.prepare(`
+                            INSERT INTO tag_face_descriptors (tag_id, descriptor, photo_id)
+                            VALUES (?, ?, ?)
+                        `);
+                        for (const sample of tag.descriptors) {
+                            // sample 可以是 { descriptor, photoId } 或直接是向量数组
+                            const vec = Array.isArray(sample) ? sample : sample.descriptor;
+                            const photoId = sample.photoId ?? null;
+                            if (vec) insertDesc.run(id, JSON.stringify(vec), photoId);
+                        }
+                    }
+                    break;
+                case 'event':
+                    this.db.prepare(`
+                        INSERT INTO tag_events (tag_id, start_time, end_time)
+                        VALUES (?, ?, ?)
+                        ON CONFLICT(tag_id) DO UPDATE SET
+                            start_time = excluded.start_time,
+                            end_time   = excluded.end_time
+                    `).run(id,
+                           tag.startTime ? tag.startTime.toISOString() : null,
+                           tag.endTime   ? tag.endTime.toISOString()   : null);
+                    break;
+                case 'location':
+                    this.db.prepare(`
+                        INSERT INTO tag_locations (tag_id, lat, lng, radius, address)
+                        VALUES (?, ?, ?, ?, ?)
+                        ON CONFLICT(tag_id) DO UPDATE SET
+                            lat     = excluded.lat,
+                            lng     = excluded.lng,
+                            radius  = excluded.radius,
+                            address = excluded.address
+                    `).run(id, tag.lat, tag.lng, tag.radius, tag.address);
+                    break;
+            }
+            return id;
+        });
+
+        return saveAll();
+    }
+
+    /**
+     * 查询单个 Tag（含扩展字段），返回合并后的原始行对象
+     * @param {number} id
+     */
+    getTagById(id) {
+        const base = this.db.prepare('SELECT * FROM tags WHERE id = ?').get(id);
+        if (!base) return null;
+        return this._mergeTagExtension(base);
+    }
+
+    /**
+     * 查询某分类下所有 Tag（含扩展字段），构建树结构
+     * @param {string} category
+     * @returns {object[]}
+     */
+    getTagsByCategory(category) {
+        const rows = this.db.prepare('SELECT * FROM tags WHERE category = ?').all(category);
+        const extended = rows.map(r => this._mergeTagExtension(r));
+        return this._buildTree(extended);
+    }
+
+    /**
+     * 更新标签基础字段（name / remark / color）
+     * @param {number} id
+     * @param {{ name: string, remark: string, color: string }} fields
+     */
+    updateTagBase(id, { name, remark, color }) {
+        return this.db.prepare(
+            'UPDATE tags SET name = ?, remark = ?, color = ? WHERE id = ?'
+        ).run(name, remark ?? '', color ?? '#3498db', id);
+    }
+
+    /**
+     * 移动标签：变更父节点
+     * @param {number}      id       - 要移动的标签 id
+     * @param {number|null} parentId - 新父节点 id，null 表示升为根节点
+     */
+    moveTag(id, parentId) {
+        return this.db.prepare(
+            'UPDATE tags SET parent_id = ? WHERE id = ?'
+        ).run(parentId ?? null, id);
+    }
+
+    /**
+     * 删除标签及其所有后代（深度优先，从叶节点开始删除）
+     * 注意：parent_id FK 没有 ON DELETE CASCADE，须手动递归删除。
+     * @param {number} id
+     */
+    deleteTag(id) {
+        const collectIds = (tagId, out = []) => {
+            const children = this.db.prepare('SELECT id FROM tags WHERE parent_id = ?').all(tagId);
+            for (const c of children) collectIds(c.id, out);
+            out.push(tagId); // 后序：先删子再删自身
+            return out;
+        };
+
+        const deleteAll = this.db.transaction(() => {
+            const ids = collectIds(id);
+            const del = this.db.prepare('DELETE FROM tags WHERE id = ?');
+            for (const tid of ids) del.run(tid);
+        });
+
+        return deleteAll();
+    }
+
+    // ── 人脸特征样本操作 ──────────────────────────────────
+
+    /**
+     * 为人物标签添加一条人脸特征样本
+     * @param {number}        tagId
+     * @param {number[]}      descriptor - 特征向量数组
+     * @param {number|null}   photoId    - 来源照片 ID（可选）
+     * @returns {object} better-sqlite3 RunResult
+     */
+    addFaceDescriptor(tagId, descriptor, photoId = null) {
+        return this.db.prepare(`
+            INSERT INTO tag_face_descriptors (tag_id, descriptor, photo_id)
+            VALUES (?, ?, ?)
+        `).run(tagId, JSON.stringify(descriptor), photoId);
+    }
+
+    /**
+     * 获取某人物的所有人脸特征样本
+     * @param {number} tagId
+     * @returns {{ id, tag_id, descriptor: number[], photo_id, created_at }[]}
+     */
+    getFaceDescriptors(tagId) {
+        const rows = this.db.prepare(
+            'SELECT * FROM tag_face_descriptors WHERE tag_id = ? ORDER BY created_at ASC'
+        ).all(tagId);
+        return rows.map(r => ({
+            ...r,
+            descriptor: JSON.parse(r.descriptor)
+        }));
+    }
+
+    /**
+     * 删除单条人脸特征样本
+     * @param {number} descriptorId - tag_face_descriptors.id
+     */
+    deleteFaceDescriptor(descriptorId) {
+        return this.db.prepare('DELETE FROM tag_face_descriptors WHERE id = ?').run(descriptorId);
+    }
+
+    /**
+     * 清空某人物的所有人脸特征样本
+     * @param {number} tagId
+     */
+    clearFaceDescriptors(tagId) {
+        return this.db.prepare('DELETE FROM tag_face_descriptors WHERE tag_id = ?').run(tagId);
+    }
+
+    /**
+     * 更新人物的代表头像路径
+     * @param {number} tagId
+     * @param {string} previewPath
+     */
+    updateFacePreview(tagId, previewPath) {
+        return this.db.prepare(
+            'UPDATE tag_faces SET preview_path = ? WHERE tag_id = ?'
+        ).run(previewPath, tagId);
+    }
+
+    // ── 事件日期操作 ──────────────────────────────────
+
+    /**
+     * 获取所有已设置日期的事件标签（用于时间轴高亮）
+     * @returns {{ id, name, color, start_time, end_time }[]}
+     */
+    getAllEventDates() {
+        return this.db.prepare(`
+            SELECT t.id, t.name, t.color, e.start_time, e.end_time
+            FROM tags t
+            JOIN tag_events e ON t.id = e.tag_id
+            WHERE t.category = 'event'
+              AND e.start_time IS NOT NULL
+              AND e.end_time IS NOT NULL
+        `).all();
+    }
+
+    /**
+     * 更新事件标签的日期范围
+     * @param {number}      tagId
+     * @param {string|null} startTime - ISO 日期字符串
+     * @param {string|null} endTime   - ISO 日期字符串
+     */
+    updateEventDates(tagId, startTime, endTime) {
+        return this.db.prepare(
+            'UPDATE tag_events SET start_time = ?, end_time = ? WHERE tag_id = ?'
+        ).run(startTime, endTime, tagId);
+    }
+
+    /**
+     * 更新事件标签关联的地标标签
+     * @param {number}      tagId          - 事件标签 ID
+     * @param {number|null} locationTagId  - 地标标签 ID（null 表示清除）
+     */
+    updateEventLocationTag(tagId, locationTagId) {
+        return this.db.prepare(
+            'UPDATE tag_events SET location_tag_id = ? WHERE tag_id = ?'
+        ).run(locationTagId, tagId);
+    }
+
+    getLocationTags() {
+        return this.db.prepare(`
+            SELECT t.id, t.name, t.color, l.lat, l.lng, l.radius
+            FROM tag_locations l
+            JOIN tags t ON t.id = l.tag_id
+            WHERE l.lat IS NOT NULL AND l.lng IS NOT NULL
+        `).all();
+    }
+
+    updateLocation(tagId, lat, lng, radius) {
+        return this.db.prepare(`
+            INSERT INTO tag_locations (tag_id, lat, lng, radius)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(tag_id) DO UPDATE SET
+                lat    = excluded.lat,
+                lng    = excluded.lng,
+                radius = excluded.radius
+        `).run(tagId, lat, lng, radius);
+    }
+
+    /** @private 将基础行与扩展表行合并 */
+    _mergeTagExtension(base) {
+        let extra = {};
+        switch (base.category) {
+            case 'face': {
+                const meta = this.db.prepare('SELECT * FROM tag_faces WHERE tag_id = ?').get(base.id) || {};
+                const descriptors = this.db.prepare(
+                    'SELECT * FROM tag_face_descriptors WHERE tag_id = ? ORDER BY created_at ASC'
+                ).all(base.id);
+                extra = { ...meta, descriptors };
+                break;
+            }
+            case 'event':
+                extra = this.db.prepare('SELECT * FROM tag_events WHERE tag_id = ?').get(base.id) || {};
+                break;
+            case 'location':
+                extra = this.db.prepare('SELECT * FROM tag_locations WHERE tag_id = ?').get(base.id) || {};
+                break;
+        }
+        return { ...base, ...extra };
+    }
+
+    /** @private 将扁平行数组构建为树结构 */
+    _buildTree(rows, parentId = null) {
+        return rows
+            .filter(r => r.parent_id === parentId)
+            .map(r => ({ ...r, children: this._buildTree(rows, r.id) }));
     }
 
     linkTagToPhoto(photoId, tagId) {
@@ -249,6 +560,70 @@ class DatabaseManager {
             WHERE pt.photo_id = ?
         `;
         return this.db.prepare(sql).all(photoId);
+    }
+
+    unlinkTagFromPhoto(photoId, tagId) {
+        return this.db.prepare('DELETE FROM photo_tags WHERE photo_id = ? AND tag_id = ?').run(photoId, tagId);
+    }
+
+    /**
+     * 获取所有 face tag 及其 descriptors（用于人脸匹配）
+     * @returns {{ id, name, color, descriptors: {descriptor: number[]}[] }[]}
+     */
+    getAllFaceTagsWithDescriptors() {
+        const tags = this.db.prepare(
+            "SELECT * FROM tags WHERE category = 'face'"
+        ).all();
+        return tags.map(t => {
+            const descriptors = this.db.prepare(
+                'SELECT * FROM tag_face_descriptors WHERE tag_id = ? ORDER BY created_at ASC'
+            ).all(t.id);
+            return {
+                ...t,
+                descriptors: descriptors.map(d => ({
+                    ...d,
+                    descriptor: JSON.parse(d.descriptor)
+                }))
+            };
+        }).filter(t => t.descriptors.length > 0);
+    }
+
+    /**
+     * 获取所有有时间范围和关联地标的 event tags
+     * @returns {{ id, name, color, start_time, end_time, location_tag_id }[]}
+     */
+    getAllEventTagsWithLocation() {
+        return this.db.prepare(`
+            SELECT t.id, t.name, t.color, t.parent_id,
+                   e.start_time, e.end_time, e.location_tag_id
+            FROM tags t
+            JOIN tag_events e ON t.id = e.tag_id
+            WHERE t.category = 'event'
+              AND e.start_time IS NOT NULL
+              AND e.end_time IS NOT NULL
+              AND e.location_tag_id IS NOT NULL
+        `).all();
+    }
+
+    /**
+     * 获取某个 location tag 的所有子孙 tag（扁平列表，含自身）
+     * @param {number} tagId
+     * @returns {object[]} 扁平的 location tag 记录列表（含 lat, lng, radius）
+     */
+    getLocationTagDescendants(tagId) {
+        const result = [];
+        const collect = (id, depth) => {
+            const base = this.db.prepare('SELECT * FROM tags WHERE id = ?').get(id);
+            if (!base) return;
+            const loc = this.db.prepare('SELECT * FROM tag_locations WHERE tag_id = ?').get(id) || {};
+            result.push({ ...base, ...loc, _depth: depth });
+            const children = this.db.prepare(
+                "SELECT id FROM tags WHERE parent_id = ? AND category = 'location'"
+            ).all(id);
+            for (const c of children) collect(c.id, depth + 1);
+        };
+        collect(tagId, 0);
+        return result;
     }
 
     // ==================== 新增：轨迹管理 (3.4) ====================
@@ -549,6 +924,20 @@ class DatabaseManager {
      */
     getWindowState() {
         return this.getSetting('windowState');
+    }
+
+    /**
+     * 保存语言设置
+     */
+    saveLanguage(lang) {
+        this.saveSetting('language', lang);
+    }
+
+    /**
+     * 读取语言设置
+     */
+    getLanguage() {
+        return this.getSetting('language');
     }
 
     /**

@@ -35,6 +35,14 @@ class Timeline {
         this.dragStartTimelineStart = null;
         this.dragStartTimelineEnd = null;
         
+        // 事件标签日期标记数据
+        this.eventMarkers = [];
+        // 预处理后的标记索引 { 'YYYY-MM-DD': [...], 'YYYY-MM': [...], 'YYYY-MM-DDTHH': [...] }
+        this._eventMarkerIndex = { day: {}, month: {}, hour: {} };
+
+        // tooltip 元素
+        this._tooltip = null;
+
         // 回调函数
         this.selectionChangeCallback = null;
         
@@ -284,7 +292,8 @@ class Timeline {
      * 获取星期几名称
      */
     getDayName(date) {
-        const days = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+        const i18n = require('./i18n');
+        const days = i18n.t('timeline.days').split(',');
         return days[date.getDay()];
     }
 
@@ -292,7 +301,7 @@ class Timeline {
      * 获取月份缩写
      */
     getMonthAbbr(month) {
-        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
                        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
         return months[month];
     }
@@ -301,15 +310,20 @@ class Timeline {
      * 计算时间到像素位置
      */
     timeToPixel(time) {
-        const startMs = this.timelineStart.getTime();
         const timeMs = time.getTime();
         const msPerDay = 24 * 60 * 60 * 1000;
-        
+
         if (this.scaleMode === 'day') {
-            const days = (timeMs - startMs) / msPerDay;
+            // Snap to local midnight to match renderDayScale
+            const snappedStart = new Date(this.timelineStart);
+            snappedStart.setHours(0, 0, 0, 0);
+            const days = (timeMs - snappedStart.getTime()) / msPerDay;
             return days * this.tickWidth;
         } else if (this.scaleMode === 'hour') {
-            const hours = (timeMs - startMs) / (60 * 60 * 1000);
+            // Snap to hour boundary to match renderHourScale
+            const snappedStart = new Date(this.timelineStart);
+            snappedStart.setMinutes(0, 0, 0);
+            const hours = (timeMs - snappedStart.getTime()) / (60 * 60 * 1000);
             return hours * this.tickWidth;
         } else {
             // 对齐到月初，与渲染一致
@@ -340,15 +354,20 @@ class Timeline {
      * 计算像素位置到时间
      */
     pixelToTime(pixel) {
-        const startMs = this.timelineStart.getTime();
         const msPerDay = 24 * 60 * 60 * 1000;
-        
+
         if (this.scaleMode === 'day') {
+            // Snap to local midnight to match renderDayScale
+            const snappedStart = new Date(this.timelineStart);
+            snappedStart.setHours(0, 0, 0, 0);
             const days = pixel / this.tickWidth;
-            return new Date(startMs + days * msPerDay);
+            return new Date(snappedStart.getTime() + days * msPerDay);
         } else if (this.scaleMode === 'hour') {
+            // Snap to hour boundary to match renderHourScale
+            const snappedStart = new Date(this.timelineStart);
+            snappedStart.setMinutes(0, 0, 0);
             const hours = pixel / this.tickWidth;
-            return new Date(startMs + hours * 60 * 60 * 1000);
+            return new Date(snappedStart.getTime() + hours * 60 * 60 * 1000);
         } else {
             // 对齐到月初基准
             const baseMonthStart = new Date(this.timelineStart);
@@ -374,9 +393,190 @@ class Timeline {
     }
 
     /**
+     * 设置事件标签日期标记数据，并预处理索引
+     * @param {Array<{id, name, color, start_time, end_time}>} events
+     */
+    setEventMarkers(events) {
+        this.eventMarkers = events || [];
+        this._buildMarkerIndex();
+        this.render(); // 重新渲染以显示高亮
+    }
+
+    /**
+     * 预处理事件标记索引：将每个事件的开始/结束日期映射到不同粒度的 key
+     */
+    _buildMarkerIndex() {
+        const idx = { day: {}, month: {}, hour: {} };
+
+        for (const evt of this.eventMarkers) {
+            const start = evt.start_time;
+            const end   = evt.end_time;
+            if (!start || !end) continue;
+
+            // 日粒度 key: 'YYYY-MM-DD'
+            const startDay = start.substring(0, 10);
+            const endDay   = end.substring(0, 10);
+
+            const addEntry = (map, key, entry) => {
+                if (!map[key]) map[key] = [];
+                map[key].push(entry);
+            };
+
+            addEntry(idx.day, startDay, { type: 'start', name: evt.name, color: evt.color });
+            if (endDay !== startDay) {
+                addEntry(idx.day, endDay, { type: 'end', name: evt.name, color: evt.color });
+            }
+
+            // 月粒度 key: 'YYYY-MM'
+            const startMonth = start.substring(0, 7);
+            const endMonth   = end.substring(0, 7);
+            addEntry(idx.month, startMonth, { type: 'start', name: evt.name, color: evt.color });
+            if (endMonth !== startMonth) {
+                addEntry(idx.month, endMonth, { type: 'end', name: evt.name, color: evt.color });
+            }
+
+            // 小时粒度 key: 'YYYY-MM-DDTHH'
+            // 开始日期的第一个小时 (00)，结束日期的最后一个小时 (23)
+            const startHour = startDay + 'T00';
+            const endHour   = endDay + 'T23';
+            addEntry(idx.hour, startHour, { type: 'start', name: evt.name, color: evt.color });
+            addEntry(idx.hour, endHour, { type: 'end', name: evt.name, color: evt.color });
+        }
+
+        this._eventMarkerIndex = idx;
+    }
+
+    /**
+     * 根据当前 scaleMode 和刻度时间获取匹配的事件标记
+     * @param {Date} tickTime
+     * @returns {Array|null} 匹配的事件标记数组
+     */
+    _getEventMarkersForTick(tickTime) {
+        const idx = this._eventMarkerIndex;
+        if (!idx) return null;
+
+        let key;
+        if (this.scaleMode === 'hour') {
+            const d = tickTime;
+            key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}T${String(d.getHours()).padStart(2,'0')}`;
+            return idx.hour[key] || null;
+        } else if (this.scaleMode === 'day') {
+            const d = tickTime;
+            key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+            return idx.day[key] || null;
+        } else if (this.scaleMode === 'month') {
+            const d = tickTime;
+            key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+            return idx.month[key] || null;
+        }
+        return null;
+    }
+
+    /**
+     * 为刻度元素添加事件高亮标记和 tooltip 交互
+     * @param {HTMLElement} tick - 刻度 DOM 元素
+     * @param {Array} markers - 匹配的事件标记数组
+     */
+    _applyEventHighlight(tick, markers) {
+        if (!markers || markers.length === 0) return;
+
+        // 添加高亮样式
+        tick.classList.add('timeline-tick-event');
+
+        // 使用第一个事件的颜色作为底部标记色
+        const color = markers[0].color || '#4a9eff';
+        const dot = document.createElement('div');
+        dot.className = 'timeline-tick-event-dot';
+        dot.style.backgroundColor = color;
+        if (markers.length > 1) {
+            // 多个事件时显示多色
+            const colors = markers.map(m => m.color || '#4a9eff');
+            dot.style.background = `linear-gradient(90deg, ${colors.join(', ')})`;
+        }
+        tick.appendChild(dot);
+
+        // Tooltip 交互
+        tick.addEventListener('mouseenter', (e) => {
+            this._showTooltip(e, markers);
+        });
+        tick.addEventListener('mouseleave', () => {
+            this._hideTooltip();
+        });
+        tick.addEventListener('mousemove', (e) => {
+            this._positionTooltip(e);
+        });
+    }
+
+    /**
+     * 显示气泡提示
+     */
+    _showTooltip(e, markers) {
+        this._hideTooltip();
+
+        const tip = document.createElement('div');
+        tip.className = 'timeline-event-tooltip';
+
+        for (const m of markers) {
+            const row = document.createElement('div');
+            row.className = 'timeline-event-tooltip-row';
+
+            const dot = document.createElement('span');
+            dot.className = 'timeline-event-tooltip-dot';
+            dot.style.backgroundColor = m.color || '#4a9eff';
+            row.appendChild(dot);
+
+            const label = document.createElement('span');
+            const typeLabel = m.type === 'start' ? '▶' : '■';
+            label.textContent = `${typeLabel} ${m.name}`;
+            row.appendChild(label);
+
+            tip.appendChild(row);
+        }
+
+        document.body.appendChild(tip);
+        this._tooltip = tip;
+        this._positionTooltip(e);
+    }
+
+    /**
+     * 定位气泡提示
+     */
+    _positionTooltip(e) {
+        if (!this._tooltip) return;
+        const tip = this._tooltip;
+        const x = e.clientX;
+        const y = e.clientY;
+
+        // 先显示以获取尺寸
+        tip.style.left = x + 'px';
+        tip.style.top  = (y - tip.offsetHeight - 10) + 'px';
+
+        // 防止超出屏幕右侧
+        const rect = tip.getBoundingClientRect();
+        if (rect.right > window.innerWidth) {
+            tip.style.left = (window.innerWidth - rect.width - 8) + 'px';
+        }
+        // 如果超出顶部，显示在下方
+        if (rect.top < 0) {
+            tip.style.top = (y + 20) + 'px';
+        }
+    }
+
+    /**
+     * 隐藏气泡提示
+     */
+    _hideTooltip() {
+        if (this._tooltip) {
+            this._tooltip.remove();
+            this._tooltip = null;
+        }
+    }
+
+    /**
      * 渲染刻度
      */
     render() {
+        this._hideTooltip();
         this.upperRow.innerHTML = '';
         this.lowerRow.innerHTML = '';
         
@@ -416,6 +616,11 @@ class Timeline {
                 tick.style.left = x + 'px';
                 tick.style.width = this.tickWidth + 'px';
                 tick.textContent = currentHour.getHours().toString().padStart(2, '0');
+
+                // 事件标记高亮
+                const markers = this._getEventMarkersForTick(currentHour);
+                if (markers) this._applyEventHighlight(tick, markers);
+
                 this.lowerRow.appendChild(tick);
             }
             currentHour = new Date(currentHour.getTime() + 3600000);
@@ -469,6 +674,11 @@ class Timeline {
                 tick.style.left = x + 'px';
                 tick.style.width = this.tickWidth + 'px';
                 tick.textContent = currentDay.getDate().toString();
+
+                // 事件标记高亮
+                const markers = this._getEventMarkersForTick(currentDay);
+                if (markers) this._applyEventHighlight(tick, markers);
+
                 this.lowerRow.appendChild(tick);
             }
             currentDay = new Date(currentDay);
@@ -523,6 +733,11 @@ class Timeline {
                 tick.style.left = x + 'px';
                 tick.style.width = this.tickWidth + 'px';
                 tick.textContent = this.getMonthAbbr(currentMonth.getMonth());
+
+                // 事件标记高亮
+                const markers = this._getEventMarkersForTick(currentMonth);
+                if (markers) this._applyEventHighlight(tick, markers);
+
                 this.lowerRow.appendChild(tick);
             }
             currentMonth = new Date(currentMonth);
@@ -903,7 +1118,7 @@ class Timeline {
      */
     getCurrentRange() {
         let endForDisplay = new Date(this.selectionEnd);
-        
+
         if (this.scaleMode === 'month' &&
             endForDisplay.getDate() === 1 &&
             endForDisplay.getHours() === 0 &&
@@ -912,8 +1127,14 @@ class Timeline {
             endForDisplay.getMilliseconds() === 0) {
             // 月初零点 → 上一个月才是最后覆盖的月
             endForDisplay.setMonth(endForDisplay.getMonth() - 1);
+        } else if (this.scaleMode === 'day') {
+            // 内部使用排他性结束时间（下一天零点），显示时减一天
+            endForDisplay.setDate(endForDisplay.getDate() - 1);
+        } else if (this.scaleMode === 'hour') {
+            // 内部使用排他性结束时间（下一小时整点），显示时减一小时
+            endForDisplay.setHours(endForDisplay.getHours() - 1);
         }
-        
+
         return {
             start: this.toLocalISOString(this.selectionStart),
             end: this.toLocalISOString(endForDisplay)
@@ -962,10 +1183,16 @@ class Timeline {
         this.selectionStart = this.parseLocalDate(start);
         this.selectionEnd = this.parseLocalDate(end);
 
-        // Month mode: YYYY-MM end means the START of that month,
-        // so advance to the start of the next month to include it
+        // 用户输入的结束时间是包含性的，内部需要转为排他性（下一个刻度的起始）
         if (this.scaleMode === 'month' && typeof end === 'string' && /^\d{4}-\d{2}$/.test(end)) {
+            // Month mode: YYYY-MM → advance to start of next month
             this.selectionEnd.setMonth(this.selectionEnd.getMonth() + 1);
+        } else if (this.scaleMode === 'day' && typeof end === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(end)) {
+            // Day mode: YYYY-MM-DD → advance to start of next day
+            this.selectionEnd.setDate(this.selectionEnd.getDate() + 1);
+        } else if (this.scaleMode === 'hour' && typeof end === 'string') {
+            // Hour mode: advance to start of next hour
+            this.selectionEnd.setHours(this.selectionEnd.getHours() + 1);
         }
 
         // Ensure the timeline encompasses the new range

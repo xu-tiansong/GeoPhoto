@@ -11,6 +11,10 @@ const MenuManager = require('./modules/MenuManager');
 const PhotoWindow = require('./modules/PhotoWindow');
 const PhotosManageWindow = require('./modules/PhotosManageWindow');
 const TimeLineSettingWindow = require('./modules/TimeLineSettingWindow');
+const TagManageWindow = require('./modules/TagManageWindow');
+const TagSelectWindow = require('./modules/TagSelectWindow');
+const { EventTag, LandmarkTag } = require('./modules/Tag');
+const i18n = require('./modules/i18n');
 
 // ==================== 全局变量 ====================
 let mainWindow;
@@ -20,7 +24,12 @@ let menuManager;
 let photoWindow;
 let photosManageWindow;
 let timelineSettingWindow;
+let tagManageWindow;
+let tagSelectWindow;
 let currentPhotoDirectory = null;
+
+// 待打开的 TimeLineSettingWindow 初始 Tab
+let pendingInitialTab = null;
 
 // 逆地理编码缓存和速率限制
 const cityCache = new Map();
@@ -31,20 +40,54 @@ const geocodingInterval = 1500; // 1.5秒间隔
 function initializeModules() {
     // 初始化数据库
     db = new DatabaseManager('photos.db');
-    
+
+    // 初始化语言（DB > 系统语言 > 英文）
+    const savedLang = db.getLanguage();
+    if (savedLang) {
+        i18n.setLanguage(savedLang);
+    } else {
+        const sysLocale = app.getLocale();
+        const lang = sysLocale.startsWith('zh') ? 'zh' : 'en';
+        i18n.setLanguage(lang);
+        db.saveLanguage(lang);
+    }
+
     // 初始化照片管理器
     photoManager = new PhotoFilesManager(db);
-    
+
     // 初始化菜单管理器并注册处理器
-    menuManager = new MenuManager(mainWindow);
+    menuManager = new MenuManager(mainWindow, i18n);
     menuManager.registerHandler('setPhotoDirectory', handleSetPhotoDirectory);
     menuManager.registerHandler('timelineSettings', () => {
+        pendingInitialTab = null;
         mainWindow.webContents.send('get-timeline-state');
     });
-    
+    menuManager.registerHandler('timeRangeSettings', () => {
+        pendingInitialTab = 'TimeRange';
+        mainWindow.webContents.send('get-timeline-state');
+    });
+    menuManager.registerHandler('languageEnglish', () => applyLanguage('en'));
+    menuManager.registerHandler('languageChinese', () => applyLanguage('zh'));
+
     // 读取已保存的照片目录
     currentPhotoDirectory = db.getPhotoDirectory();
     console.log('当前照片目录:', currentPhotoDirectory);
+}
+
+/**
+ * 切换语言：保存、更新菜单、广播到所有窗口
+ */
+function applyLanguage(lang) {
+    i18n.setLanguage(lang);
+    db.saveLanguage(lang);
+    menuManager.setLanguage(lang);
+
+    // 广播给所有渲染进程窗口
+    BrowserWindow.getAllWindows().forEach(win => {
+        if (!win.isDestroyed()) {
+            win.webContents.send('language-changed', lang);
+        }
+    });
 }
 
 // ==================== 目录处理 ====================
@@ -141,14 +184,27 @@ function createWindow() {
     
     // 创建照片管理窗口管理器
     photosManageWindow = new PhotosManageWindow(mainWindow);
-    
+
+    // 创建标签管理窗口管理器
+    tagManageWindow = new TagManageWindow(mainWindow, db);
+    tagSelectWindow = new TagSelectWindow(db);
+
     // 创建菜单管理器并注册处理器
-    menuManager = new MenuManager(mainWindow);
+    menuManager = new MenuManager(mainWindow, i18n);
     menuManager.registerHandler('setPhotoDirectory', handleSetPhotoDirectory);
+    menuManager.registerHandler('tagManagement',       () => tagManageWindow.show());
+    menuManager.registerHandler('landmarkManagement',  () => tagManageWindow.show('location'));
     menuManager.registerHandler('timelineSettings', () => {
+        pendingInitialTab = null;
         mainWindow.webContents.send('get-timeline-state');
     });
-    
+    menuManager.registerHandler('timeRangeSettings', () => {
+        pendingInitialTab = 'TimeRange';
+        mainWindow.webContents.send('get-timeline-state');
+    });
+    menuManager.registerHandler('languageEnglish', () => applyLanguage('en'));
+    menuManager.registerHandler('languageChinese', () => applyLanguage('zh'));
+
     // 设置初始全屏状态
     if (windowState.isFullScreen) {
         menuManager.isFullScreen = true;
@@ -196,6 +252,9 @@ function createWindow() {
 
 // ==================== IPC 处理器 ====================
 function registerIpcHandlers() {
+    // 获取当前语言
+    ipcMain.handle('get-language', () => i18n.getLanguage());
+
     // 扫描目录
     ipcMain.handle('scan-directory', async () => {
         const { canceled, filePaths } = await dialog.showOpenDialog({
@@ -247,15 +306,37 @@ function registerIpcHandlers() {
     });
 
     // 打开照片窗口
-    ipcMain.handle('open-photo-window', (event, photoData) => {
+    ipcMain.handle('open-photo-window', (event, arg) => {
         if (photoWindow) {
+            // 兼容两种调用方式：{ photo, navPhotos, currentIndex } 或直接传照片对象
+            let photoData, navPhotos = null, currentIndex = -1;
+            if (arg && arg.photo) {
+                photoData = arg.photo;
+                navPhotos = arg.navPhotos || null;
+                currentIndex = typeof arg.currentIndex === 'number' ? arg.currentIndex : -1;
+            } else {
+                photoData = arg;
+            }
             // 从数据库获取最新的照片数据（包括最新的remark）
             const latestPhotoData = db.getPhotoByPath(photoData.directory, photoData.filename);
             if (!latestPhotoData) {
                 return { success: false, error: '文件不存在或已移动，请重新扫描目录。' };
             }
-            photoWindow.show(latestPhotoData);
+            photoWindow.show(latestPhotoData, navPhotos, currentIndex);
         }
+        return { success: true };
+    });
+
+    // 照片预览窗口翻页
+    ipcMain.handle('navigate-photo', (event, direction) => {
+        if (!photoWindow || !photoWindow.navPhotos) return { success: false };
+        const { navPhotos, currentIndex } = photoWindow;
+        const newIndex = direction === 'next' ? currentIndex + 1 : currentIndex - 1;
+        if (newIndex < 0 || newIndex >= navPhotos.length) return { success: false };
+        const navPhoto = navPhotos[newIndex];
+        const latestPhotoData = db.getPhotoByPath(navPhoto.directory, navPhoto.filename);
+        if (!latestPhotoData) return { success: false };
+        photoWindow.navigateTo(latestPhotoData, newIndex);
         return { success: true };
     });
 
@@ -360,10 +441,154 @@ function registerIpcHandlers() {
         }
     });
 
+    // 获取所有事件标签日期（用于时间轴高亮）
+    ipcMain.handle('get-event-tag-dates', () => {
+        return db.getAllEventDates();
+    });
+
+    ipcMain.handle('get-location-tags', () => {
+        return db.getLocationTags();
+    });
+
+    // ── Photo Tags ─────────────────────────────────────────
+    ipcMain.handle('get-photo-tags', (_event, { photoId }) => {
+        try {
+            const tags = db.getPhotoTags(photoId);
+            return { success: true, tags };
+        } catch (e) {
+            return { success: false, error: e.message };
+        }
+    });
+
+    ipcMain.handle('link-tag-to-photo', (_event, { photoId, tagId }) => {
+        try {
+            db.linkTagToPhoto(photoId, tagId);
+            return { success: true };
+        } catch (e) {
+            return { success: false, error: e.message };
+        }
+    });
+
+    ipcMain.handle('unlink-tag-from-photo', (_event, { photoId, tagId }) => {
+        try {
+            db.unlinkTagFromPhoto(photoId, tagId);
+            return { success: true };
+        } catch (e) {
+            return { success: false, error: e.message };
+        }
+    });
+
+    ipcMain.handle('open-tag-select-window', (event, { photoId }) => {
+        const senderWindow = BrowserWindow.fromWebContents(event.sender);
+        if (!senderWindow) return { success: false };
+
+        tagSelectWindow.show(senderWindow, (tagInfo) => {
+            try {
+                db.linkTagToPhoto(photoId, tagInfo.tagId);
+                if (senderWindow && !senderWindow.isDestroyed()) {
+                    senderWindow.webContents.send('tag-added', tagInfo);
+                }
+            } catch (e) {
+                console.error('Failed to link tag:', e);
+            }
+        });
+        return { success: true };
+    });
+
+    // ── 标签匹配 ─────────────────────────────────────────
+    ipcMain.handle('get-all-face-descriptors', () => {
+        try {
+            const faceTags = db.getAllFaceTagsWithDescriptors();
+            return { success: true, faceTags };
+        } catch (e) {
+            return { success: false, error: e.message };
+        }
+    });
+
+    ipcMain.handle('match-tags-for-photo', (_event, { photoId, matchedFaceTagIds = [] }) => {
+        try {
+            const photo = db.db.prepare('SELECT * FROM photos WHERE id = ?').get(photoId);
+            if (!photo) return { success: false, error: 'Photo not found' };
+
+            const existingTags = db.getPhotoTags(photoId);
+            const existingIds = new Set(existingTags.map(t => t.id));
+            const matchedTags = [];
+
+            // 1. Link face tags passed from renderer
+            for (const faceTagId of matchedFaceTagIds) {
+                if (!existingIds.has(faceTagId)) {
+                    db.linkTagToPhoto(photoId, faceTagId);
+                    const tag = db.db.prepare('SELECT * FROM tags WHERE id = ?').get(faceTagId);
+                    if (tag) {
+                        matchedTags.push({ id: tag.id, name: tag.name, color: tag.color, category: tag.category });
+                        existingIds.add(tag.id);
+                    }
+                }
+            }
+
+            // 2. Event matching: time + location
+            if (photo.time && photo.lat != null && photo.lng != null) {
+                const events = db.getAllEventTagsWithLocation();
+                for (const evt of events) {
+                    const eventTag = new EventTag(evt);
+                    if (!eventTag.containsTime(photo.time)) continue;
+
+                    // Check location
+                    const locData = db.db.prepare(
+                        'SELECT * FROM tags t JOIN tag_locations l ON t.id = l.tag_id WHERE t.id = ?'
+                    ).get(evt.location_tag_id);
+                    if (!locData) continue;
+
+                    const landmark = new LandmarkTag(locData);
+                    if (!landmark.containsPoint(photo.lat, photo.lng)) continue;
+
+                    // Event matches — add event tag
+                    if (!existingIds.has(evt.id)) {
+                        db.linkTagToPhoto(photoId, evt.id);
+                        matchedTags.push({ id: evt.id, name: evt.name, color: evt.color, category: 'event' });
+                        existingIds.add(evt.id);
+                    }
+
+                    // 3. Find descendant landmark match
+                    const descendants = db.getLocationTagDescendants(evt.location_tag_id);
+                    // Sort by depth descending to find deepest match first
+                    descendants.sort((a, b) => b._depth - a._depth);
+
+                    let matchedLoc = null;
+                    for (const desc of descendants) {
+                        if (desc._depth === 0) continue; // skip root (the landmark itself), check children first
+                        const descLandmark = new LandmarkTag(desc);
+                        if (descLandmark.containsPoint(photo.lat, photo.lng)) {
+                            matchedLoc = desc;
+                            break; // deepest match
+                        }
+                    }
+                    // If no descendant matched, use the landmark itself
+                    if (!matchedLoc) {
+                        matchedLoc = descendants.find(d => d._depth === 0) || null;
+                    }
+
+                    if (matchedLoc && !existingIds.has(matchedLoc.id)) {
+                        db.linkTagToPhoto(photoId, matchedLoc.id);
+                        matchedTags.push({ id: matchedLoc.id, name: matchedLoc.name, color: matchedLoc.color, category: 'location' });
+                        existingIds.add(matchedLoc.id);
+                    }
+                }
+            }
+
+            return { success: true, matchedTags };
+        } catch (e) {
+            console.error('match-tags-for-photo error:', e);
+            return { success: false, error: e.message };
+        }
+    });
+
     // 打开时间轴设置窗口
     ipcMain.on('timeline-state', (event, timelineState) => {
         if (!timelineSettingWindow || !timelineSettingWindow.window || timelineSettingWindow.window.isDestroyed()) {
-            timelineSettingWindow = new TimeLineSettingWindow(mainWindow, timelineState);
+            const stateWithTab = Object.assign({}, timelineState, { initialTab: pendingInitialTab });
+            pendingInitialTab = null;
+            timelineSettingWindow = new TimeLineSettingWindow(mainWindow, stateWithTab);
         } else {
             timelineSettingWindow.window.focus();
         }

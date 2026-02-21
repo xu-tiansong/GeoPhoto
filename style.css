@@ -193,6 +193,51 @@ body {
     background: rgba(255,255,255,0.05);
 }
 
+/* ── 事件标签高亮 ─────────────────────────── */
+.timeline-tick-event {
+    background: rgba(74, 158, 255, 0.12);
+}
+
+.timeline-tick-event-dot {
+    position: absolute;
+    bottom: 1px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    pointer-events: none;
+}
+
+/* ── 事件 Tooltip ─────────────────────────── */
+.timeline-event-tooltip {
+    position: fixed;
+    z-index: 10000;
+    background: #232323;
+    border: 1px solid #4a4a4a;
+    border-radius: 6px;
+    padding: 6px 10px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+    pointer-events: none;
+    white-space: nowrap;
+    font-size: 12px;
+    color: #ddd;
+}
+
+.timeline-event-tooltip-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 0;
+}
+
+.timeline-event-tooltip-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
 #timeline-scrollbar {
     position: absolute;
     top: 0;

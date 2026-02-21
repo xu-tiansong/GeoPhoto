@@ -1,0 +1,2446 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Tag Manager</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            background: #1a1a1a;
+            color: #e0e0e0;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            user-select: none;
+        }
+
+        /* ── Title Bar ─────────────────────────────────── */
+        .title-bar {
+            -webkit-app-region: drag;
+            height: 40px;
+            background: rgba(0,0,0,0.45);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 14px;
+            border-bottom: 1px solid #2e2e2e;
+            flex-shrink: 0;
+        }
+        .title-bar-text { font-size: 14px; font-weight: 500; color: #ddd; }
+        .title-bar-close {
+            -webkit-app-region: no-drag;
+            width: 30px; height: 30px;
+            background: #c62828;
+            border: none; border-radius: 4px;
+            cursor: pointer; color: #fff; font-size: 18px; line-height: 1;
+            display: flex; align-items: center; justify-content: center;
+            transition: background 0.15s;
+        }
+        .title-bar-close:hover { background: #b71c1c; }
+
+        /* ── Main Layout ───────────────────────────────── */
+        .main { flex: 1; display: flex; overflow: hidden; }
+
+        /* ── Left Panel ────────────────────────────────── */
+        .left-panel {
+            width: 380px;
+            border-right: 1px solid #2e2e2e;
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+        }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            background: #1f1f1f;
+            border-bottom: 1px solid #2e2e2e;
+        }
+        .tab-btn {
+            flex: 1;
+            padding: 10px 0;
+            background: transparent;
+            border: none;
+            border-bottom: 2px solid transparent;
+            color: #666;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.18s;
+        }
+        .tab-btn:hover { color: #bbb; background: rgba(255,255,255,0.04); }
+        .tab-btn.active { color: #e0e0e0; border-bottom-color: #4a9eff; }
+
+        /* Tree */
+        .tree-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 6px 0;
+        }
+        .tree-container::-webkit-scrollbar { width: 5px; }
+        .tree-container::-webkit-scrollbar-track { background: transparent; }
+        .tree-container::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 3px; }
+        .tree-empty {
+            color: #484848;
+            font-size: 13px;
+            text-align: center;
+            padding: 24px 16px;
+        }
+
+        /* Tree node row */
+        .node-row {
+            display: flex;
+            align-items: center;
+            height: 30px;
+            cursor: pointer;
+            border-radius: 4px;
+            margin: 1px 5px;
+            padding-right: 6px;
+            transition: background 0.12s;
+        }
+        .node-row:hover                { background: rgba(255,255,255,0.055); }
+        .node-row.selected             { background: rgba(74,158,255,0.18); }
+        .node-row.selected:hover       { background: rgba(74,158,255,0.23); }
+
+        .toggle-icon {
+            width: 18px; flex-shrink: 0;
+            text-align: center;
+            font-size: 9px; color: #555;
+        }
+        .toggle-icon.clickable { color: #888; cursor: pointer; }
+        .toggle-icon.clickable:hover { color: #ccc; }
+
+        .color-dot {
+            width: 7px; height: 7px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            margin: 0 6px 0 2px;
+        }
+        .node-name {
+            flex: 1;
+            font-size: 13px;
+            color: #c0c0c0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .node-row.selected .node-name { color: #e8e8e8; }
+
+        .node-actions { display: none; gap: 3px; flex-shrink: 0; }
+        .node-row:hover .node-actions { display: flex; }
+        .node-act-btn {
+            width: 18px; height: 18px;
+            background: rgba(255,255,255,0.08);
+            border: none; border-radius: 3px;
+            color: #999; font-size: 12px;
+            cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .node-act-btn:hover { background: rgba(255,255,255,0.16); color: #fff; }
+
+        /* Inline add input */
+        .tree-input-row {
+            display: flex;
+            align-items: center;
+            height: 30px;
+            margin: 1px 5px;
+            padding-right: 6px;
+        }
+        .tree-input {
+            flex: 1;
+            background: #252525;
+            border: 1px solid #4a9eff;
+            border-radius: 4px;
+            color: #fff;
+            font-size: 13px;
+            padding: 3px 8px;
+            outline: none;
+            user-select: text;
+            -webkit-user-select: text;
+        }
+        .tree-input-hint {
+            font-size: 10px;
+            color: #444;
+            margin-left: 6px;
+            white-space: nowrap;
+        }
+
+        /* Toolbar */
+        .tree-toolbar {
+            border-top: 1px solid #2e2e2e;
+            padding: 7px 8px;
+            display: flex;
+            gap: 5px;
+        }
+        .toolbar-btn {
+            flex: 1;
+            background: #252525;
+            border: 1px solid #383838;
+            color: #aaa;
+            padding: 5px 4px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            transition: all 0.15s;
+            white-space: nowrap;
+        }
+        .toolbar-btn:hover:not(:disabled) { background: #2e2e2e; color: #ddd; border-color: #4a4a4a; }
+        .toolbar-btn:disabled { opacity: 0.35; cursor: default; }
+        .toolbar-btn.danger:hover:not(:disabled) {
+            background: rgba(198,40,40,0.2);
+            border-color: #c62828;
+            color: #ef9a9a;
+        }
+
+        /* Status bar */
+        .status-bar {
+            height: 18px;
+            padding: 0 10px;
+            font-size: 11px;
+            color: #ef9a9a;
+        }
+        .status-bar.ok { color: #66bb6a; }
+
+        /* ── Right Panel ───────────────────────────────── */
+        .right-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Placeholder when nothing selected */
+        .no-selection {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #3a3a3a;
+            font-size: 14px;
+        }
+
+        /* Detail form */
+        #detail-form {
+            flex: 1;
+            display: none;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .detail-top {
+            padding: 18px 20px 14px;
+            border-bottom: 1px solid #2a2a2a;
+        }
+        .detail-top h3 {
+            font-size: 11px;
+            color: #555;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            margin-bottom: 14px;
+        }
+
+        .name-color-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+        .name-color-row .name-input {
+            flex: 1;
+            min-width: 0;
+            background: #222;
+            border: 1px solid #383838;
+            border-radius: 4px;
+            color: #ddd;
+            padding: 6px 10px;
+            font-size: 13px;
+            font-family: inherit;
+            outline: none;
+            transition: border-color 0.15s;
+        }
+        .name-color-row .name-input:focus { border-color: #4a9eff; }
+
+        .form-group { margin-bottom: 12px; }
+        .form-group label {
+            display: block;
+            font-size: 11px;
+            color: #777;
+            margin-bottom: 4px;
+        }
+        .form-group input[type="text"],
+        .form-group textarea {
+            width: 100%;
+            background: #222;
+            border: 1px solid #383838;
+            border-radius: 4px;
+            color: #ddd;
+            padding: 6px 10px;
+            font-size: 13px;
+            font-family: inherit;
+            outline: none;
+            transition: border-color 0.15s;
+        }
+        .form-group input[type="text"]:focus,
+        .form-group textarea:focus { border-color: #4a9eff; }
+        .form-group textarea { resize: none; height: 52px; }
+
+        input[type="color"] {
+            width: 34px; height: 34px;
+            border: 1px solid #383838;
+            border-radius: 4px;
+            padding: 2px;
+            cursor: pointer;
+            background: transparent;
+            flex-shrink: 0;
+        }
+
+        .save-row { display: flex; justify-content: flex-end; margin-top: 8px; }
+        .save-btn {
+            background: #4a9eff;
+            border: none; color: #fff;
+            padding: 6px 20px;
+            border-radius: 4px; cursor: pointer;
+            font-size: 13px;
+            transition: background 0.15s;
+        }
+        .save-btn:hover { background: #3a8eef; }
+
+        /* Detail bottom (category-specific) */
+        .detail-bottom {
+            flex: 1;
+            padding: 18px 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+        .detail-bottom h3 {
+            font-size: 11px;
+            color: #555;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            margin-bottom: 12px;
+            flex-shrink: 0;
+        }
+        #cat-detail-body {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+        .cat-placeholder {
+            color: #404040;
+            font-size: 13px;
+            font-style: italic;
+            line-height: 1.6;
+        }
+
+        /* ── Move Modal ────────────────────────────────── */
+        .modal-overlay {
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.65);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 200;
+        }
+        .modal {
+            background: #232323;
+            border: 1px solid #3a3a3a;
+            border-radius: 8px;
+            width: 300px;
+            max-height: 440px;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+        }
+        .modal-header {
+            padding: 13px 16px;
+            border-bottom: 1px solid #2e2e2e;
+            font-size: 13px;
+            font-weight: 500;
+            color: #ccc;
+        }
+        .modal-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 6px 0;
+            min-height: 80px;
+            max-height: 280px;
+        }
+        .modal-body::-webkit-scrollbar { width: 5px; }
+        .modal-body::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 3px; }
+
+        .move-item {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            padding: 7px 12px;
+            font-size: 13px;
+            color: #aaa;
+            cursor: pointer;
+            border-radius: 4px;
+            margin: 1px 5px;
+        }
+        .move-item:hover { background: rgba(255,255,255,0.07); color: #ddd; }
+        .move-item.move-selected { background: rgba(74,158,255,0.22); color: #fff; }
+        .move-item.move-disabled { opacity: 0.28; cursor: default; pointer-events: none; }
+
+        .modal-footer {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 10px 12px;
+            border-top: 1px solid #2e2e2e;
+        }
+        .modal-btn {
+            background: #2e2e2e;
+            border: none; color: #aaa;
+            padding: 6px 14px;
+            border-radius: 4px; cursor: pointer;
+            font-size: 12px;
+            transition: all 0.15s;
+        }
+        .modal-btn:hover { background: #383838; color: #ddd; }
+        .modal-btn.primary { background: #4a9eff; color: #fff; }
+        .modal-btn.primary:hover { background: #3a8eef; }
+        .modal-btn.primary:disabled { opacity: 0.4; cursor: default; }
+        .modal-btn.root-btn {
+            margin-right: auto;
+            background: transparent;
+            border: 1px solid #444;
+            color: #777;
+        }
+        .modal-btn.root-btn:hover { background: #252525; color: #aaa; border-color: #666; }
+        .modal-btn.danger { background: #c62828; border-color: #c62828; color: #fff; }
+        .modal-btn.danger:hover { background: #b71c1c; border-color: #b71c1c; }
+        /* ── Face Recognition Section ─────────────────── */
+        .face-section { padding: 0; }
+
+        .face-portrait {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            margin-bottom: 12px;
+        }
+        .face-portrait img {
+            width: 64px; height: 64px;
+            border-radius: 50%;
+            border: 2px solid #4a9eff;
+            object-fit: cover;
+            flex-shrink: 0;
+        }
+        .face-portrait-info {
+            font-size: 12px;
+            color: #999;
+            margin-bottom: 6px;
+        }
+        .face-btn-row { display: flex; gap: 6px; }
+
+        .face-re-recognize-btn {
+            background: #333;
+            border: 1px solid #555;
+            color: #ccc;
+            padding: 5px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.15s;
+        }
+        .face-re-recognize-btn:hover { background: #444; color: #fff; }
+        .face-re-recognize-btn.danger { border-color: #c62828; color: #ef9a9a; }
+        .face-re-recognize-btn.danger:hover { background: rgba(198,40,40,0.25); }
+
+        .face-dropzones {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+        .face-dropzone {
+            width: 100px; height: 100px;
+            border: 2px dashed #444;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #555;
+            font-size: 28px;
+            cursor: pointer;
+            transition: all 0.15s;
+            position: relative;
+            overflow: hidden;
+        }
+        .face-dropzone.drag-over { border-color: #4a9eff; color: #4a9eff; background: rgba(74,158,255,0.06); }
+        .face-dropzone.has-image { border-style: solid; border-color: #4a9eff; }
+        .face-dropzone img {
+            width: 100%; height: 100%;
+            object-fit: cover;
+            position: absolute;
+            inset: 0;
+        }
+        .face-dropzone .remove-img {
+            position: absolute; top: 2px; right: 2px;
+            width: 18px; height: 18px;
+            background: rgba(0,0,0,0.7);
+            border: none; border-radius: 50%;
+            color: #fff; font-size: 11px;
+            cursor: pointer; display: none;
+            align-items: center; justify-content: center;
+            line-height: 1;
+        }
+        .face-dropzone:hover .remove-img { display: flex; }
+
+        .face-recognize-btn {
+            background: #4a9eff;
+            border: none; color: #fff;
+            padding: 7px 18px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: background 0.15s;
+        }
+        .face-recognize-btn:hover:not(:disabled) { background: #3a8eef; }
+        .face-recognize-btn:disabled { opacity: 0.4; cursor: default; }
+
+        .face-status {
+            font-size: 12px;
+            color: #888;
+            margin-top: 10px;
+            min-height: 16px;
+        }
+        .face-status.error { color: #ef9a9a; }
+        .face-status.success { color: #66bb6a; }
+
+        .face-not-leaf {
+            color: #555;
+            font-size: 13px;
+            font-style: italic;
+        }
+
+        /* Face picker overlay — select a face from multi-face photo */
+        .face-picker-overlay {
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.78);
+            display: flex; align-items: center; justify-content: center;
+            flex-direction: column;
+            z-index: 300;
+        }
+        .face-picker-header {
+            color: #ccc;
+            font-size: 13px;
+            margin-bottom: 10px;
+        }
+        .face-picker-canvas-wrap {
+            position: relative;
+            max-width: 90vw;
+            max-height: 70vh;
+            cursor: pointer;
+        }
+        .face-picker-canvas-wrap canvas {
+            max-width: 90vw;
+            max-height: 70vh;
+            display: block;
+            border-radius: 4px;
+        }
+        .face-picker-footer {
+            margin-top: 12px;
+            display: flex;
+            gap: 8px;
+        }
+        .face-picker-cancel {
+            background: #333;
+            border: 1px solid #555;
+            color: #ccc;
+            padding: 6px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .face-picker-cancel:hover { background: #444; color: #fff; }
+
+        /* ── Event Date Section ───────────────────────── */
+        .event-section { padding: 0; }
+
+        .event-mode-row {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 14px;
+        }
+        .event-mode-btn {
+            background: #252525;
+            border: 1px solid #383838;
+            color: #aaa;
+            padding: 5px 14px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.15s;
+        }
+        .event-mode-btn:hover { background: #2e2e2e; color: #ddd; border-color: #4a4a4a; }
+        .event-mode-btn.active { background: rgba(74,158,255,0.18); border-color: #4a9eff; color: #e0e0e0; }
+
+        .event-date-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+        .event-date-row label {
+            font-size: 12px;
+            color: #777;
+            min-width: 40px;
+        }
+        .event-date-row input[type="date"] {
+            background: #222;
+            border: 1px solid #383838;
+            color: #ddd;
+            padding: 5px 8px;
+            border-radius: 4px;
+            font-size: 13px;
+            font-family: inherit;
+            outline: none;
+            transition: border-color 0.15s;
+        }
+        .event-date-row input[type="date"]:focus { border-color: #4a9eff; }
+
+        .event-save-btn {
+            background: #4a9eff;
+            border: none; color: #fff;
+            padding: 6px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: background 0.15s;
+        }
+        .event-save-btn:hover { background: #3a8eef; }
+
+        .event-date-display {
+            font-size: 13px;
+            color: #bbb;
+            margin-bottom: 10px;
+        }
+        .event-clear-btn {
+            background: #333;
+            border: 1px solid #555;
+            color: #ccc;
+            padding: 5px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            margin-left: 8px;
+            transition: all 0.15s;
+        }
+        .event-clear-btn:hover { background: #444; color: #fff; }
+
+        /* Event Landmark Section */
+        .event-landmark-section {
+            margin-top: 16px;
+            padding-top: 14px;
+            border-top: 1px solid #2e2e2e;
+        }
+        .event-landmark-title {
+            font-size: 11px;
+            color: #555;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            margin-bottom: 10px;
+        }
+        .landmark-display {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 10px;
+            background: #222;
+            border: 1px solid #383838;
+            border-radius: 4px;
+            margin-bottom: 8px;
+        }
+        .landmark-display .landmark-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+        .landmark-display .landmark-name {
+            flex: 1;
+            font-size: 13px;
+            color: #ccc;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .landmark-no-set {
+            font-size: 12px;
+            color: #555;
+            font-style: italic;
+            margin-bottom: 8px;
+        }
+        .landmark-btn-row {
+            display: flex;
+            gap: 6px;
+        }
+        .landmark-select-btn {
+            background: #252525;
+            border: 1px solid #383838;
+            color: #aaa;
+            padding: 5px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.15s;
+        }
+        .landmark-select-btn:hover { background: #2e2e2e; color: #ddd; border-color: #4a4a4a; }
+        .landmark-clear-btn {
+            background: #333;
+            border: 1px solid #555;
+            color: #ccc;
+            padding: 5px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.15s;
+        }
+        .landmark-clear-btn:hover { background: #444; color: #fff; }
+
+        /* Location section */
+        .detail-bottom:has(.location-section) { overflow: hidden; }
+        .location-section { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+        .location-search-row {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 6px;
+            flex-shrink: 0;
+        }
+        .location-search-row input[type="text"] {
+            flex: 1;
+            min-width: 0;
+            background: #222;
+            border: 1px solid #383838;
+            border-radius: 4px;
+            color: #ddd;
+            padding: 5px 8px;
+            font-size: 12px;
+            outline: none;
+        }
+        .location-search-row input[type="text"]:focus { border-color: #4a9eff; }
+        .location-search-btn {
+            background: #333;
+            border: 1px solid #484848;
+            color: #ccc;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            white-space: nowrap;
+        }
+        .location-search-btn:hover { background: #444; color: #fff; }
+        .location-map-wrap {
+            flex: 1;
+            min-height: 0;
+            border-radius: 4px;
+            overflow: hidden;
+            border: 1px solid #383838;
+            position: relative;
+        }
+        .location-map-wrap .leaflet-container { background: #1a1a1a; width: 100%; height: 100%; }
+        .location-bottom-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding-top: 7px;
+            flex-shrink: 0;
+        }
+        .location-bottom-row label {
+            font-size: 11px;
+            color: #888;
+            white-space: nowrap;
+        }
+        .location-bottom-row input[type="number"] {
+            width: 72px;
+            background: #252525;
+            border: 1px solid #383838;
+            border-radius: 4px;
+            color: #ddd;
+            padding: 5px 4px;
+            font-size: 11px;
+            outline: none;
+        }
+        .location-bottom-row input[type="number"]:focus { border-color: #4a9eff; }
+        .location-save-btn {
+            background: #4a9eff;
+            border: none; color: #fff;
+            padding: 5px 12px;
+            border-radius: 4px; cursor: pointer;
+            font-size: 11px;
+            margin-left: auto;
+        }
+        .location-save-btn:hover { background: #3a8eef; }
+        .location-save-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1/dist/face-api.js"></script>
+</head>
+<body>
+
+<!-- Title Bar -->
+<div class="title-bar">
+    <span class="title-bar-text" data-i18n="tmw.title">Tag Manager</span>
+    <button class="title-bar-close" id="close-btn">&#215;</button>
+</div>
+
+<!-- Main -->
+<div class="main">
+
+    <!-- Left Panel -->
+    <div class="left-panel">
+        <div class="tabs">
+            <button class="tab-btn active" data-cat="face"     data-i18n="tmw.tab.faces">Faces</button>
+            <button class="tab-btn"        data-cat="event"    data-i18n="tmw.tab.events">Events</button>
+            <button class="tab-btn"        data-cat="location" data-i18n="tmw.tab.locations">Locations</button>
+            <button class="tab-btn"        data-cat="common"   data-i18n="tmw.tab.common">Common</button>
+        </div>
+
+        <div class="tree-container" id="tree-container">
+            <div class="tree-empty">Loading&hellip;</div>
+        </div>
+
+        <div class="status-bar" id="status-bar"></div>
+
+        <div class="tree-toolbar">
+            <button class="toolbar-btn" id="btn-add"    data-i18n="tmw.btn.add">+ Add</button>
+            <button class="toolbar-btn" id="btn-add-child" disabled data-i18n="tmw.btn.addChild">+ Child</button>
+            <button class="toolbar-btn" id="btn-edit"   disabled data-i18n="tmw.btn.edit">Edit</button>
+            <button class="toolbar-btn" id="btn-move"   disabled data-i18n="tmw.btn.move">Move</button>
+            <button class="toolbar-btn danger" id="btn-delete" disabled data-i18n="tmw.btn.delete">Delete</button>
+        </div>
+    </div>
+
+    <!-- Right Panel -->
+    <div class="right-panel">
+        <div class="no-selection" id="no-sel" data-i18n="tmw.noSelection">Select a tag to view details</div>
+
+        <div id="detail-form">
+            <!-- Top: common info -->
+            <div class="detail-top">
+                <div class="name-color-row">
+                    <input type="text" id="d-name" class="name-input"
+                           data-i18n-placeholder="tmw.placeholder.name"
+                           placeholder="Tag name">
+                    <input type="color" id="d-color-picker" value="#3498db">
+                </div>
+                <div class="form-group">
+                    <label data-i18n="tmw.label.remark">Remark</label>
+                    <textarea id="d-remark"
+                              data-i18n-placeholder="tmw.placeholder.remark"
+                              placeholder="Optional description"></textarea>
+                </div>
+                <div class="save-row">
+                    <button class="save-btn" id="btn-save" data-i18n="tmw.btn.save">Save</button>
+                </div>
+            </div>
+
+            <!-- Bottom: category-specific (placeholder) -->
+            <div class="detail-bottom">
+                <h3 id="cat-detail-title">Details</h3>
+                <div id="cat-detail-body">
+                    <p class="cat-placeholder">Category-specific settings will be added here.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirm Modal -->
+<div class="modal-overlay" id="del-modal" style="display:none">
+    <div class="modal">
+        <div class="modal-header" data-i18n="tmw.delmodal.title">Confirm Delete</div>
+        <div class="modal-body"><p id="del-modal-msg" style="padding:4px 0;color:#c0c0c0;font-size:13px;line-height:1.6;"></p></div>
+        <div class="modal-footer">
+            <button class="modal-btn" id="del-cancel"  data-i18n="tmw.delmodal.cancel">Cancel</button>
+            <button class="modal-btn danger" id="del-confirm" data-i18n="tmw.delmodal.confirm">Delete</button>
+        </div>
+    </div>
+</div>
+
+<!-- Move Modal -->
+<div class="modal-overlay" id="move-modal" style="display:none">
+    <div class="modal">
+        <div class="modal-header" data-i18n="tmw.move.title">Select New Parent</div>
+        <div class="modal-body" id="move-modal-body"></div>
+        <div class="modal-footer">
+            <button class="modal-btn root-btn" id="move-make-root" data-i18n="tmw.move.makeRoot">Make Root</button>
+            <button class="modal-btn" id="move-cancel"             data-i18n="tmw.move.cancel">Cancel</button>
+            <button class="modal-btn primary" id="move-confirm" disabled data-i18n="tmw.move.confirm">Move Here</button>
+        </div>
+    </div>
+</div>
+
+<script>
+// ── i18n ──────────────────────────────────────────────────────
+const DICT = {
+    en: {
+        'tmw.title': 'Tag Manager',
+        'tmw.tab.faces': 'Faces', 'tmw.tab.events': 'Events',
+        'tmw.tab.locations': 'Locations', 'tmw.tab.common': 'Common',
+        'tmw.btn.add': '+ Add', 'tmw.btn.addChild': '+ Child',
+        'tmw.btn.edit': 'Edit', 'tmw.btn.move': 'Move', 'tmw.btn.delete': 'Delete',
+        'tmw.btn.save': 'Save',
+        'tmw.noSelection': 'Select a tag to view details',
+        'tmw.tagInfo': 'Tag Info',
+        'tmw.label.name': 'Name', 'tmw.label.remark': 'Remark', 'tmw.label.color': 'Color',
+        'tmw.placeholder.name': 'Tag name', 'tmw.placeholder.remark': 'Optional description',
+        'tmw.delmodal.title': 'Confirm Delete', 'tmw.delmodal.cancel': 'Cancel', 'tmw.delmodal.confirm': 'Delete',
+        'tmw.move.title': 'Select New Parent', 'tmw.move.makeRoot': 'Make Root',
+        'tmw.move.cancel': 'Cancel', 'tmw.move.confirm': 'Move Here',
+        'tmw.cat.face.title': 'Face Settings', 'tmw.cat.event.title': 'Event Settings',
+        'tmw.cat.location.title': 'Location Settings', 'tmw.cat.common.title': 'Additional Settings',
+        'tmw.cat.face.placeholder': 'Face recognition descriptors will be managed here in a future update.',
+        'tmw.cat.event.placeholder': 'Event time range and location settings will be configured here in a future update.',
+        'tmw.cat.location.placeholder': 'Geographic coordinates, radius, and address will be set here in a future update.',
+        'tmw.cat.common.placeholder': 'No additional settings for Common tags.',
+        'tmw.tree.empty': 'No tags. Click \u201c+ Add\u201d to create one.',
+        'tmw.input.placeholder': 'Tag name\u2026', 'tmw.input.hint': 'Enter \u2713  Esc \u2717',
+        'tmw.status.added': 'Tag added', 'tmw.status.saved': 'Saved',
+        'tmw.status.deleted': 'Deleted', 'tmw.status.moved': 'Moved',
+        'tmw.err.emptyName': 'Name cannot be empty', 'tmw.err.addFailed': 'Failed to add tag',
+        'tmw.err.saveFailed': 'Save failed', 'tmw.err.deleteFailed': 'Delete failed',
+        'tmw.err.moveFailed': 'Move failed',
+        'tmw.err.hasChildren': 'Cannot delete \u201c{name}\u201d \u2014 it has {count} child tag(s). Move or delete them first.',
+        'tmw.confirm.delete': 'Delete tag \u201c{name}\u201d? Once deleted, this tag will be removed from all photos. This cannot be undone.',
+        'tmw.face.reRecognize': 'Re-recognize',
+        'tmw.face.dropHint': 'Drag & drop 3 single-person photos to recognize this person\'s face',
+        'tmw.face.recognize': 'Start Recognition',
+        'tmw.face.recognizing': 'Recognizing faces...',
+        'tmw.face.success': 'Face recognition data saved successfully',
+        'tmw.face.error.noFace': 'No face detected in image {n}',
+        'tmw.face.error.multiFace': 'Multiple faces detected in image {n} \u2014 please use a single-person photo',
+        'tmw.face.error.needPhotos': 'Please provide 3 photos',
+        'tmw.face.error.loadModel': 'Failed to load face recognition models',
+        'tmw.face.notLeaf': 'Face recognition can only be set on leaf tags (tags without children).',
+        'tmw.face.hasDataNoChild': 'This tag has face data. Remove face data before adding child tags.',
+        'tmw.face.descriptorCount': '{count} face descriptor(s) stored',
+        'tmw.face.clearData': 'Clear Data',
+        'tmw.face.clearConfirm': 'Clear all face recognition data for \u201c{name}\u201d? This cannot be undone.',
+        'tmw.face.pickFace': 'Multiple faces detected in image {n}. Click the face you want to recognize:',
+        'tmw.face.pickCancel': 'Cancel',
+        'tmw.event.singleDay': 'Single Day',
+        'tmw.event.multiDay': 'Multi-Day',
+        'tmw.event.date': 'Date:',
+        'tmw.event.start': 'Start:',
+        'tmw.event.end': 'End:',
+        'tmw.event.save': 'Save Dates',
+        'tmw.event.clear': 'Clear',
+        'tmw.event.saved': 'Event dates saved',
+        'tmw.event.cleared': 'Event dates cleared',
+        'tmw.event.noDate': 'No date set',
+        'tmw.event.outOfParent': 'Child event dates must be within parent event date range ({start} ~ {end})',
+        'tmw.event.landmark': 'Landmark',
+        'tmw.event.selectLandmark': 'Select Landmark',
+        'tmw.event.changeLandmark': 'Change',
+        'tmw.event.clearLandmark': 'Clear',
+        'tmw.event.noLandmark': 'No landmark set',
+        'tmw.event.landmarkSaved': 'Landmark saved',
+        'tmw.event.landmarkCleared': 'Landmark cleared',
+        'tmw.location.radius': 'Radius:',
+        'tmw.location.search': 'Search',
+        'tmw.location.searchPlaceholder': 'Address or place name',
+        'tmw.location.notFound': 'Location not found',
+        'tmw.location.searchError': 'Search failed',
+    },
+    zh: {
+        'tmw.title': '\u6807\u7b7e\u7ba1\u7406',
+        'tmw.tab.faces': '\u4eba\u7269', 'tmw.tab.events': '\u4e8b\u4ef6',
+        'tmw.tab.locations': '\u5730\u6807', 'tmw.tab.common': '\u5176\u4ed6',
+        'tmw.btn.add': '+ \u6dfb\u52a0', 'tmw.btn.addChild': '+ \u5b50\u6807\u7b7e',
+        'tmw.btn.edit': '\u7f16\u8f91', 'tmw.btn.move': '\u79fb\u52a8', 'tmw.btn.delete': '\u5220\u9664',
+        'tmw.btn.save': '\u4fdd\u5b58',
+        'tmw.noSelection': '\u9009\u62e9\u4e00\u4e2a\u6807\u7b7e\u67e5\u770b\u8be6\u60c5',
+        'tmw.tagInfo': '\u6807\u7b7e\u4fe1\u606f',
+        'tmw.label.name': '\u540d\u79f0', 'tmw.label.remark': '\u5907\u6ce8', 'tmw.label.color': '\u989c\u8272',
+        'tmw.placeholder.name': '\u6807\u7b7e\u540d\u79f0', 'tmw.placeholder.remark': '\u53ef\u9009\u8bf4\u660e',
+        'tmw.delmodal.title': '确认删除', 'tmw.delmodal.cancel': '取消', 'tmw.delmodal.confirm': '删除',
+        'tmw.move.title': '\u9009\u62e9\u65b0\u7684\u7236\u6807\u7b7e',
+        'tmw.move.makeRoot': '\u8bbe\u4e3a\u6839\u8282\u70b9',
+        'tmw.move.cancel': '\u53d6\u6d88', 'tmw.move.confirm': '\u79fb\u52a8\u5230\u6b64',
+        'tmw.cat.face.title': '\u4eba\u7269\u8bbe\u7f6e', 'tmw.cat.event.title': '\u4e8b\u4ef6\u8bbe\u7f6e',
+        'tmw.cat.location.title': '\u5730\u6807\u8bbe\u7f6e', 'tmw.cat.common.title': '\u5176\u4ed6\u8bbe\u7f6e',
+        'tmw.cat.face.placeholder': '\u4eba\u8138\u8bc6\u522b\u7279\u5f81\u6570\u636e\u5c06\u5728\u540e\u7eed\u66f4\u65b0\u4e2d\u63d0\u4f9b\u7ba1\u7406\u529f\u80fd\u3002',
+        'tmw.cat.event.placeholder': '\u4e8b\u4ef6\u65f6\u95f4\u8303\u56f4\u548c\u5730\u70b9\u8bbe\u7f6e\u5c06\u5728\u540e\u7eed\u66f4\u65b0\u4e2d\u63d0\u4f9b\u3002',
+        'tmw.cat.location.placeholder': '\u5730\u7406\u5750\u6807\u3001\u8986\u76d6\u534a\u5f84\u548c\u5730\u5740\u5c06\u5728\u540e\u7eed\u66f4\u65b0\u4e2d\u8bbe\u7f6e\u3002',
+        'tmw.cat.common.placeholder': '\u5176\u4ed6\u7c7b\u6807\u7b7e\u65e0\u9644\u52a0\u8bbe\u7f6e\u3002',
+        'tmw.tree.empty': '\u6682\u65e0\u6807\u7b7e\uff0c\u70b9\u51fb\u201c+ \u6dfb\u52a0\u201d\u521b\u5efa\u3002',
+        'tmw.input.placeholder': '\u6807\u7b7e\u540d\u79f0\u2026', 'tmw.input.hint': 'Enter \u2713  Esc \u2717',
+        'tmw.status.added': '\u6807\u7b7e\u5df2\u6dfb\u52a0', 'tmw.status.saved': '\u5df2\u4fdd\u5b58',
+        'tmw.status.deleted': '\u5df2\u5220\u9664', 'tmw.status.moved': '\u5df2\u79fb\u52a8',
+        'tmw.err.emptyName': '\u540d\u79f0\u4e0d\u80fd\u4e3a\u7a7a', 'tmw.err.addFailed': '\u6dfb\u52a0\u6807\u7b7e\u5931\u8d25',
+        'tmw.err.saveFailed': '\u4fdd\u5b58\u5931\u8d25', 'tmw.err.deleteFailed': '\u5220\u9664\u5931\u8d25',
+        'tmw.err.moveFailed': '\u79fb\u52a8\u5931\u8d25',
+        'tmw.err.hasChildren': '\u65e0\u6cd5\u5220\u9664\u300c{name}\u300d\u2014\u2014\u5b83\u5305\u542b {count} \u4e2a\u5b50\u6807\u7b7e\uff0c\u8bf7\u5148\u79fb\u52a8\u6216\u5220\u9664\u5b50\u6807\u7b7e\u3002',
+        'tmw.confirm.delete': '\u5220\u9664\u6807\u7b7e\u300c{name}\u300d\uff1f\u4e00\u65e6\u5220\u9664\uff0c\u8be5\u6807\u7b7e\u5c06\u4ece\u6240\u6709\u7167\u7247\u4e2d\u79fb\u9664\uff0c\u6b64\u64cd\u4f5c\u4e0d\u53ef\u64a4\u9500\u3002',
+        'tmw.face.reRecognize': '\u91cd\u65b0\u8bc6\u522b',
+        'tmw.face.dropHint': '\u62d6\u653e3\u5f20\u5355\u4eba\u7167\u7247\u5230\u4e0b\u65b9\u6846\u4e2d\uff0c\u7528\u4e8e\u8bc6\u522b\u8be5\u4eba\u7269\u7684\u4eba\u8138',
+        'tmw.face.recognize': '\u5f00\u59cb\u8bc6\u522b',
+        'tmw.face.recognizing': '\u6b63\u5728\u8bc6\u522b\u4eba\u8138...',
+        'tmw.face.success': '\u4eba\u8138\u8bc6\u522b\u6570\u636e\u4fdd\u5b58\u6210\u529f',
+        'tmw.face.error.noFace': '\u56fe\u7247 {n} \u4e2d\u672a\u68c0\u6d4b\u5230\u4eba\u8138',
+        'tmw.face.error.multiFace': '\u56fe\u7247 {n} \u4e2d\u68c0\u6d4b\u5230\u591a\u5f20\u4eba\u8138\u2014\u2014\u8bf7\u4f7f\u7528\u5355\u4eba\u7167\u7247',
+        'tmw.face.error.needPhotos': '\u8bf7\u63d0\u4f9b3\u5f20\u7167\u7247',
+        'tmw.face.error.loadModel': '\u52a0\u8f7d\u4eba\u8138\u8bc6\u522b\u6a21\u578b\u5931\u8d25',
+        'tmw.face.notLeaf': '\u4eba\u8138\u8bc6\u522b\u53ea\u80fd\u8bbe\u7f6e\u5728\u53f6\u5b50\u6807\u7b7e\uff08\u65e0\u5b50\u6807\u7b7e\u7684\u6807\u7b7e\uff09\u4e0a\u3002',
+        'tmw.face.hasDataNoChild': '\u8be5\u6807\u7b7e\u5df2\u6709\u4eba\u8138\u6570\u636e\uff0c\u79fb\u9664\u4eba\u8138\u6570\u636e\u540e\u624d\u80fd\u6dfb\u52a0\u5b50\u6807\u7b7e\u3002',
+        'tmw.face.descriptorCount': '\u5df2\u5b58\u50a8 {count} \u6761\u7279\u5f81\u6570\u636e',
+        'tmw.face.clearData': '\u6e05\u9664\u6570\u636e',
+        'tmw.face.clearConfirm': '\u6e05\u9664\u300c{name}\u300d\u7684\u6240\u6709\u4eba\u8138\u8bc6\u522b\u6570\u636e\uff1f\u6b64\u64cd\u4f5c\u4e0d\u53ef\u64a4\u9500\u3002',
+        'tmw.face.pickFace': '\u56fe\u7247 {n} \u4e2d\u68c0\u6d4b\u5230\u591a\u5f20\u4eba\u8138\uff0c\u8bf7\u70b9\u51fb\u8981\u8bc6\u522b\u7684\u4eba\u8138\uff1a',
+        'tmw.face.pickCancel': '\u53d6\u6d88',
+        'tmw.event.singleDay': '\u5355\u65e5',
+        'tmw.event.multiDay': '\u591a\u65e5',
+        'tmw.event.date': '\u65e5\u671f\uff1a',
+        'tmw.event.start': '\u5f00\u59cb\uff1a',
+        'tmw.event.end': '\u7ed3\u675f\uff1a',
+        'tmw.event.save': '\u4fdd\u5b58\u65e5\u671f',
+        'tmw.event.clear': '\u6e05\u9664',
+        'tmw.event.saved': '\u4e8b\u4ef6\u65e5\u671f\u5df2\u4fdd\u5b58',
+        'tmw.event.cleared': '\u4e8b\u4ef6\u65e5\u671f\u5df2\u6e05\u9664',
+        'tmw.event.noDate': '\u672a\u8bbe\u7f6e\u65e5\u671f',
+        'tmw.event.outOfParent': '\u5b50\u4e8b\u4ef6\u65e5\u671f\u5fc5\u987b\u5728\u7236\u4e8b\u4ef6\u65e5\u671f\u8303\u56f4\u5185\uff08{start} ~ {end}\uff09',
+        'tmw.event.landmark': '\u5730\u6807',
+        'tmw.event.selectLandmark': '\u9009\u62e9\u5730\u6807',
+        'tmw.event.changeLandmark': '\u66f4\u6362',
+        'tmw.event.clearLandmark': '\u6e05\u9664',
+        'tmw.event.noLandmark': '\u672a\u8bbe\u7f6e\u5730\u6807',
+        'tmw.event.landmarkSaved': '\u5730\u6807\u5df2\u4fdd\u5b58',
+        'tmw.event.landmarkCleared': '\u5730\u6807\u5df2\u6e05\u9664',
+        'tmw.location.radius': '\u8986\u76d6\u534a\u5f84\uff1a',
+        'tmw.location.search': '\u641c\u7d22',
+        'tmw.location.searchPlaceholder': '\u5730\u5740\u6216\u5730\u540d',
+        'tmw.location.notFound': '\u672a\u627e\u5230\u8be5\u5730\u70b9',
+        'tmw.location.searchError': '\u641c\u7d22\u5931\u8d25',
+    }
+};
+
+let currentLang = 'en';
+
+function t(key, params = {}) {
+    const dict = DICT[currentLang] || DICT.en;
+    let str = dict[key] ?? DICT.en[key] ?? key;
+    return str.replace(/\{(\w+)\}/g, (_, k) => params[k] !== undefined ? params[k] : `{${k}}`);
+}
+
+function applyI18n(lang) {
+    if (lang) currentLang = lang;
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+        el.textContent = t(el.getAttribute('data-i18n'));
+    });
+    document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+        el.placeholder = t(el.getAttribute('data-i18n-placeholder'));
+    });
+}
+
+// ── State ─────────────────────────────────────────────────────
+let currentCat   = 'face';
+let tagsTree     = [];         // 当前分类的树形数据
+let flatTags     = [];         // 同上的扁平化列表
+let selId        = null;       // 当前选中的 tag id
+let selTag       = null;       // 当前选中的 tag 对象
+let expandState  = {};         // { [id]: bool }
+let isAdding     = false;      // 是否处于内联新增模式
+let isConfirming = false;      // 是否正在执行 confirmAdd（防止 blur 误触 cancelAdd）
+let addParentId  = null;       // 内联新增时的父节点 id（null = 根级）
+let moveTargetId = undefined;  // 移动模态框中选中的目标 id
+
+const api = window.electronAPI;
+
+// ── Helpers ───────────────────────────────────────────────────
+function flattenTree(nodes, out = []) {
+    for (const n of nodes) {
+        out.push(n);
+        if (n.children && n.children.length) flattenTree(n.children, out);
+    }
+    return out;
+}
+
+function findById(id, nodes = tagsTree) {
+    const nid = Number(id);
+    for (const n of nodes) {
+        if (n.id === nid) return n;
+        const found = findById(nid, n.children || []);
+        if (found) return found;
+    }
+    return null;
+}
+
+// 判断 targetId 是否是 nodeId 的后代（防止循环移动）
+function isDescendantOf(nodeId, targetId) {
+    const node = findById(nodeId);
+    if (!node) return false;
+    function check(children) {
+        for (const c of children) {
+            if (c.id === targetId) return true;
+            if (check(c.children || [])) return true;
+        }
+        return false;
+    }
+    return check(node.children || []);
+}
+
+let statusTimer = null;
+function showStatus(msg, ok = false) {
+    const el = document.getElementById('status-bar');
+    el.textContent = msg;
+    el.className = 'status-bar' + (ok ? ' ok' : '');
+    clearTimeout(statusTimer);
+    if (msg) statusTimer = setTimeout(() => { el.textContent = ''; }, 4000);
+}
+
+// ── Load & Render ─────────────────────────────────────────────
+async function loadTags() {
+    const res = await api.invoke('tag-manage-get-tags', currentCat);
+    if (!res.success) { showStatus(res.error); return; }
+    tagsTree = res.tags;
+    flatTags = flattenTree(tagsTree);
+    renderTree();
+    // 如果选中节点在新树里还存在就保持选中状态，否则清除
+    if (selId && !findById(selId)) selectTag(null);
+    else updateRightPanel();
+}
+
+function renderTree() {
+    const container = document.getElementById('tree-container');
+    container.innerHTML = '';
+
+    if (tagsTree.length === 0 && !isAdding) {
+        container.innerHTML = `<div class="tree-empty">${t('tmw.tree.empty')}</div>`;
+        return;
+    }
+
+    renderNodes(tagsTree, container, 0);
+
+    // 根级新增输入框
+    if (isAdding && addParentId === null) appendAddInput(container, 0);
+}
+
+function renderNodes(nodes, container, depth) {
+    for (const node of nodes) {
+        const hasChildren = (node.children || []).length > 0;
+        const expanded    = expandState[node.id] !== false;
+
+        // Wrapper
+        const wrap = document.createElement('div');
+
+        // Row
+        const row = document.createElement('div');
+        row.className = 'node-row' + (node.id === selId ? ' selected' : '');
+        row.style.paddingLeft = (10 + depth * 18) + 'px';
+        row.dataset.id = node.id;
+
+        // Toggle arrow
+        const tog = document.createElement('span');
+        tog.className = 'toggle-icon' + (hasChildren ? ' clickable' : '');
+        if (hasChildren) {
+            tog.textContent = expanded ? '▼' : '▶';
+            tog.addEventListener('click', e => {
+                e.stopPropagation();
+                expandState[node.id] = !expanded;
+                renderTree();
+            });
+        }
+        row.appendChild(tog);
+
+        // Color dot
+        const dot = document.createElement('span');
+        dot.className = 'color-dot';
+        dot.style.backgroundColor = node.color || '#3498db';
+        row.appendChild(dot);
+
+        // Name
+        const nameEl = document.createElement('span');
+        nameEl.className = 'node-name';
+        nameEl.textContent = node.name;
+        row.appendChild(nameEl);
+
+        // Quick-add-child button (shown on hover via CSS)
+        const actions = document.createElement('div');
+        actions.className = 'node-actions';
+        const qAddBtn = document.createElement('button');
+        qAddBtn.className = 'node-act-btn';
+        qAddBtn.title = 'Add child tag';
+        qAddBtn.textContent = '+';
+        // Disable child-add for face tags with descriptors
+        if (currentCat === 'face' && node.descriptors && node.descriptors.length > 0) {
+            qAddBtn.disabled = true;
+            qAddBtn.title = t('tmw.face.hasDataNoChild');
+            qAddBtn.style.opacity = '0.3';
+            qAddBtn.style.cursor = 'default';
+        }
+        qAddBtn.addEventListener('click', e => {
+            e.stopPropagation();
+            if (currentCat === 'face' && node.descriptors && node.descriptors.length > 0) return;
+            selectTag(node.id);
+            triggerAddChild(node.id);
+        });
+        actions.appendChild(qAddBtn);
+        row.appendChild(actions);
+
+        row.addEventListener('click', () => selectTag(node.id));
+        row.addEventListener('dblclick', () => {
+            selectTag(node.id);
+            document.getElementById('d-name').focus();
+            document.getElementById('d-name').select();
+        });
+
+        wrap.appendChild(row);
+
+        // Children subtree
+        if (hasChildren || (isAdding && addParentId === node.id)) {
+            const childWrap = document.createElement('div');
+            if (!expanded && hasChildren) childWrap.style.display = 'none';
+
+            if (hasChildren) renderNodes(node.children, childWrap, depth + 1);
+            if (isAdding && addParentId === node.id) appendAddInput(childWrap, depth + 1);
+
+            wrap.appendChild(childWrap);
+        }
+
+        container.appendChild(wrap);
+    }
+}
+
+function appendAddInput(container, depth) {
+    const row = document.createElement('div');
+    row.className = 'tree-input-row';
+    row.style.paddingLeft = (10 + depth * 18) + 'px';
+
+    const input = document.createElement('input');
+    input.type        = 'text';
+    input.className   = 'tree-input';
+    input.placeholder = t('tmw.input.placeholder');
+    input.id          = 'tree-new-input';
+
+    const hint = document.createElement('span');
+    hint.className   = 'tree-input-hint';
+    hint.textContent = t('tmw.input.hint');
+
+    row.appendChild(input);
+    row.appendChild(hint);
+    container.appendChild(row);
+
+    input.addEventListener('keydown', async e => {
+        if (e.key === 'Enter') {
+            const name = input.value.trim();
+            if (!name) { showStatus(t('tmw.err.emptyName')); return; }
+            await confirmAdd(name);
+        } else if (e.key === 'Escape') {
+            cancelAdd();
+        }
+        e.stopPropagation();
+    });
+    input.addEventListener('blur', () => {
+        setTimeout(() => {
+            if (!isConfirming && document.getElementById('tree-new-input') === input) cancelAdd();
+        }, 160);
+    });
+}
+
+// ── Add ───────────────────────────────────────────────────────
+
+// renderTree() 完成后调用：此时 #tree-new-input 已在 DOM 中，直接 focus
+// updateToolbarState() 必须在本函数之后调用，避免禁用按钮时的焦点重调度覆盖 focus
+function focusAddInput() {
+    const inp = document.getElementById('tree-new-input');
+    if (!inp) return;
+    inp.focus();
+    // rAF 兜底：防止 Electron 渲染帧内的焦点抢占
+    requestAnimationFrame(() => {
+        const i = document.getElementById('tree-new-input');
+        if (i && document.activeElement !== i) i.focus();
+    });
+}
+
+function triggerAddRoot() {
+    isAdding    = true;
+    addParentId = null;
+    selId  = null;
+    selTag = null;
+    renderTree();
+    updateRightPanel();   // 清除右侧面板，不再显示之前选中的 tag
+    focusAddInput();      // renderTree 已完成，input 在 DOM 中，直接 focus
+    updateToolbarState(); // 在 focus 之后再禁用按钮，避免焦点被抢占
+}
+
+function triggerAddChild(parentId) {
+    // Guard: face tags with descriptors cannot have children
+    if (currentCat === 'face') {
+        const parentTag = findById(parentId);
+        if (parentTag && parentTag.descriptors && parentTag.descriptors.length > 0) {
+            showStatus(t('tmw.face.hasDataNoChild'));
+            return;
+        }
+    }
+    isAdding    = true;
+    addParentId = parentId;
+    expandState[parentId] = true;
+    selId  = null;
+    selTag = null;
+    renderTree();
+    updateRightPanel();   // 清除右侧面板
+    focusAddInput();      // 同上
+    updateToolbarState();
+}
+
+async function confirmAdd(name) {
+    isAdding     = false;
+    isConfirming = true;
+    const pId    = addParentId;
+    addParentId  = null;
+
+    const parentColor = (pId !== null ? findById(pId)?.color : null) || '#3498db';
+
+    const res = await api.invoke('tag-manage-add-tag', {
+        name,
+        category: currentCat,
+        parentId: pId,
+        color:    parentColor,
+        remark:   ''
+    });
+    isConfirming = false;
+
+    if (!res.success) {
+        showStatus(res.error || t('tmw.err.addFailed'));
+        renderTree();  // 清除残留的新增输入框
+        return;
+    }
+    showStatus(t('tmw.status.added'), true);
+    selId  = null;   // 清除旧选中，防止 loadTags 展示旧 tag
+    selTag = null;
+    await loadTags();
+    selectTag(res.id);
+}
+
+function cancelAdd() {
+    isAdding    = false;
+    addParentId = null;
+    renderTree();
+    updateToolbarState();  // 退出新增模式后根据当前选中恢复按钮状态
+}
+
+// ── Toolbar state ─────────────────────────────────────────────
+function updateToolbarState() {
+    // 新增模式下禁用所有编辑/删除按钮，防止误操作已选中的标签
+    const hasSel = selId !== null && !isAdding;
+    document.getElementById('btn-edit').disabled      = !hasSel;
+    document.getElementById('btn-move').disabled      = !hasSel;
+    document.getElementById('btn-delete').disabled    = !hasSel;
+
+    // Disable add-child if face tag has descriptors
+    const faceHasData = hasSel && currentCat === 'face' && selTag &&
+                        selTag.descriptors && selTag.descriptors.length > 0;
+    document.getElementById('btn-add-child').disabled = !hasSel || faceHasData;
+}
+
+// ── Selection ─────────────────────────────────────────────────
+function selectTag(id) {
+    selId  = id;
+    selTag = id ? findById(id) : null;
+
+    document.querySelectorAll('.node-row').forEach(r => {
+        r.classList.toggle('selected', Number(r.dataset.id) === Number(id));
+    });
+
+    updateToolbarState();
+    updateRightPanel();
+}
+
+// ── Right Panel ───────────────────────────────────────────────
+function updateRightPanel() {
+    const noSel = document.getElementById('no-sel');
+    const form  = document.getElementById('detail-form');
+
+    if (!selTag) {
+        noSel.style.display = 'flex';
+        form.style.display  = 'none';
+        return;
+    }
+
+    noSel.style.display = 'none';
+    form.style.display  = 'flex';
+
+    document.getElementById('d-name').value   = selTag.name   || '';
+    document.getElementById('d-remark').value = selTag.remark || '';
+
+    const color = selTag.color || '#3498db';
+    document.getElementById('d-color-picker').value = color;
+
+    updateCatSection();
+}
+
+const CAT_TITLE_KEYS = {
+    face: 'tmw.cat.face.title', event: 'tmw.cat.event.title',
+    location: 'tmw.cat.location.title', common: 'tmw.cat.common.title'
+};
+const CAT_PLACEHOLDER_KEYS = {
+    face: 'tmw.cat.face.placeholder', event: 'tmw.cat.event.placeholder',
+    location: 'tmw.cat.location.placeholder', common: 'tmw.cat.common.placeholder'
+};
+
+function updateCatSection() {
+    if (currentCat !== 'location') destroyLocationMap();
+    document.getElementById('cat-detail-title').textContent = t(CAT_TITLE_KEYS[currentCat] || 'tmw.tagInfo');
+    const body = document.getElementById('cat-detail-body');
+
+    if (currentCat === 'face') {
+        renderFaceSection(body);
+    } else if (currentCat === 'event') {
+        renderEventSection(body);
+    } else if (currentCat === 'location') {
+        renderLocationSection(body);
+    } else {
+        body.innerHTML = `<p class="cat-placeholder">${t(CAT_PLACEHOLDER_KEYS[currentCat] || '')}</p>`;
+    }
+}
+
+// ── Location Map Section ─────────────────────────────────────
+
+let locationMap = null;
+let locationMarker = null;
+let locationCircle = null;
+
+function destroyLocationMap() {
+    if (locationMap) {
+        locationMap.remove();
+        locationMap = null;
+        locationMarker = null;
+        locationCircle = null;
+    }
+}
+
+function renderLocationSection(container) {
+    destroyLocationMap();
+    if (!selTag) { container.innerHTML = ''; return; }
+
+    const savedLat = selTag.lat;
+    const savedLng = selTag.lng;
+    const savedRadius = selTag.radius || 10;
+    const hasLocation = savedLat != null && savedLng != null;
+
+    container.innerHTML = `
+        <div class="location-section">
+            <div class="location-search-row">
+                <input type="text" id="loc-search" placeholder="${t('tmw.location.searchPlaceholder')}">
+                <button class="location-search-btn" id="loc-search-btn">${t('tmw.location.search')}</button>
+            </div>
+            <div class="location-map-wrap"><div id="loc-map" style="position:absolute;inset:0;"></div></div>
+            <div class="location-bottom-row">
+                <label>${t('tmw.location.radius')}</label>
+                <input type="number" id="loc-radius" min="1" max="100000" value="${savedRadius}">
+                <span style="font-size:12px;color:#666;">m</span>
+                <button class="location-save-btn" id="loc-save" disabled>${t('tmw.btn.save')}</button>
+            </div>
+        </div>`;
+
+    // Initialize map after DOM is ready
+    requestAnimationFrame(() => {
+        const mapEl = document.getElementById('loc-map');
+        if (!mapEl) return;
+
+        const center = hasLocation ? [savedLat, savedLng] : [30, 104];
+        const zoom = hasLocation ? 16 : 3;
+
+        locationMap = L.map(mapEl, { center, zoom, zoomControl: true, attributionControl: false });
+
+        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            attribution: 'Tiles &copy; Esri'
+        }).addTo(locationMap);
+
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png', {
+            subdomains: 'abcd', pane: 'overlayPane'
+        }).addTo(locationMap);
+
+        // Restore saved location
+        if (hasLocation) {
+            placeLocationPin(savedLat, savedLng, savedRadius);
+            document.getElementById('loc-save').disabled = false;
+        }
+
+        // Click to place pin
+        locationMap.on('click', (e) => {
+            const radius = parseFloat(document.getElementById('loc-radius').value) || 10;
+            placeLocationPin(e.latlng.lat, e.latlng.lng, radius);
+            document.getElementById('loc-save').disabled = false;
+        });
+
+        // Radius change updates circle
+        document.getElementById('loc-radius').addEventListener('input', () => {
+            if (locationCircle) {
+                const r = parseFloat(document.getElementById('loc-radius').value) || 10;
+                locationCircle.setRadius(r);
+            }
+        });
+
+        // Save button
+        document.getElementById('loc-save').addEventListener('click', async () => {
+            if (!locationMarker) return;
+            const latlng = locationMarker.getLatLng();
+            const radius = parseFloat(document.getElementById('loc-radius').value) || 10;
+            const res = await api.invoke('tag-manage-save-location', {
+                tagId: selTag.id,
+                lat: latlng.lat,
+                lng: latlng.lng,
+                radius
+            });
+            if (res.success) {
+                showStatus(t('tmw.status.saved'), true);
+                // Update local data
+                selTag.lat = latlng.lat;
+                selTag.lng = latlng.lng;
+                selTag.radius = radius;
+            } else {
+                showStatus(res.error || t('tmw.err.saveFailed'));
+            }
+        });
+
+        // Search
+        const searchInput = document.getElementById('loc-search');
+        const searchBtn = document.getElementById('loc-search-btn');
+        const doSearch = async () => {
+            const q = searchInput.value.trim();
+            if (!q) return;
+            searchBtn.disabled = true;
+            searchBtn.textContent = '...';
+            try {
+                const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(q)}`);
+                const data = await res.json();
+                if (data && data.length > 0) {
+                    const lat = parseFloat(data[0].lat);
+                    const lng = parseFloat(data[0].lon);
+                    locationMap.setView([lat, lng], 16);
+                } else {
+                    showStatus(t('tmw.location.notFound'));
+                }
+            } catch (e) {
+                showStatus(t('tmw.location.searchError'));
+            }
+            searchBtn.disabled = false;
+            searchBtn.textContent = t('tmw.location.search');
+        };
+        searchBtn.addEventListener('click', doSearch);
+        searchInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') doSearch();
+        });
+
+        // Fix map size after container layout settles
+        setTimeout(() => locationMap.invalidateSize(), 50);
+        setTimeout(() => locationMap.invalidateSize(), 200);
+    });
+}
+
+function placeLocationPin(lat, lng, radius) {
+    if (locationMarker) {
+        locationMarker.setLatLng([lat, lng]);
+    } else {
+        locationMarker = L.marker([lat, lng]).addTo(locationMap);
+    }
+
+    if (locationCircle) {
+        locationCircle.setLatLng([lat, lng]);
+        locationCircle.setRadius(radius);
+    } else {
+        locationCircle = L.circle([lat, lng], {
+            radius,
+            color: '#e53935',
+            weight: 2,
+            fillColor: '#e53935',
+            fillOpacity: 0.25
+        }).addTo(locationMap);
+    }
+}
+
+// ── Event Date Settings ──────────────────────────────────────
+
+let eventMode = 'single'; // 'single' or 'multi'
+
+/**
+ * 获取父事件标签的日期范围（如果存在且已设置日期）
+ * @returns {{ start: string, end: string } | null}  日期格式 'YYYY-MM-DD'
+ */
+function getParentEventDateRange() {
+    if (!selTag || !selTag.parent_id) return null;
+    const parent = findById(selTag.parent_id);
+    if (!parent || !parent.start_time || !parent.end_time) return null;
+    return {
+        start: parent.start_time.substring(0, 10),
+        end:   parent.end_time.substring(0, 10)
+    };
+}
+
+function renderEventSection(container) {
+    if (!selTag) { container.innerHTML = ''; return; }
+
+    const hasStart = selTag.start_time != null;
+    const hasEnd   = selTag.end_time != null;
+    const hasDates = hasStart && hasEnd;
+
+    // Detect if existing dates are single-day or multi-day
+    if (hasDates) {
+        const s = selTag.start_time.substring(0, 10);
+        const e = selTag.end_time.substring(0, 10);
+        eventMode = (s === e) ? 'single' : 'multi';
+    }
+
+    container.innerHTML = `
+        <div class="event-section">
+            <div class="event-mode-row">
+                <button class="event-mode-btn ${eventMode === 'single' ? 'active' : ''}" id="evt-mode-single">
+                    ${t('tmw.event.singleDay')}
+                </button>
+                <button class="event-mode-btn ${eventMode === 'multi' ? 'active' : ''}" id="evt-mode-multi">
+                    ${t('tmw.event.multiDay')}
+                </button>
+            </div>
+            <div id="evt-date-fields"></div>
+            <div style="display:flex;align-items:center;gap:6px;margin-top:12px;">
+                <button class="event-save-btn" id="evt-save">${t('tmw.event.save')}</button>
+                ${hasDates ? `<button class="event-clear-btn" id="evt-clear">${t('tmw.event.clear')}</button>` : ''}
+            </div>
+        </div>`;
+
+    renderEventDateFields(hasDates);
+
+    document.getElementById('evt-mode-single').addEventListener('click', () => {
+        eventMode = 'single';
+        document.getElementById('evt-mode-single').classList.add('active');
+        document.getElementById('evt-mode-multi').classList.remove('active');
+        renderEventDateFields(hasDates);
+    });
+    document.getElementById('evt-mode-multi').addEventListener('click', () => {
+        eventMode = 'multi';
+        document.getElementById('evt-mode-multi').classList.add('active');
+        document.getElementById('evt-mode-single').classList.remove('active');
+        renderEventDateFields(hasDates);
+    });
+
+    document.getElementById('evt-save').addEventListener('click', saveEventDates);
+    const clearBtn = document.getElementById('evt-clear');
+    if (clearBtn) clearBtn.addEventListener('click', clearEventDates);
+
+    // 在事件日期区域下方渲染地标选择
+    renderEventLandmarkSection(container);
+}
+
+function renderEventDateFields(hasDates) {
+    const container = document.getElementById('evt-date-fields');
+    if (!container) return;
+
+    const startVal = (selTag.start_time || '').substring(0, 10);
+    const endVal   = (selTag.end_time || '').substring(0, 10);
+
+    // 获取父事件标签的日期范围，用于限制子事件的日期选择
+    const parentRange = getParentEventDateRange();
+    const minAttr = parentRange ? ` min="${parentRange.start}"` : '';
+    const maxAttr = parentRange ? ` max="${parentRange.end}"` : '';
+    const parentHint = parentRange
+        ? `<div style="font-size:11px;color:#888;margin-bottom:8px;">${t('tmw.event.outOfParent', parentRange)}</div>`
+        : '';
+
+    if (eventMode === 'single') {
+        container.innerHTML = `
+            ${parentHint}
+            <div class="event-date-row">
+                <label>${t('tmw.event.date')}</label>
+                <input type="date" id="evt-date-start" value="${startVal}"${minAttr}${maxAttr}>
+            </div>`;
+    } else {
+        container.innerHTML = `
+            ${parentHint}
+            <div class="event-date-row">
+                <label>${t('tmw.event.start')}</label>
+                <input type="date" id="evt-date-start" value="${startVal}"${minAttr}${maxAttr}>
+            </div>
+            <div class="event-date-row">
+                <label>${t('tmw.event.end')}</label>
+                <input type="date" id="evt-date-end" value="${endVal}"${minAttr}${maxAttr}>
+            </div>`;
+    }
+}
+
+async function saveEventDates() {
+    if (!selTag) return;
+
+    const startInput = document.getElementById('evt-date-start');
+    const endInput   = document.getElementById('evt-date-end');
+    const startVal   = startInput ? startInput.value : '';
+
+    let startTime = null;
+    let endTime   = null;
+
+    if (startVal) {
+        startTime = startVal + 'T00:00:00';
+        if (eventMode === 'single') {
+            endTime = startVal + 'T23:59:59';
+        } else {
+            const endVal = endInput ? endInput.value : '';
+            endTime = endVal ? endVal + 'T23:59:59' : startVal + 'T23:59:59';
+        }
+    }
+
+    // 验证子事件日期不能超出父事件日期范围
+    if (startTime) {
+        const parentRange = getParentEventDateRange();
+        if (parentRange) {
+            const childStart = startVal;
+            const childEnd   = eventMode === 'single' ? startVal : (endInput ? endInput.value : startVal);
+            if (childStart < parentRange.start || childEnd > parentRange.end) {
+                showStatus(t('tmw.event.outOfParent', parentRange));
+                return;
+            }
+        }
+    }
+
+    const res = await api.invoke('tag-manage-save-event', {
+        tagId: selTag.id,
+        startTime,
+        endTime
+    });
+
+    if (res.success) {
+        showStatus(t('tmw.event.saved'), true);
+        await loadTags();
+        selectTag(selId);
+    } else {
+        showStatus(res.error || t('tmw.err.saveFailed'));
+    }
+}
+
+async function clearEventDates() {
+    if (!selTag) return;
+    const res = await api.invoke('tag-manage-save-event', {
+        tagId: selTag.id,
+        startTime: null,
+        endTime: null
+    });
+    if (res.success) {
+        showStatus(t('tmw.event.cleared'), true);
+        await loadTags();
+        selectTag(selId);
+    }
+}
+
+// ── Event Landmark Section ────────────────────────────────────
+
+function renderEventLandmarkSection(parentContainer) {
+    if (!selTag) return;
+
+    const section = document.createElement('div');
+    section.className = 'event-landmark-section';
+    section.id = 'evt-landmark-section';
+    parentContainer.appendChild(section);
+
+    const locationTagId = selTag.location_tag_id || null;
+
+    if (locationTagId) {
+        // 已关联地标 — 通过现有 get-tags 接口获取地标信息
+        api.invoke('tag-manage-get-tags', 'location').then(res => {
+            if (!res.success) return;
+            const lm = flatFindTag(res.tags, locationTagId);
+            if (lm) {
+                section.innerHTML = `
+                    <div class="event-landmark-title">${t('tmw.event.landmark')}</div>
+                    <div class="landmark-display">
+                        <span class="landmark-dot" style="background:${lm.color}"></span>
+                        <span class="landmark-name">${lm.name}</span>
+                    </div>
+                    <div class="landmark-btn-row">
+                        <button class="landmark-select-btn" id="evt-lm-change">${t('tmw.event.changeLandmark')}</button>
+                        <button class="landmark-clear-btn" id="evt-lm-clear">${t('tmw.event.clearLandmark')}</button>
+                    </div>`;
+            } else {
+                renderNoLandmark(section);
+            }
+            bindLandmarkButtons();
+        });
+    } else {
+        renderNoLandmark(section);
+        bindLandmarkButtons();
+    }
+}
+
+function renderNoLandmark(section) {
+    section.innerHTML = `
+        <div class="event-landmark-title">${t('tmw.event.landmark')}</div>
+        <div class="landmark-no-set">${t('tmw.event.noLandmark')}</div>
+        <div class="landmark-btn-row">
+            <button class="landmark-select-btn" id="evt-lm-change">${t('tmw.event.selectLandmark')}</button>
+        </div>`;
+}
+
+/** 在树状标签数组中递归查找指定 id */
+function flatFindTag(nodes, id) {
+    for (const n of nodes) {
+        if (n.id === id) return n;
+        if (n.children) {
+            const found = flatFindTag(n.children, id);
+            if (found) return found;
+        }
+    }
+    return null;
+}
+
+function bindLandmarkButtons() {
+    const changeBtn = document.getElementById('evt-lm-change');
+    if (changeBtn) changeBtn.addEventListener('click', openLandmarkSelector);
+
+    const clearBtn = document.getElementById('evt-lm-clear');
+    if (clearBtn) clearBtn.addEventListener('click', clearEventLandmark);
+}
+
+async function openLandmarkSelector() {
+    if (!selTag) return;
+    const res = await api.invoke('tag-manage-select-landmark');
+    if (!res.success || !res.tag) return; // 用户取消
+
+    // 保存选中的地标
+    const saveRes = await api.invoke('tag-manage-save-event-location', {
+        tagId: selTag.id,
+        locationTagId: res.tag.tagId
+    });
+    if (saveRes.success) {
+        showStatus(t('tmw.event.landmarkSaved'), true);
+        await loadTags();
+        selectTag(selId);
+    } else {
+        showStatus(saveRes.error || t('tmw.err.saveFailed'));
+    }
+}
+
+async function clearEventLandmark() {
+    if (!selTag) return;
+    const res = await api.invoke('tag-manage-save-event-location', {
+        tagId: selTag.id,
+        locationTagId: null
+    });
+    if (res.success) {
+        showStatus(t('tmw.event.landmarkCleared'), true);
+        await loadTags();
+        selectTag(selId);
+    }
+}
+
+// ── Face Recognition ──────────────────────────────────────────
+
+let faceDropImages = [null, null, null]; // {path, fileUrl, imgElement} per zone
+let faceApiLoaded = false;
+
+function renderFaceSection(container) {
+    if (!selTag) { container.innerHTML = ''; return; }
+
+    const isLeaf = !(selTag.children && selTag.children.length > 0);
+    const hasDesc = selTag.descriptors && selTag.descriptors.length > 0;
+    const preview = selTag.preview_path || null;
+
+    // Non-leaf tags cannot have face data
+    if (!isLeaf) {
+        container.innerHTML = `<p class="face-not-leaf">${t('tmw.face.notLeaf')}</p>`;
+        return;
+    }
+
+    // View A: Has face data — show portrait + re-recognize
+    if (hasDesc && preview) {
+        container.innerHTML = `
+            <div class="face-section">
+                <div class="face-portrait">
+                    <img src="${preview}" alt="portrait">
+                    <div>
+                        <div class="face-portrait-info">
+                            ${t('tmw.face.descriptorCount', { count: selTag.descriptors.length })}
+                        </div>
+                        <div class="face-btn-row">
+                            <button class="face-re-recognize-btn" id="btn-re-recognize">
+                                ${t('tmw.face.reRecognize')}
+                            </button>
+                            <button class="face-re-recognize-btn danger" id="btn-clear-face">
+                                ${t('tmw.face.clearData')}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+        document.getElementById('btn-re-recognize').addEventListener('click', () => {
+            renderFaceDropzones(container);
+        });
+        document.getElementById('btn-clear-face').addEventListener('click', async () => {
+            const confirmed = await showDeleteConfirm(t('tmw.face.clearConfirm', { name: selTag.name }));
+            if (!confirmed) return;
+            const res = await api.invoke('tag-manage-clear-face', { tagId: selTag.id });
+            if (res.success) {
+                showStatus(t('tmw.status.saved'), true);
+                await loadTags();
+                selectTag(selId);
+            }
+        });
+        return;
+    }
+
+    // View B: No face data — show dropzones
+    renderFaceDropzones(container);
+}
+
+function renderFaceDropzones(container) {
+    faceDropImages = [null, null, null];
+
+    container.innerHTML = `
+        <div class="face-section">
+            <p style="font-size:12px;color:#777;margin-bottom:12px;line-height:1.5;">
+                ${t('tmw.face.dropHint')}
+            </p>
+            <div class="face-dropzones">
+                ${[0,1,2].map(i => `
+                    <div class="face-dropzone" id="face-dz-${i}" data-idx="${i}">
+                        <span class="dz-plus">+</span>
+                    </div>
+                `).join('')}
+            </div>
+            <button class="face-recognize-btn" id="btn-start-recognize" disabled>
+                ${t('tmw.face.recognize')}
+            </button>
+            <div class="face-status" id="face-status"></div>
+        </div>`;
+
+    for (let i = 0; i < 3; i++) {
+        setupDropzone(document.getElementById(`face-dz-${i}`), i);
+    }
+    document.getElementById('btn-start-recognize').addEventListener('click', startFaceRecognition);
+}
+
+function setupDropzone(dz, idx) {
+    dz.addEventListener('dragover', e => {
+        e.preventDefault();
+        e.stopPropagation();
+        dz.classList.add('drag-over');
+    });
+    dz.addEventListener('dragleave', e => {
+        e.preventDefault();
+        dz.classList.remove('drag-over');
+    });
+    dz.addEventListener('drop', e => {
+        e.preventDefault();
+        e.stopPropagation();
+        dz.classList.remove('drag-over');
+        const file = e.dataTransfer.files[0];
+        if (!file || !file.type.startsWith('image/')) return;
+        const filePath = file.path;
+        if (filePath) loadImageToZone(filePath, idx);
+    });
+    dz.addEventListener('click', async () => {
+        if (faceDropImages[idx]) return; // already has image, use remove button
+        const result = await api.invoke('tag-manage-pick-image');
+        if (result && result.filePath) {
+            loadImageToZone(result.filePath, idx);
+        }
+    });
+}
+
+function loadImageToZone(filePath, idx) {
+    const fileUrl = 'file:///' + filePath.replace(/\\/g, '/');
+    const dz = document.getElementById(`face-dz-${idx}`);
+    const img = new Image();
+    img.onload = () => {
+        faceDropImages[idx] = { path: filePath, fileUrl, imgElement: img };
+        dz.innerHTML = `<img src="${fileUrl}"><button class="remove-img" data-idx="${idx}">&times;</button>`;
+        dz.classList.add('has-image');
+        dz.querySelector('.remove-img').addEventListener('click', e => {
+            e.stopPropagation();
+            faceDropImages[idx] = null;
+            dz.innerHTML = '<span class="dz-plus">+</span>';
+            dz.classList.remove('has-image');
+            updateRecognizeButton();
+        });
+        updateRecognizeButton();
+    };
+    img.onerror = () => setFaceStatus(t('tmw.face.error.noFace', { n: idx + 1 }), true);
+    img.src = fileUrl;
+}
+
+function updateRecognizeButton() {
+    const btn = document.getElementById('btn-start-recognize');
+    if (btn) btn.disabled = faceDropImages.filter(Boolean).length < 3;
+}
+
+function setFaceStatus(msg, isError = false) {
+    const el = document.getElementById('face-status');
+    if (!el) return;
+    el.textContent = msg;
+    el.className = 'face-status' + (isError ? ' error' : ' success');
+}
+
+async function ensureFaceApiLoaded() {
+    if (faceApiLoaded) return true;
+    if (typeof faceapi === 'undefined') {
+        setFaceStatus(t('tmw.face.error.loadModel'), true);
+        return false;
+    }
+    try {
+        const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1/model';
+        await Promise.all([
+            faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL),
+            faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+            faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
+        ]);
+        faceApiLoaded = true;
+        return true;
+    } catch (err) {
+        console.error('face-api model load error:', err);
+        setFaceStatus(t('tmw.face.error.loadModel'), true);
+        return false;
+    }
+}
+
+async function startFaceRecognition() {
+    const filled = faceDropImages.filter(Boolean);
+    if (filled.length < 3) {
+        setFaceStatus(t('tmw.face.error.needPhotos'), true);
+        return;
+    }
+
+    const btn = document.getElementById('btn-start-recognize');
+    btn.disabled = true;
+    btn.textContent = t('tmw.face.recognizing');
+    setFaceStatus(t('tmw.face.recognizing'));
+
+    const loaded = await ensureFaceApiLoaded();
+    if (!loaded) {
+        btn.disabled = false;
+        btn.textContent = t('tmw.face.recognize');
+        return;
+    }
+
+    const descriptors = [];
+
+    for (let i = 0; i < 3; i++) {
+        const entry = faceDropImages[i];
+        try {
+            // Resize large images for performance
+            const canvas = resizeImageForDetection(entry.imgElement);
+
+            const allDetections = await faceapi
+                .detectAllFaces(canvas)
+                .withFaceLandmarks()
+                .withFaceDescriptors();
+
+            if (allDetections.length === 0) {
+                setFaceStatus(t('tmw.face.error.noFace', { n: i + 1 }), true);
+                btn.disabled = false; btn.textContent = t('tmw.face.recognize');
+                return;
+            }
+
+            let chosen;
+            if (allDetections.length === 1) {
+                // Single face — auto-select
+                chosen = allDetections[0];
+            } else {
+                // Multiple faces — let user pick
+                const scale = entry.imgElement.naturalWidth / canvas.width;
+                const picked = await showFacePicker(entry.imgElement, allDetections, scale, i + 1);
+                if (picked === null) {
+                    // User cancelled
+                    setFaceStatus('', false);
+                    btn.disabled = false; btn.textContent = t('tmw.face.recognize');
+                    return;
+                }
+                chosen = picked;
+            }
+
+            // Scale detection box back to original image size
+            const scale = entry.imgElement.naturalWidth / canvas.width;
+            const box = chosen.detection.box;
+
+            descriptors.push({
+                descriptor: Array.from(chosen.descriptor),
+                box: { x: box.x * scale, y: box.y * scale, width: box.width * scale, height: box.height * scale }
+            });
+        } catch (err) {
+            console.error('Detection error for image', i, err);
+            setFaceStatus(t('tmw.face.error.noFace', { n: i + 1 }), true);
+            btn.disabled = false; btn.textContent = t('tmw.face.recognize');
+            return;
+        }
+    }
+
+    // Generate 64x64 portrait thumbnail from the first image's detected face
+    const thumbnail = generateFaceThumbnail(faceDropImages[0].imgElement, descriptors[0].box);
+
+    // Save via IPC
+    const res = await api.invoke('tag-manage-save-face', {
+        tagId: selTag.id,
+        descriptors: descriptors.map(d => d.descriptor),
+        thumbnail: thumbnail
+    });
+
+    if (res.success) {
+        setFaceStatus(t('tmw.face.success'));
+        showStatus(t('tmw.status.saved'), true);
+        await loadTags();
+        selectTag(selId);
+    } else {
+        setFaceStatus(res.error || 'Save failed', true);
+    }
+
+    btn.disabled = false;
+    btn.textContent = t('tmw.face.recognize');
+}
+
+/**
+ * Show a face-picker overlay: draw the photo with colored face boxes, let user click one.
+ * Returns the chosen detection object, or null if cancelled.
+ */
+function showFacePicker(imgElement, detections, scale, imageNumber) {
+    return new Promise(resolve => {
+        const overlay = document.createElement('div');
+        overlay.className = 'face-picker-overlay';
+
+        const header = document.createElement('div');
+        header.className = 'face-picker-header';
+        header.textContent = t('tmw.face.pickFace', { n: imageNumber });
+
+        const wrap = document.createElement('div');
+        wrap.className = 'face-picker-canvas-wrap';
+
+        const cvs = document.createElement('canvas');
+        const ctx = cvs.getContext('2d');
+
+        // Draw photo at a display-friendly size
+        const maxW = window.innerWidth * 0.88;
+        const maxH = window.innerHeight * 0.68;
+        const imgW = imgElement.naturalWidth;
+        const imgH = imgElement.naturalHeight;
+        const displayScale = Math.min(1, maxW / imgW, maxH / imgH);
+        cvs.width = Math.round(imgW * displayScale);
+        cvs.height = Math.round(imgH * displayScale);
+        ctx.drawImage(imgElement, 0, 0, cvs.width, cvs.height);
+
+        // Composite scale: detection coords are in resized-for-detection space,
+        // we need to map to display canvas space
+        // detection box → original image: multiply by `scale`
+        // original image → display canvas: multiply by `displayScale`
+        const compositeScale = scale * displayScale;
+
+        // Draw face boxes with index labels
+        const colors = ['#4a9eff', '#ff6b6b', '#51cf66', '#ffd43b', '#cc5de8', '#ff922b'];
+        const boxes = detections.map((det, idx) => {
+            const b = det.detection.box;
+            const x = b.x * compositeScale;
+            const y = b.y * compositeScale;
+            const w = b.width * compositeScale;
+            const h = b.height * compositeScale;
+            const color = colors[idx % colors.length];
+
+            // Draw box
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2.5;
+            ctx.strokeRect(x, y, w, h);
+
+            // Draw index label
+            const label = `${idx + 1}`;
+            ctx.font = 'bold 14px sans-serif';
+            const tm = ctx.measureText(label);
+            const lw = tm.width + 8;
+            const lh = 20;
+            ctx.fillStyle = color;
+            ctx.fillRect(x, y - lh, lw, lh);
+            ctx.fillStyle = '#fff';
+            ctx.fillText(label, x + 4, y - 5);
+
+            return { x, y, w, h, detection: det };
+        });
+
+        wrap.appendChild(cvs);
+
+        // Click handler — find which face box was clicked
+        cvs.addEventListener('click', e => {
+            const rect = cvs.getBoundingClientRect();
+            const cx = e.clientX - rect.left;
+            const cy = e.clientY - rect.top;
+
+            for (const box of boxes) {
+                if (cx >= box.x && cx <= box.x + box.w && cy >= box.y && cy <= box.y + box.h) {
+                    cleanup();
+                    resolve(box.detection);
+                    return;
+                }
+            }
+            // Clicked outside any box — do nothing
+        });
+
+        // Hover effect: change cursor when over a face box
+        cvs.addEventListener('mousemove', e => {
+            const rect = cvs.getBoundingClientRect();
+            const cx = e.clientX - rect.left;
+            const cy = e.clientY - rect.top;
+            let overFace = false;
+            for (const box of boxes) {
+                if (cx >= box.x && cx <= box.x + box.w && cy >= box.y && cy <= box.y + box.h) {
+                    overFace = true;
+                    break;
+                }
+            }
+            cvs.style.cursor = overFace ? 'pointer' : 'default';
+        });
+
+        const footer = document.createElement('div');
+        footer.className = 'face-picker-footer';
+        const cancelBtn = document.createElement('button');
+        cancelBtn.className = 'face-picker-cancel';
+        cancelBtn.textContent = t('tmw.face.pickCancel');
+        cancelBtn.addEventListener('click', () => { cleanup(); resolve(null); });
+        footer.appendChild(cancelBtn);
+
+        overlay.appendChild(header);
+        overlay.appendChild(wrap);
+        overlay.appendChild(footer);
+        document.body.appendChild(overlay);
+
+        // ESC to cancel
+        function onKey(e) {
+            if (e.key === 'Escape') { cleanup(); resolve(null); }
+        }
+        document.addEventListener('keydown', onKey);
+
+        function cleanup() {
+            document.removeEventListener('keydown', onKey);
+            overlay.remove();
+        }
+    });
+}
+
+function resizeImageForDetection(imgElement) {
+    const MAX_DIM = 800;
+    const w = imgElement.naturalWidth;
+    const h = imgElement.naturalHeight;
+    let nw = w, nh = h;
+    if (Math.max(w, h) > MAX_DIM) {
+        const ratio = MAX_DIM / Math.max(w, h);
+        nw = Math.round(w * ratio);
+        nh = Math.round(h * ratio);
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = nw;
+    canvas.height = nh;
+    canvas.getContext('2d').drawImage(imgElement, 0, 0, nw, nh);
+    return canvas;
+}
+
+function generateFaceThumbnail(imgElement, box) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+
+    // Expand box for better framing
+    const padding = Math.max(box.width, box.height) * 0.35;
+    const sx = Math.max(0, box.x - padding);
+    const sy = Math.max(0, box.y - padding);
+    const sw = Math.min(imgElement.naturalWidth - sx, box.width + padding * 2);
+    const sh = Math.min(imgElement.naturalHeight - sy, box.height + padding * 2);
+
+    // Make it square
+    const size = Math.max(sw, sh);
+    const cx = sx + sw / 2;
+    const cy = sy + sh / 2;
+    const finalX = Math.max(0, Math.min(cx - size / 2, imgElement.naturalWidth - size));
+    const finalY = Math.max(0, Math.min(cy - size / 2, imgElement.naturalHeight - size));
+    const finalSize = Math.min(size, imgElement.naturalWidth, imgElement.naturalHeight);
+
+    ctx.drawImage(imgElement, finalX, finalY, finalSize, finalSize, 0, 0, 64, 64);
+    return canvas.toDataURL('image/png');
+}
+
+// ── Save ──────────────────────────────────────────────────────
+async function saveTag() {
+    if (!selId) return;
+    const name   = document.getElementById('d-name').value.trim();
+    const remark = document.getElementById('d-remark').value.trim();
+    const color  = document.getElementById('d-color-picker').value || '#3498db';
+
+    if (!name) { showStatus(t('tmw.err.emptyName')); return; }
+
+    const res = await api.invoke('tag-manage-update-tag', { id: selId, name, remark, color });
+    if (!res.success) { showStatus(res.error || t('tmw.err.saveFailed')); return; }
+
+    showStatus(t('tmw.status.saved'), true);
+    await loadTags();
+    selectTag(selId);
+}
+
+// ── Delete confirm modal ───────────────────────────────────────
+// 用自定义模态框替代 window.confirm()，避免 Electron 在 confirm() 后丢失窗口焦点
+function showDeleteConfirm(message) {
+    return new Promise(resolve => {
+        document.getElementById('del-modal-msg').textContent = message;
+        document.getElementById('del-modal').style.display = 'flex';
+
+        function onConfirm() { cleanup(); resolve(true); }
+        function onCancel()  { cleanup(); resolve(false); }
+        function onKey(e) {
+            if (e.key === 'Enter')  { onConfirm(); }
+            if (e.key === 'Escape') { onCancel(); }
+        }
+        function cleanup() {
+            document.getElementById('del-modal').style.display = 'none';
+            document.getElementById('del-confirm').removeEventListener('click', onConfirm);
+            document.getElementById('del-cancel') .removeEventListener('click', onCancel);
+            document.removeEventListener('keydown', onKey);
+        }
+        document.getElementById('del-confirm').addEventListener('click', onConfirm);
+        document.getElementById('del-cancel') .addEventListener('click', onCancel);
+        document.addEventListener('keydown', onKey);
+    });
+}
+
+// ── Delete ────────────────────────────────────────────────────
+async function deleteTag() {
+    if (!selId || !selTag) return;
+    const childCount = (selTag.children || []).length;
+    if (childCount > 0) {
+        alert(t('tmw.err.hasChildren', { name: selTag.name, count: childCount }));
+        return;
+    }
+    const confirmed = await showDeleteConfirm(t('tmw.confirm.delete', { name: selTag.name }));
+    if (!confirmed) return;
+
+    const res = await api.invoke('tag-manage-delete-tag', { id: selId });
+    if (!res.success) { showStatus(res.error || t('tmw.err.deleteFailed')); return; }
+
+    showStatus(t('tmw.status.deleted'), true);
+    selId = null; selTag = null;
+    await loadTags();
+    selectTag(null);
+}
+
+// ── Move Modal ────────────────────────────────────────────────
+function openMoveModal() {
+    if (!selId) return;
+    moveTargetId = undefined;
+
+    const body = document.getElementById('move-modal-body');
+    body.innerHTML = '';
+    buildMoveItems(tagsTree, body, 0);
+
+    document.getElementById('move-confirm').disabled = true;
+    document.getElementById('move-modal').style.display = 'flex';
+}
+
+function buildMoveItems(nodes, container, depth) {
+    for (const n of nodes) {
+        const isSelf        = n.id === selId;
+        const isDescendant  = isDescendantOf(selId, n.id);
+        const isCurParent   = selTag && n.id === selTag.parent_id;
+
+        const item = document.createElement('div');
+        item.className = 'move-item';
+        if (isSelf || isDescendant) item.classList.add('move-disabled');
+        if (isCurParent)            item.classList.add('move-selected');
+        item.style.paddingLeft = (12 + depth * 18) + 'px';
+
+        const dot = document.createElement('span');
+        dot.className = 'color-dot';
+        dot.style.backgroundColor = n.color || '#3498db';
+        item.appendChild(dot);
+
+        item.appendChild(document.createTextNode(n.name));
+
+        if (!isSelf && !isDescendant) {
+            item.addEventListener('click', () => {
+                document.querySelectorAll('.move-item').forEach(el => el.classList.remove('move-selected'));
+                item.classList.add('move-selected');
+                moveTargetId = n.id;
+                document.getElementById('move-confirm').disabled = false;
+            });
+        }
+        container.appendChild(item);
+
+        if (n.children && n.children.length) buildMoveItems(n.children, container, depth + 1);
+    }
+}
+
+async function doMove(parentId) {
+    document.getElementById('move-modal').style.display = 'none';
+    const res = await api.invoke('tag-manage-move-tag', { id: selId, parentId: parentId ?? null });
+    if (!res.success) { showStatus(res.error || t('tmw.err.moveFailed')); return; }
+    showStatus(t('tmw.status.moved'), true);
+    await loadTags();
+    selectTag(selId);
+}
+
+// ── Tab switching ─────────────────────────────────────────────
+function switchToTab(cat) {
+    const btn = document.querySelector(`.tab-btn[data-cat="${cat}"]`);
+    if (!btn) return;
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentCat = cat;
+    cancelAdd();
+    selId = null; selTag = null;
+    loadTags();
+}
+
+document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => switchToTab(btn.dataset.cat));
+});
+
+// ── Toolbar ───────────────────────────────────────────────────
+document.getElementById('btn-add')      .addEventListener('click', triggerAddRoot);
+document.getElementById('btn-add-child').addEventListener('click', () => { if (selId) triggerAddChild(selId); });
+document.getElementById('btn-edit')     .addEventListener('click', () => {
+    if (selId) { document.getElementById('d-name').focus(); document.getElementById('d-name').select(); }
+});
+document.getElementById('btn-move')  .addEventListener('click', openMoveModal);
+document.getElementById('btn-delete').addEventListener('click', deleteTag);
+document.getElementById('btn-save')  .addEventListener('click', saveTag);
+document.getElementById('close-btn') .addEventListener('click', () => api.send('close-tag-manage-window'));
+
+// ── Move Modal buttons ────────────────────────────────────────
+document.getElementById('move-make-root').addEventListener('click', () => doMove(null));
+document.getElementById('move-cancel')   .addEventListener('click', () => {
+    document.getElementById('move-modal').style.display = 'none';
+});
+document.getElementById('move-confirm').addEventListener('click', () => {
+    if (moveTargetId !== undefined) doMove(moveTargetId);
+});
+
+// ── Keyboard shortcuts ────────────────────────────────────────
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+        // del-modal 有自己的 keydown 监听器处理 Escape，这里直接跳过，防止关闭窗口
+        if (document.getElementById('del-modal').style.display !== 'none') return;
+        if (document.getElementById('move-modal').style.display !== 'none') {
+            document.getElementById('move-modal').style.display = 'none';
+            return;
+        }
+        if (isAdding) { cancelAdd(); return; }
+        api.send('close-tag-manage-window');
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        saveTag();
+    }
+});
+
+// ── Init ──────────────────────────────────────────────────────
+api.on('tag-manage-init', (data) => {
+    applyI18n(data.lang);
+    if (data.initialTab) {
+        switchToTab(data.initialTab);
+    } else {
+        loadTags();
+    }
+});
+
+// 支持窗口已打开时从外部切换 tab
+api.on('tag-manage-switch-tab', (cat) => {
+    switchToTab(cat);
+});
+
+api.send('tag-manage-window-ready');
+</script>
+</body>
+</html>

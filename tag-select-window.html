@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Select Tag</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            background: #1a1a1a;
+            color: #e0e0e0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        /* Title bar */
+        .title-bar {
+            -webkit-app-region: drag;
+            height: 40px;
+            background: rgba(0,0,0,0.45);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 14px;
+            border-bottom: 1px solid #2e2e2e;
+            flex-shrink: 0;
+        }
+        .title-bar-text { font-size: 14px; font-weight: 500; color: #ddd; }
+        .title-bar-close {
+            -webkit-app-region: no-drag;
+            width: 30px; height: 30px;
+            background: #c62828;
+            border: none; border-radius: 4px;
+            cursor: pointer; color: #fff; font-size: 18px; line-height: 1;
+            display: flex; align-items: center; justify-content: center;
+            transition: background 0.15s;
+        }
+        .title-bar-close:hover { background: #b71c1c; }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid #2a2a2a;
+            flex-shrink: 0;
+        }
+        .tab-btn {
+            flex: 1;
+            background: none; border: none;
+            padding: 8px 0;
+            font-size: 12px;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            color: #666;
+            transition: all 0.15s;
+        }
+        .tab-btn:hover:not(:disabled) { color: #bbb; background: rgba(255,255,255,0.04); }
+        .tab-btn.active { color: #e0e0e0; border-bottom-color: #4a9eff; }
+        .tab-btn:disabled { opacity: 0.3; cursor: default; }
+
+        /* Tree */
+        .tree-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 6px 0;
+        }
+        .tree-container::-webkit-scrollbar { width: 5px; }
+        .tree-container::-webkit-scrollbar-track { background: transparent; }
+        .tree-container::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 3px; }
+        .tree-empty {
+            color: #484848;
+            font-size: 13px;
+            text-align: center;
+            padding: 24px 16px;
+        }
+
+        .node-row {
+            display: flex;
+            align-items: center;
+            height: 30px;
+            cursor: pointer;
+            border-radius: 4px;
+            margin: 1px 5px;
+            padding-right: 6px;
+            transition: background 0.12s;
+        }
+        .node-row:hover { background: rgba(255,255,255,0.055); }
+        .node-row.selected { background: rgba(74,158,255,0.18); }
+        .node-row.selected:hover { background: rgba(74,158,255,0.23); }
+
+        .toggle-icon {
+            width: 18px; flex-shrink: 0;
+            text-align: center;
+            font-size: 9px; color: #555;
+        }
+        .toggle-icon.clickable { color: #888; cursor: pointer; }
+        .toggle-icon.clickable:hover { color: #ccc; }
+
+        .color-dot {
+            width: 7px; height: 7px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            margin: 0 6px 0 2px;
+        }
+        .node-name {
+            flex: 1;
+            font-size: 13px;
+            color: #c0c0c0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .node-row.selected .node-name { color: #e8e8e8; }
+
+        /* Confirm bar */
+        .confirm-bar {
+            border-top: 1px solid #2e2e2e;
+            padding: 10px 12px;
+            display: flex;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+        .confirm-btn {
+            flex: 1;
+            background: #4a9eff;
+            border: none;
+            color: #fff;
+            padding: 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: background 0.15s;
+        }
+        .confirm-btn:hover:not(:disabled) { background: #3a8eef; }
+        .confirm-btn:disabled { opacity: 0.4; cursor: default; }
+    </style>
+</head>
+<body>
+
+<div class="title-bar">
+    <span class="title-bar-text" id="title-text">Select Tag</span>
+    <button class="title-bar-close" id="close-btn">&#215;</button>
+</div>
+
+<div class="tabs">
+    <button class="tab-btn active" data-cat="face" id="tab-face">Faces</button>
+    <button class="tab-btn" data-cat="event" id="tab-event">Events</button>
+    <button class="tab-btn" data-cat="location" id="tab-location">Locations</button>
+    <button class="tab-btn" data-cat="common" id="tab-common">Common</button>
+</div>
+
+<div class="tree-container" id="tree-container">
+    <div class="tree-empty">Loading...</div>
+</div>
+
+<div class="confirm-bar">
+    <button class="confirm-btn" id="confirm-btn" disabled>Confirm</button>
+</div>
+
+<script>
+const api = window.electronAPI;
+
+const DICT = {
+    en: {
+        'title': 'Select Tag',
+        'tab.faces': 'Faces', 'tab.events': 'Events',
+        'tab.locations': 'Locations', 'tab.common': 'Common',
+        'confirm': 'Confirm',
+        'empty': 'No tags in this category'
+    },
+    zh: {
+        'title': '\u9009\u62e9\u6807\u7b7e',
+        'tab.faces': '\u4eba\u7269', 'tab.events': '\u4e8b\u4ef6',
+        'tab.locations': '\u5730\u6807', 'tab.common': '\u5176\u4ed6',
+        'confirm': '\u786e\u5b9a',
+        'empty': '\u8be5\u5206\u7c7b\u6682\u65e0\u6807\u7b7e'
+    }
+};
+
+let currentLang = 'en';
+function t(key) { return (DICT[currentLang] || DICT.en)[key] || key; }
+
+let currentCat = 'face';
+let lockedCategory = null;
+let tagsTree = [];
+let selId = null;
+let selTag = null;
+let expandState = {};
+
+function applyI18n() {
+    document.getElementById('title-text').textContent = t('title');
+    document.getElementById('tab-face').textContent = t('tab.faces');
+    document.getElementById('tab-event').textContent = t('tab.events');
+    document.getElementById('tab-location').textContent = t('tab.locations');
+    document.getElementById('tab-common').textContent = t('tab.common');
+    updateConfirmBtn();
+}
+
+// Init
+api.send('tag-select-window-ready');
+api.on('tag-select-init', async ({ lang, lockedCategory: lc }) => {
+    currentLang = lang || 'en';
+    lockedCategory = lc || null;
+
+    // 如果锁定到某个分类，切换到该 tab 并禁用其他
+    if (lockedCategory) {
+        currentCat = lockedCategory;
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            if (btn.dataset.cat === lockedCategory) {
+                btn.classList.add('active');
+                btn.disabled = false;
+            } else {
+                btn.classList.remove('active');
+                btn.disabled = true;
+            }
+        });
+    }
+
+    applyI18n();
+    await loadTags();
+});
+
+// Tab switching
+document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        if (lockedCategory && btn.dataset.cat !== lockedCategory) return;
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentCat = btn.dataset.cat;
+        selId = null;
+        selTag = null;
+        expandState = {};
+        updateConfirmBtn();
+        loadTags();
+    });
+});
+
+async function loadTags() {
+    const res = await api.invoke('tag-select-get-tags', currentCat);
+    if (!res.success) return;
+    tagsTree = res.tags;
+    renderTree();
+}
+
+function flatFind(nodes, id) {
+    for (const n of nodes) {
+        if (n.id === id) return n;
+        if (n.children) {
+            const found = flatFind(n.children, id);
+            if (found) return found;
+        }
+    }
+    return null;
+}
+
+function renderTree() {
+    const container = document.getElementById('tree-container');
+    container.innerHTML = '';
+    if (!tagsTree.length) {
+        container.innerHTML = `<div class="tree-empty">${t('empty')}</div>`;
+        return;
+    }
+    renderNodes(tagsTree, container, 0);
+}
+
+function renderNodes(nodes, container, depth) {
+    for (const node of nodes) {
+        const hasChildren = (node.children || []).length > 0;
+        const expanded = expandState[node.id] !== false;
+
+        const wrap = document.createElement('div');
+        const row = document.createElement('div');
+        row.className = 'node-row' + (node.id === selId ? ' selected' : '');
+        row.style.paddingLeft = (10 + depth * 18) + 'px';
+
+        const tog = document.createElement('span');
+        tog.className = 'toggle-icon' + (hasChildren ? ' clickable' : '');
+        if (hasChildren) {
+            tog.textContent = expanded ? '\u25BC' : '\u25B6';
+            tog.addEventListener('click', e => {
+                e.stopPropagation();
+                expandState[node.id] = !expanded;
+                renderTree();
+            });
+        }
+        row.appendChild(tog);
+
+        const dot = document.createElement('span');
+        dot.className = 'color-dot';
+        dot.style.backgroundColor = node.color || '#3498db';
+        row.appendChild(dot);
+
+        const nameEl = document.createElement('span');
+        nameEl.className = 'node-name';
+        nameEl.textContent = node.name;
+        row.appendChild(nameEl);
+
+        row.addEventListener('click', () => {
+            selId = node.id;
+            selTag = node;
+            renderTree();
+            updateConfirmBtn();
+        });
+
+        // Double-click to confirm directly
+        row.addEventListener('dblclick', () => {
+            selId = node.id;
+            selTag = node;
+            doConfirm();
+        });
+
+        wrap.appendChild(row);
+
+        if (hasChildren) {
+            const childWrap = document.createElement('div');
+            if (!expanded) childWrap.style.display = 'none';
+            renderNodes(node.children, childWrap, depth + 1);
+            wrap.appendChild(childWrap);
+        }
+
+        container.appendChild(wrap);
+    }
+}
+
+function updateConfirmBtn() {
+    const btn = document.getElementById('confirm-btn');
+    btn.disabled = !selId;
+    btn.textContent = selTag ? `${t('confirm')} (${selTag.name})` : t('confirm');
+}
+
+function doConfirm() {
+    if (!selTag) return;
+    api.send('tag-select-confirm', {
+        tagId: selTag.id,
+        tagName: selTag.name,
+        tagColor: selTag.color || '#3498db',
+        tagCategory: selTag.category || currentCat
+    });
+}
+
+document.getElementById('confirm-btn').addEventListener('click', doConfirm);
+
+document.getElementById('close-btn').addEventListener('click', () => {
+    api.send('close-tag-select-window');
+});
+
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') api.send('close-tag-select-window');
+    if (e.key === 'Enter' && selTag) doConfirm();
+});
+</script>
+</body>
+</html>

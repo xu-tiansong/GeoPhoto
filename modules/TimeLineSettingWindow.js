@@ -1,5 +1,6 @@
 const { BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
+const i18n = require('./i18n');
 
 class TimeLineSettingWindow {
     constructor(parentWindow, timelineState) {
@@ -27,8 +28,9 @@ class TimeLineSettingWindow {
         // 绑定事件处理器
         this.handleReady = () => {
             if (this.window && !this.window.isDestroyed()) {
-                console.log('Sending timeline state to window:', this.timelineState);
-                this.window.webContents.send('init-data', this.timelineState);
+                const payload = Object.assign({}, this.timelineState, { lang: i18n.getLanguage() });
+                console.log('Sending timeline state to window:', payload);
+                this.window.webContents.send('init-data', payload);
             }
         };
 

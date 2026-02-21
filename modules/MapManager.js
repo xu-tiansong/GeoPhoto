@@ -4,6 +4,7 @@
  */
 
 const ThumbnailGenerator = require('./ThumbnailGenerator');
+const i18n = require('./i18n');
 
 class MapManager {
     constructor(ipcRenderer, mapElementId = 'map') {
@@ -38,6 +39,8 @@ class MapManager {
      */
     initMap() {
         this.map = L.map(this.mapElementId, { center: [20, 0], zoom: 2 });
+        // 自定义 pane，使地标小红旗始终在最上层（高于 markerPane 的 z-index 600）
+        this.map.createPane('landmarkPane').style.zIndex = 650;
     }
 
     /**
@@ -222,7 +225,7 @@ class MapManager {
                     }
                     // 其他错误状态
                     console.log(`逆地理编码HTTP错误: ${response.status}`);
-                    resolve('未知位置');
+                    resolve(i18n.t('map.unknownLocation'));
                     continue;
                 }
                 
@@ -230,7 +233,7 @@ class MapManager {
                 const contentType = response.headers.get('content-type');
                 if (!contentType || !contentType.includes('application/json')) {
                     console.log('逆地理编码返回非JSON响应');
-                    resolve('未知位置');
+                    resolve(i18n.t('map.unknownLocation'));
                     continue;
                 }
                 
@@ -239,19 +242,19 @@ class MapManager {
                 // 检查是否有错误信息
                 if (data.error) {
                     console.log('逆地理编码API错误:', data.error);
-                    resolve('未知位置');
+                    resolve(i18n.t('map.unknownLocation'));
                     continue;
                 }
                 
                 const address = data.address || {};
                 const cityName = address.city || address.town || address.county || 
-                                 address.state || address.country || '未知位置';
+                                 address.state || address.country || i18n.t('map.unknownLocation');
                 
                 this.cityCache.set(cacheKey, cityName);
                 resolve(cityName);
             } catch (error) {
                 console.log('逆地理编码失败:', error);
-                resolve('未知位置');
+                resolve(i18n.t('map.unknownLocation'));
             }
         }
         
@@ -262,11 +265,15 @@ class MapManager {
      * 格式化日期时间
      */
     formatDateTime(timeStr) {
-        if (!timeStr) return { date: '未知日期', time: '' };
+        if (!timeStr) return { date: i18n.t('map.unknownDate'), time: '' };
         const d = new Date(timeStr);
-        if (isNaN(d.getTime())) return { date: '未知日期', time: '' };
-        
-        const date = `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
+        if (isNaN(d.getTime())) return { date: i18n.t('map.unknownDate'), time: '' };
+
+        const date = i18n.t('date.format', {
+            year: d.getFullYear(),
+            month: d.getMonth() + 1,
+            day: d.getDate()
+        });
         const time = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
         return { date, time };
     }
@@ -304,7 +311,7 @@ class MapManager {
         const infoHtml = `
             <div class="tooltip-info">
                 <div class="tooltip-datetime">${dateTimeStr}${likeIcon}</div>
-                <div class="tooltip-city" id="${cityId}">${photo.lat && photo.lng ? '加载中...' : '无位置信息'}</div>
+                <div class="tooltip-city" id="${cityId}">${photo.lat && photo.lng ? i18n.t('map.loading') : i18n.t('map.noLocation')}</div>
             </div>
         `;
         
@@ -547,7 +554,7 @@ class MapManager {
                 bounds: range
             });
         } else {
-            alert('在该矩形区域内没有找到照片');
+            alert(i18n.t('map.noPhotosInArea'));
         }
     }
 
@@ -595,6 +602,48 @@ class MapManager {
             console.log('矩形选框已清除');
         }
     }
+
+    /**
+     * 加载地标标签并在地图上显示圆形覆盖区域
+     */
+    async loadLocationTags() {
+        try {
+            const tags = await this.ipcRenderer.invoke('get-location-tags');
+            if (!tags || tags.length === 0) return;
+
+            if (this._locationTagsLayer) {
+                this.map.removeLayer(this._locationTagsLayer);
+            }
+            this._locationTagsLayer = L.layerGroup().addTo(this.map);
+
+            const flagIcon = L.divIcon({
+                html: '<span style="font-size:18px;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.5))">&#x1F6A9;</span>',
+                className: '',
+                iconSize: [18, 18],
+                iconAnchor: [4, 18]
+            });
+
+            for (const tag of tags) {
+                const color = tag.color || '#e53935';
+                const circle = L.circle([tag.lat, tag.lng], {
+                    radius: tag.radius || 10,
+                    color: color,
+                    weight: 1.5,
+                    fillColor: color,
+                    fillOpacity: 0.15,
+                    opacity: 0.6
+                });
+                circle.bindTooltip(tag.name, { direction: 'top', offset: [0, -4] });
+                circle.addTo(this._locationTagsLayer);
+
+                const flag = L.marker([tag.lat, tag.lng], { icon: flagIcon, interactive: false, pane: 'landmarkPane' });
+                flag.addTo(this._locationTagsLayer);
+            }
+            console.log(`已加载 ${tags.length} 个地标标签到地图`);
+        } catch (e) {
+            console.error('加载地标标签失败:', e);
+        }
+    }
 }
 
 // 全局辅助函数（用于 HTML 内联事件）
@@ -604,7 +653,7 @@ class MapManager {
 window.generateImageThumbnail = function(img) {
     const isThumbnail = img.dataset.isThumbnail === 'true';
     const originalPath = img.dataset.originalPath;
-    
+
     if (!isThumbnail && originalPath) {
         // 异步生成缩略图
         ThumbnailGenerator.generateAndSaveThumbnail(img, originalPath).catch(err => {
@@ -616,7 +665,7 @@ window.generateImageThumbnail = function(img) {
 // 生成视频缩略图
 window.generateVideoThumbnail = function(video) {
     const originalPath = video.dataset.originalPath;
-    
+
     if (originalPath) {
         video.addEventListener('seeked', () => {
             ThumbnailGenerator.generateAndSaveThumbnail(video, originalPath).catch(err => {

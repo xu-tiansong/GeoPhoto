@@ -1,47 +1,46 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <meta charset="UTF-8">
     <title>Timeline Settings</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
             background: #1a1a1a;
-            color: #fff;
+            color: #e0e0e0;
             overflow: hidden;
             width: 100vw;
             height: 100vh;
             display: flex;
             flex-direction: column;
+            user-select: none;
         }
 
         .title-bar {
             -webkit-app-region: drag;
             height: 40px;
-            background: rgba(0, 0, 0, 0.5);
+            background: rgba(0,0,0,0.45);
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 0 15px;
-            border-bottom: 1px solid #333;
+            padding: 0 14px;
+            border-bottom: 1px solid #2e2e2e;
+            flex-shrink: 0;
         }
 
         .title-bar-text {
             font-size: 14px;
             font-weight: 500;
-            color: #fff;
+            color: #ddd;
         }
 
         .title-bar-button {
             -webkit-app-region: no-drag;
-            width: 32px;
-            height: 32px;
-            background: #d32f2f;
+            width: 30px;
+            height: 30px;
+            background: #c62828;
             border: none;
             border-radius: 4px;
             cursor: pointer;
@@ -49,9 +48,9 @@
             align-items: center;
             justify-content: center;
             color: #fff;
-            font-size: 20px;
-            font-weight: bold;
-            transition: background 0.2s;
+            font-size: 18px;
+            line-height: 1;
+            transition: background 0.15s;
         }
 
         .title-bar-button:hover {
@@ -69,7 +68,7 @@
             display: flex;
             gap: 5px;
             margin-bottom: 20px;
-            border-bottom: 1px solid #333;
+            border-bottom: 1px solid #2e2e2e;
         }
 
         .tab button {
@@ -78,19 +77,20 @@
             outline: none;
             cursor: pointer;
             padding: 10px 20px;
-            transition: all 0.2s;
-            color: #999;
-            font-size: 14px;
+            transition: all 0.18s;
+            color: #666;
+            font-size: 12px;
+            font-family: inherit;
             border-bottom: 2px solid transparent;
         }
 
         .tab button:hover {
-            color: #fff;
-            background: rgba(255, 255, 255, 0.05);
+            color: #bbb;
+            background: rgba(255,255,255,0.04);
         }
 
         .tab button.active {
-            color: #fff;
+            color: #e0e0e0;
             border-bottom-color: #4a9eff;
         }
 
@@ -104,8 +104,9 @@
         }
 
         .form-group label {
-            color: #888;
-            font-size: 12px;
+            color: #777;
+            font-size: 11px;
+            font-family: inherit;
             margin-left: 8px;
         }
 
@@ -116,20 +117,21 @@
         .form-group input[type="datetime-local"],
         .form-group input[type="date"],
         .form-group input[type="month"] {
-            background: #2a2a2a;
-            border: 1px solid #444;
-            color: #fff;
+            background: #222;
+            border: 1px solid #383838;
+            color: #ddd;
             padding: 6px 10px;
             border-radius: 4px;
             font-size: 13px;
             font-family: inherit;
             margin-left: 5px;
+            outline: none;
+            transition: border-color 0.15s;
         }
 
         .form-group input[type="datetime-local"]:focus,
         .form-group input[type="date"]:focus,
         .form-group input[type="month"]:focus {
-            outline: none;
             border-color: #4a9eff;
         }
 
@@ -141,8 +143,9 @@
         }
 
         .range-inputs p {
-            color: #888;
+            color: #777;
             font-size: 12px;
+            font-family: inherit;
         }
 
         .buttons {
@@ -150,26 +153,29 @@
             justify-content: flex-end;
             gap: 10px;
             padding-top: 20px;
-            border-top: 1px solid #333;
+            border-top: 1px solid #2e2e2e;
         }
 
         .buttons button {
-            background: #333;
-            border: none;
-            color: #fff;
-            padding: 8px 20px;
+            background: #2a2a2a;
+            border: 1px solid #383838;
+            color: #ccc;
+            padding: 6px 20px;
             border-radius: 4px;
             cursor: pointer;
-            font-size: 14px;
-            transition: background 0.2s;
+            font-size: 13px;
+            font-family: inherit;
+            transition: background 0.15s;
         }
 
         .buttons button:hover {
-            background: #444;
+            background: #333;
         }
 
         .buttons button#ok-btn {
             background: #4a9eff;
+            border-color: #4a9eff;
+            color: #fff;
         }
 
         .buttons button#ok-btn:hover {
@@ -179,53 +185,79 @@
 </head>
 <body>
     <div class="title-bar">
-        <div class="title-bar-text">Timeline Settings</div>
+        <div class="title-bar-text" data-i18n="tsw.title">Timeline Settings</div>
         <div class="title-bar-button" id="close-btn">&times;</div>
     </div>
 
     <div class="content">
         <div class="tab">
-            <button class="tablinks active" onclick="openTab(event, 'TimeLine')">Time Line</button>
-            <button class="tablinks" onclick="openTab(event, 'TimeRange')">Time Range</button>
+            <button class="tablinks active" onclick="openTab(event, 'TimeLine')" data-i18n="tsw.tabTimeline">Time Line</button>
+            <button class="tablinks" onclick="openTab(event, 'TimeRange')" data-i18n="tsw.tabRange">Time Range</button>
         </div>
 
         <div id="TimeLine" class="tabcontent" style="display: block;">
             <div class="form-group">
                 <input type="radio" id="hour" name="timelineMode" value="hour">
-                <label for="hour">Hourly</label>
+                <label for="hour" data-i18n="tsw.hourly">Hourly</label>
             </div>
             <div class="form-group">
                 <input type="radio" id="day" name="timelineMode" value="day">
-                <label for="day">Daily</label>
+                <label for="day" data-i18n="tsw.daily">Daily</label>
             </div>
             <div class="form-group">
                 <input type="radio" id="month" name="timelineMode" value="month">
-                <label for="month">Monthly</label>
+                <label for="month" data-i18n="tsw.monthly">Monthly</label>
             </div>
         </div>
 
         <div id="TimeRange" class="tabcontent">
             <div class="range-inputs" id="hour-range">
-                <p>From: <input type="datetime-local" id="hour-start"> To: <input type="datetime-local" id="hour-end"></p>
+                <p><span data-i18n="tsw.from">From:</span> <input type="datetime-local" id="hour-start"> <span data-i18n="tsw.to">To:</span> <input type="datetime-local" id="hour-end"></p>
             </div>
             <div class="range-inputs" id="day-range" style="display: none;">
-                <p>From: <input type="date" id="day-start"> To: <input type="date" id="day-end"></p>
+                <p><span data-i18n="tsw.from">From:</span> <input type="date" id="day-start"> <span data-i18n="tsw.to">To:</span> <input type="date" id="day-end"></p>
             </div>
             <div class="range-inputs" id="month-range" style="display: none;">
-                <p>From: <input type="month" id="month-start"> To: <input type="month" id="month-end"></p>
+                <p><span data-i18n="tsw.from">From:</span> <input type="month" id="month-start"> <span data-i18n="tsw.to">To:</span> <input type="month" id="month-end"></p>
             </div>
         </div>
 
         <div class="buttons">
-            <button id="cancel-btn">Cancel</button>
-            <button id="ok-btn">OK</button>
+            <button id="cancel-btn" data-i18n="tsw.cancel">Cancel</button>
+            <button id="ok-btn" data-i18n="tsw.ok">OK</button>
         </div>
     </div>
 
     <script>
         let lastMode = null;
 
-        function openTab(evt, tabName) {
+        // ── 内联翻译表 ──────────────────────────────────────
+        const tswTranslations = {
+            en: {
+                'tsw.title': 'Timeline Settings', 'tsw.tabTimeline': 'Time Line',
+                'tsw.tabRange': 'Time Range', 'tsw.hourly': 'Hourly',
+                'tsw.daily': 'Daily', 'tsw.monthly': 'Monthly',
+                'tsw.from': 'From:', 'tsw.to': 'To:',
+                'tsw.cancel': 'Cancel', 'tsw.ok': 'OK'
+            },
+            zh: {
+                'tsw.title': '时间轴设置', 'tsw.tabTimeline': '时间轴',
+                'tsw.tabRange': '时间范围', 'tsw.hourly': '小时',
+                'tsw.daily': '日', 'tsw.monthly': '月',
+                'tsw.from': '从:', 'tsw.to': '到:',
+                'tsw.cancel': '取消', 'tsw.ok': '确定'
+            }
+        };
+
+        function applyTswI18n(lang) {
+            const dict = tswTranslations[lang] || tswTranslations.en;
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.getAttribute('data-i18n');
+                if (dict[key]) el.textContent = dict[key];
+            });
+        }
+
+        function switchTab(tabName) {
             var i, tabcontent, tablinks;
             tabcontent = document.getElementsByClassName("tabcontent");
             for (i = 0; i < tabcontent.length; i++) {
@@ -234,10 +266,16 @@
             tablinks = document.getElementsByClassName("tablinks");
             for (i = 0; i < tablinks.length; i++) {
                 tablinks[i].className = tablinks[i].className.replace(" active", "");
+                if (tablinks[i].getAttribute('onclick').includes("'" + tabName + "'")) {
+                    tablinks[i].className += " active";
+                }
             }
             document.getElementById(tabName).style.display = "block";
-            evt.currentTarget.className += " active";
             updateRangeVisibility();
+        }
+
+        function openTab(evt, tabName) {
+            switchTab(tabName);
         }
 
         function convertTimeRange(fromMode, toMode, startValue, endValue) {
@@ -394,6 +432,16 @@
             }
 
             updateRangeVisibility();
+
+            // 应用语言
+            if (data.lang) {
+                applyTswI18n(data.lang);
+            }
+
+            // 若指定了初始 Tab，切换过去
+            if (data.initialTab) {
+                switchTab(data.initialTab);
+            }
         });
 
         window.electronAPI.on('validation-error', (message) => {

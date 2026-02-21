@@ -6,10 +6,23 @@
 const { Menu } = require('electron');
 
 class MenuManager {
-    constructor(mainWindow, handlers = {}) {
+    constructor(mainWindow, i18n, handlers = {}) {
         this.mainWindow = mainWindow;
+        this.i18n = i18n;
         this.handlers = handlers;
         this.isFullScreen = false;
+    }
+
+    t(key) {
+        return this.i18n ? this.i18n.t(key) : key;
+    }
+
+    /**
+     * 切换语言并重建菜单
+     */
+    setLanguage(lang) {
+        if (this.i18n) this.i18n.setLanguage(lang);
+        this.createMenu();
     }
 
     /**
@@ -22,7 +35,7 @@ class MenuManager {
             this.createMapMenu(),
             this.createSystemMenu()
         ];
-        
+
         const menu = Menu.buildFromTemplate(template);
         Menu.setApplicationMenu(menu);
     }
@@ -32,38 +45,38 @@ class MenuManager {
      */
     createPhotosMenu() {
         return {
-            label: 'Photos',
+            label: this.t('menu.photos'),
             submenu: [
                 {
-                    label: 'Set Photo Directory',
+                    label: this.t('menu.photos.setDirectory'),
                     accelerator: 'CmdOrCtrl+I',
                     click: () => this.handleMenuClick('setPhotoDirectory')
                 },
                 { type: 'separator' },
                 {
-                    label: 'Photo Directory Management',
+                    label: this.t('menu.photos.directoryManagement'),
                     click: () => this.handleMenuClick('photoDirectoryManagement')
                 },
                 {
-                    label: 'Tag Management',
+                    label: this.t('menu.photos.tagManagement'),
                     click: () => this.handleMenuClick('tagManagement')
                 },
                 { type: 'separator' },
                 {
-                    label: 'Backup Photos',
+                    label: this.t('menu.photos.backup'),
                     click: () => this.handleMenuClick('backupPhotos')
                 },
                 {
-                    label: 'Slideshow',
+                    label: this.t('menu.photos.slideshow'),
                     accelerator: 'F5',
                     click: () => this.handleMenuClick('slideshow')
                 },
                 {
-                    label: 'Burst Photo Selection',
+                    label: this.t('menu.photos.burst'),
                     click: () => this.handleMenuClick('burstPhotoSelection')
                 },
                 {
-                    label: 'Photo Recognition',
+                    label: this.t('menu.photos.recognition'),
                     click: () => this.handleMenuClick('photoRecognition')
                 }
             ]
@@ -75,14 +88,14 @@ class MenuManager {
      */
     createTimelineMenu() {
         return {
-            label: 'Timeline',
+            label: this.t('menu.timeline'),
             submenu: [
                 {
-                    label: 'Timeline Settings',
+                    label: this.t('menu.timeline.settings'),
                     click: () => this.handleMenuClick('timelineSettings')
                 },
                 {
-                    label: 'Time Range Settings',
+                    label: this.t('menu.timeline.timeRange'),
                     click: () => this.handleMenuClick('timeRangeSettings')
                 }
             ]
@@ -94,22 +107,22 @@ class MenuManager {
      */
     createMapMenu() {
         return {
-            label: 'Map',
+            label: this.t('menu.map'),
             submenu: [
                 {
-                    label: 'Landmark Management',
+                    label: this.t('menu.map.landmarks'),
                     click: () => this.handleMenuClick('landmarkManagement')
                 },
                 {
-                    label: 'Layer Settings',
+                    label: this.t('menu.map.layers'),
                     click: () => this.handleMenuClick('layerSettings')
                 },
                 {
-                    label: 'Offline Map',
+                    label: this.t('menu.map.offline'),
                     click: () => this.handleMenuClick('offlineMap')
                 },
                 {
-                    label: 'Travel Routes',
+                    label: this.t('menu.map.routes'),
                     click: () => this.handleMenuClick('travelRoutes')
                 }
             ]
@@ -121,32 +134,35 @@ class MenuManager {
      */
     createSystemMenu() {
         return {
-            label: 'System',
+            label: this.t('menu.system'),
             submenu: [
                 {
-                    label: this.isFullScreen ? 'Exit Fullscreen' : 'Fullscreen Map',
+                    label: this.isFullScreen
+                        ? this.t('menu.system.exitFullscreen')
+                        : this.t('menu.system.fullscreen'),
                     accelerator: 'F11',
                     click: () => this.handleMenuClick('fullscreenMap')
                 },
                 {
-                    label: 'Language Settings',
+                    label: this.t('menu.system.language'),
                     submenu: [
                         {
-                            label: 'English',
+                            label: this.t('menu.system.english'),
                             type: 'radio',
-                            checked: true,
+                            checked: this.i18n ? this.i18n.getLanguage() === 'en' : true,
                             click: () => this.handleMenuClick('languageEnglish')
                         },
                         {
-                            label: '简体中文',
+                            label: this.t('menu.system.chinese'),
                             type: 'radio',
+                            checked: this.i18n ? this.i18n.getLanguage() === 'zh' : false,
                             click: () => this.handleMenuClick('languageChinese')
                         }
                     ]
                 },
                 { type: 'separator' },
                 {
-                    label: 'Developer Tools',
+                    label: this.t('menu.system.devtools'),
                     accelerator: 'F12',
                     click: () => {
                         if (this.mainWindow) {
@@ -156,12 +172,12 @@ class MenuManager {
                 },
                 { type: 'separator' },
                 {
-                    label: 'About',
+                    label: this.t('menu.system.about'),
                     click: () => this.handleMenuClick('about')
                 },
                 { type: 'separator' },
                 {
-                    label: 'Quit',
+                    label: this.t('menu.system.quit'),
                     accelerator: 'CmdOrCtrl+Q',
                     role: 'quit'
                 }
@@ -174,12 +190,10 @@ class MenuManager {
      */
     handleMenuClick(action) {
         console.log('菜单点击:', action);
-        
-        // 检查是否有对应的处理器
+
         if (this.handlers[action]) {
             this.handlers[action]();
         } else {
-            // 默认处理：发送到渲染进程
             if (this.mainWindow && this.mainWindow.webContents) {
                 this.mainWindow.webContents.send('menu-action', action);
             }
