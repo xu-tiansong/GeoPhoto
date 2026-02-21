@@ -54,8 +54,8 @@ class MenuManager {
                 },
                 { type: 'separator' },
                 {
-                    label: this.t('menu.photos.directoryManagement'),
-                    click: () => this.handleMenuClick('photoDirectoryManagement')
+                    label: this.t('menu.photos.photoManagement'),
+                    click: () => this.handleMenuClick('photoManagement')
                 },
                 {
                     label: this.t('menu.photos.tagManagement'),

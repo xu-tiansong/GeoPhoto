@@ -94,7 +94,8 @@ function applyLanguage(lang) {
 async function handleSetPhotoDirectory() {
     const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
         properties: ['openDirectory'],
-        title: 'Select Photo Directory'
+        title: 'Select Photo Directory',
+        defaultPath: currentPhotoDirectory || undefined
     });
     
     if (canceled || filePaths.length === 0) return;
@@ -116,8 +117,8 @@ async function handleSetPhotoDirectory() {
     // 异步执行扫描，不阻塞UI
     (async () => {
         try {
-            // 使用 PhotoFilesManager 扫描并处理目录（跳过已扫描的目录）
-            const result = await photoManager.scanAndProcessDirectory(dirPath, progressCallback, true);
+            // 使用 PhotoFilesManager 扫描并处理目录（遍历所有子目录，文件级别去重）
+            const result = await photoManager.scanAndProcessDirectory(dirPath, progressCallback, false);
             
             // 通知渲染进程扫描完成
             mainWindow.webContents.send('scan-completed', { 
@@ -192,6 +193,7 @@ function createWindow() {
     // 创建菜单管理器并注册处理器
     menuManager = new MenuManager(mainWindow, i18n);
     menuManager.registerHandler('setPhotoDirectory', handleSetPhotoDirectory);
+    menuManager.registerHandler('photoManagement',     () => photosManageWindow.show({ tab: 'direct' }));
     menuManager.registerHandler('tagManagement',       () => tagManageWindow.show());
     menuManager.registerHandler('landmarkManagement',  () => tagManageWindow.show('location'));
     menuManager.registerHandler('timelineSettings', () => {
@@ -278,9 +280,76 @@ function registerIpcHandlers() {
         return db.getAllPhotos();
     });
 
+    // 获取所有照片时间（仅 time 字段，供日历使用）
+    ipcMain.handle('get-all-photo-dates', () => {
+        return db.getAllPhotoTimes();
+    });
+
     // 根据时间范围查询照片
     ipcMain.handle('query-photos-by-time', (event, { startTime, endTime }) => {
         return db.queryPhotosByTimeRange(startTime, endTime);
+    });
+
+    // 获取目录树（用于照片管理窗口的"目录"tab）
+    // photos.directory 存储的是相对于 photoDirectory 根目录的相对路径，根目录本身存为 ''
+    ipcMain.handle('get-directory-tree', () => {
+        const photoDir = db.getPhotoDirectory();
+        if (!photoDir) return [];
+
+        const uniqueDirs = db.getUniquePhotoDirs(); // [{directory, count}]
+        if (uniqueDirs.length === 0) return [];
+
+        const dirCountMap = new Map(uniqueDirs.map(r => [r.directory, r.count]));
+        const allRelDirs = uniqueDirs.map(r => r.directory);
+
+        function buildNode(relPath) {
+            const children = [];
+            const visited = new Set();
+
+            for (const d of allRelDirs) {
+                if (d === relPath) continue;
+                let rest;
+                if (relPath === '') {
+                    // 根节点：d 的第一段路径即为直接子节点
+                    if (d === '') continue;
+                    rest = d;
+                } else {
+                    // 检查 d 是否以 relPath + 分隔符 开头
+                    if (d.startsWith(relPath + '\\')) {
+                        rest = d.slice(relPath.length + 1);
+                    } else if (d.startsWith(relPath + '/')) {
+                        rest = d.slice(relPath.length + 1);
+                    } else {
+                        continue;
+                    }
+                }
+                const firstSeg = rest.split(/[/\\]/)[0];
+                if (!firstSeg || visited.has(firstSeg)) continue;
+                visited.add(firstSeg);
+                const childRel = relPath === '' ? firstSeg : relPath + path.sep + firstSeg;
+                children.push(buildNode(childRel));
+            }
+
+            children.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+
+            const displayName = relPath === '' ? path.basename(photoDir) : path.basename(relPath);
+            const absPath = relPath === '' ? photoDir : path.join(photoDir, relPath);
+
+            return {
+                name: displayName,
+                fullPath: relPath,  // 相对路径，供 query-photos-by-directory 使用
+                absPath: absPath,   // 绝对路径，供前端 tooltip 显示
+                photoCount: dirCountMap.get(relPath) || 0,
+                children
+            };
+        }
+
+        return [buildNode('')];
+    });
+
+    // 根据目录查询照片
+    ipcMain.handle('query-photos-by-directory', (event, dirPath) => {
+        return db.queryPhotosByDirectory(dirPath);
     });
 
     // 保存地图状态
@@ -450,6 +519,24 @@ function registerIpcHandlers() {
         return db.getLocationTags();
     });
 
+    // ── 照片管理窗口：标签树 & 按标签查询照片 ──────────────────
+    ipcMain.handle('manage-get-tags-tree', () => {
+        return {
+            face:     db.getTreeByCategory('face'),
+            event:    db.getTreeByCategory('event'),
+            location: db.getTreeByCategory('location'),
+            common:   db.getTreeByCategory('common')
+        };
+    });
+
+    ipcMain.handle('manage-query-photos-by-tags', (_event, { tagIds }) => {
+        try {
+            return { success: true, photos: db.getPhotosByTagIds(tagIds) };
+        } catch (e) {
+            return { success: false, error: e.message };
+        }
+    });
+
     // ── Photo Tags ─────────────────────────────────────────
     ipcMain.handle('get-photo-tags', (_event, { photoId }) => {
         try {
@@ -485,8 +572,19 @@ function registerIpcHandlers() {
         tagSelectWindow.show(senderWindow, (tagInfo) => {
             try {
                 db.linkTagToPhoto(photoId, tagInfo.tagId);
+                let locationApplied = null;
+                if (tagInfo.tagCategory === 'location') {
+                    locationApplied = db.applyLandmarkLocationToPhoto(photoId, tagInfo.tagId);
+                }
                 if (senderWindow && !senderWindow.isDestroyed()) {
-                    senderWindow.webContents.send('tag-added', tagInfo);
+                    senderWindow.webContents.send('tag-added', { ...tagInfo, locationApplied });
+                }
+                if (locationApplied && mainWindow && !mainWindow.isDestroyed()) {
+                    mainWindow.webContents.send('photo-location-updated', {
+                        photoId,
+                        lat: locationApplied.lat,
+                        lng: locationApplied.lng
+                    });
                 }
             } catch (e) {
                 console.error('Failed to link tag:', e);

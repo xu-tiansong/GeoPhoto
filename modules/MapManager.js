@@ -109,11 +109,45 @@ class MapManager {
      */
     initEvents() {
         // 地图移动和缩放事件
-        this.map.on('moveend', () => this.saveMapState());
-        this.map.on('zoomend', () => this.saveMapState());
+        this.map.on('moveend', () => {
+            this.saveMapState();
+            this._updateLandmarkCircleOpacity();
+        });
+        this.map.on('zoomend', () => {
+            this.saveMapState();
+            this._updateLandmarkCircleOpacity();
+        });
 
         // 矩形选框事件
         this.map.on(L.Draw.Event.CREATED, (e) => this.onRectangleCreated(e));
+    }
+
+    /**
+     * 判断地图当前可视范围的四个角是否都在圆形内部
+     */
+    _isBoundsInsideCircle(bounds, centerLatLng, radiusMeters) {
+        return [
+            bounds.getNorthWest(),
+            bounds.getNorthEast(),
+            bounds.getSouthEast(),
+            bounds.getSouthWest()
+        ].every(corner => centerLatLng.distanceTo(corner) < radiusMeters);
+    }
+
+    /**
+     * 根据当前地图视野更新地标圆形透明度：
+     * 当整个可视区域在圆形内部（看不到边框）时，圆形全透明
+     */
+    _updateLandmarkCircleOpacity() {
+        if (!this._landmarkCircles || this._landmarkCircles.length === 0) return;
+        const bounds = this.map.getBounds();
+        for (const { circle, centerLatLng, radius, color } of this._landmarkCircles) {
+            if (this._isBoundsInsideCircle(bounds, centerLatLng, radius)) {
+                circle.setStyle({ opacity: 0, fillOpacity: 0 });
+            } else {
+                circle.setStyle({ opacity: 0.6, fillOpacity: 0.15, color, fillColor: color });
+            }
+        }
     }
 
     /**
@@ -594,6 +628,58 @@ class MapManager {
     }
 
     /**
+     * 更新指定照片在地图上的标记位置
+     * 当照片通过地标 tag 获得坐标时调用
+     * @param {number} photoId
+     * @param {number} newLat
+     * @param {number} newLng
+     */
+    updatePhotoMarkerLocation(photoId, newLat, newLng) {
+        // 在 markersLayer 中找到对应标记并移除
+        let photoData = null;
+        for (const layer of this.markersLayer.getLayers()) {
+            if (layer.photoData && layer.photoData.id === photoId) {
+                photoData = layer.photoData;
+                this.markersLayer.removeLayer(layer);
+                break;
+            }
+        }
+
+        // 同步更新缓存
+        const cached = this.currentPhotosCache.find(p => p.id === photoId);
+        if (cached) {
+            cached.lat = newLat;
+            cached.lng = newLng;
+        }
+
+        // 若找不到该照片的标记（不在当前显示范围）则不需要创建新标记
+        if (!photoData) return;
+
+        photoData.lat = newLat;
+        photoData.lng = newLng;
+
+        const marker = L.marker([newLat, newLng]);
+        marker.photoData = JSON.parse(JSON.stringify(photoData));
+        marker.on('mouseover', function() {
+            if (!this._tooltipBound) {
+                this.bindTooltip(this._mapManager.createThumbnailTooltip(this.photoData), {
+                    direction: 'top',
+                    offset: [0, -10],
+                    opacity: 1,
+                    className: 'photo-tooltip-container'
+                });
+                this._tooltipBound = true;
+                this.openTooltip();
+            }
+        });
+        marker.on('click', async function() {
+            await this._mapManager.ipcRenderer.invoke('open-photo-window', this.photoData);
+        });
+        marker._mapManager = this;
+        this.markersLayer.addLayer(marker);
+    }
+
+    /**
      * 清除地图上的矩形选框
      */
     clearRectangle() {
@@ -623,10 +709,13 @@ class MapManager {
                 iconAnchor: [4, 18]
             });
 
+            this._landmarkCircles = [];
             for (const tag of tags) {
                 const color = tag.color || '#e53935';
-                const circle = L.circle([tag.lat, tag.lng], {
-                    radius: tag.radius || 10,
+                const radius = tag.radius || 10;
+                const centerLatLng = L.latLng(tag.lat, tag.lng);
+                const circle = L.circle(centerLatLng, {
+                    radius,
                     color: color,
                     weight: 1.5,
                     fillColor: color,
@@ -635,10 +724,12 @@ class MapManager {
                 });
                 circle.bindTooltip(tag.name, { direction: 'top', offset: [0, -4] });
                 circle.addTo(this._locationTagsLayer);
+                this._landmarkCircles.push({ circle, centerLatLng, radius, color });
 
-                const flag = L.marker([tag.lat, tag.lng], { icon: flagIcon, interactive: false, pane: 'landmarkPane' });
+                const flag = L.marker(centerLatLng, { icon: flagIcon, interactive: false, pane: 'landmarkPane' });
                 flag.addTo(this._locationTagsLayer);
             }
+            this._updateLandmarkCircleOpacity();
             console.log(`已加载 ${tags.length} 个地标标签到地图`);
         } catch (e) {
             console.error('加载地标标签失败:', e);

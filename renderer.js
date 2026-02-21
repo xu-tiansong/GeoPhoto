@@ -96,6 +96,13 @@ ipcRenderer.on('scan-error', (event, data) => {
     alert(i18n.t('scan.error', { error: data.error }));
 });
 
+// 监听照片位置更新（通过地标 tag 赋予坐标），同步移动地图标记
+ipcRenderer.on('photo-location-updated', (_event, { photoId, lat, lng }) => {
+    if (mapManager) {
+        mapManager.updatePhotoMarkerLocation(photoId, lat, lng);
+    }
+});
+
 // 监听照片Like状态变化，刷新地图上的markers
 ipcRenderer.on('photo-like-changed', async (event, { directory, filename, like }) => {
     console.log('照片Like状态变化:', directory, filename, like);

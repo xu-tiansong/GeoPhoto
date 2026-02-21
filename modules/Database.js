@@ -567,6 +567,41 @@ class DatabaseManager {
     }
 
     /**
+     * 查询拥有指定 tag（任一匹配）的所有照片
+     * @param {number[]} tagIds
+     * @returns {object[]}
+     */
+    getPhotosByTagIds(tagIds) {
+        if (!tagIds || tagIds.length === 0) return [];
+        const placeholders = tagIds.map(() => '?').join(',');
+        const photos = this.db.prepare(`
+            SELECT DISTINCT p.* FROM photos p
+            JOIN photo_tags pt ON p.id = pt.photo_id
+            WHERE pt.tag_id IN (${placeholders})
+            ORDER BY p.time
+        `).all(...tagIds);
+        return this.filterExistingPhotos(this.addFullPathToPhotos(photos));
+    }
+
+    /**
+     * 若照片没有位置信息，且指定的 tag 是地标 tag（有坐标），
+     * 则将地标的坐标赋给该照片。
+     * @param {number} photoId
+     * @param {number} tagId
+     * @returns {{ lat: number, lng: number } | null} 返回被赋予的坐标，若不满足条件则返回 null
+     */
+    applyLandmarkLocationToPhoto(photoId, tagId) {
+        const photo = this.db.prepare('SELECT lat, lng FROM photos WHERE id = ?').get(photoId);
+        if (!photo || photo.lat !== null || photo.lng !== null) return null;
+
+        const loc = this.db.prepare('SELECT lat, lng FROM tag_locations WHERE tag_id = ?').get(tagId);
+        if (!loc || loc.lat === null || loc.lng === null) return null;
+
+        this.db.prepare('UPDATE photos SET lat = ?, lng = ? WHERE id = ?').run(loc.lat, loc.lng, photoId);
+        return { lat: loc.lat, lng: loc.lng };
+    }
+
+    /**
      * 获取所有 face tag 及其 descriptors（用于人脸匹配）
      * @returns {{ id, name, color, descriptors: {descriptor: number[]}[] }[]}
      */
@@ -778,6 +813,15 @@ class DatabaseManager {
     }
 
     /**
+     * 获取所有照片的拍摄时间（仅 time 字段，轻量接口供日历使用）
+     * @returns {string[]} 时间字符串数组
+     */
+    getAllPhotoTimes() {
+        const rows = this.db.prepare('SELECT time FROM photos WHERE time IS NOT NULL').all();
+        return rows.map(r => r.time);
+    }
+
+    /**
      * 根据目录和文件名查询单个照片
      */
     getPhotoByPath(directory, filename) {
@@ -796,6 +840,23 @@ class DatabaseManager {
             WHERE time >= ? AND time <= ?
         `;
         const photos = this.db.prepare(sql).all(startTime, endTime);
+        return this.filterExistingPhotos(this.addFullPathToPhotos(photos));
+    }
+
+    /**
+     * 获取照片表中所有唯一的目录路径及各目录照片数量
+     */
+    getUniquePhotoDirs() {
+        return this.db.prepare(
+            'SELECT directory, COUNT(*) as count FROM photos GROUP BY directory ORDER BY directory'
+        ).all();
+    }
+
+    /**
+     * 根据目录路径精确查询照片
+     */
+    queryPhotosByDirectory(dirPath) {
+        const photos = this.db.prepare('SELECT * FROM photos WHERE directory = ?').all(dirPath);
         return this.filterExistingPhotos(this.addFullPathToPhotos(photos));
     }
 

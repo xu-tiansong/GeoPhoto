@@ -7,8 +7,8 @@ const translations = {
     en: {
         // ── 菜单 ──────────────────────────────────────────────
         'menu.photos': 'Photos',
-        'menu.photos.setDirectory': 'Set Photo Directory',
-        'menu.photos.directoryManagement': 'Photo Directory Management',
+        'menu.photos.setDirectory': 'Set & Scan Photo Directory',
+        'menu.photos.photoManagement': 'Photo Management',
         'menu.photos.tagManagement': 'Tag Management',
         'menu.photos.backup': 'Backup Photos',
         'menu.photos.slideshow': 'Slideshow',
@@ -112,14 +112,27 @@ const translations = {
 
         // ── 照片管理窗口 ──────────────────────────────────────
         'manage.title': 'Photos Management',
-        'manage.tabDirect': 'Direct',
+        'manage.tabDirect': 'Directory',
         'manage.tabSelected': 'Selected',
         'manage.tabTag': 'Tag',
-        'manage.directPlaceholder': 'Direct mode content will be here',
+        'manage.tabCalendar': 'Calendar',
+        'manage.directLoading': 'Loading...',
+        'manage.directNoDirs': 'No directories added yet',
+        'manage.directLoadError': 'Failed to load directories',
         'manage.tagPlaceholder': 'Tag management will be here',
         'manage.noPhotos': 'No photos to display',
         'manage.selected': 'Selected: ',
         'manage.photoCount': '{count} photo(s)',
+        'manage.calDaysWithPhotos': '{count} day(s) with photos this month',
+        'manage.calPhotoCount': '{count} photo(s)',
+        'manage.loadMore': '{remaining} more photos',
+        'manage.tagLoading': 'Loading tags...',
+        'manage.tagNone': 'No tags defined yet',
+        'manage.tagSelectHint': 'Select tags to filter photos',
+        'tag.cat.face': 'People / Pets',
+        'tag.cat.event': 'Events',
+        'tag.cat.location': 'Locations',
+        'tag.cat.common': 'General',
 
         // ── 时间轴设置窗口 ────────────────────────────────────
         'tsw.title': 'Timeline Settings',
@@ -209,8 +222,8 @@ const translations = {
     zh: {
         // ── 菜单 ──────────────────────────────────────────────
         'menu.photos': '照片',
-        'menu.photos.setDirectory': '设置照片目录',
-        'menu.photos.directoryManagement': '目录管理',
+        'menu.photos.setDirectory': '设置&扫描照片目录',
+        'menu.photos.photoManagement': '照片管理',
         'menu.photos.tagManagement': '标签管理',
         'menu.photos.backup': '备份照片',
         'menu.photos.slideshow': '幻灯片',
@@ -314,14 +327,27 @@ const translations = {
 
         // ── 照片管理窗口 ──────────────────────────────────────
         'manage.title': '照片管理',
-        'manage.tabDirect': '直接',
+        'manage.tabDirect': '目录',
         'manage.tabSelected': '已选',
         'manage.tabTag': '标签',
-        'manage.directPlaceholder': '直接模式内容将显示在此处',
+        'manage.tabCalendar': '日历',
+        'manage.directLoading': '加载中...',
+        'manage.directNoDirs': '暂无已添加的目录',
+        'manage.directLoadError': '目录加载失败',
         'manage.tagPlaceholder': '标签管理将显示在此处',
         'manage.noPhotos': '没有照片可显示',
         'manage.selected': '已选: ',
         'manage.photoCount': '{count} 张',
+        'manage.calDaysWithPhotos': '本月有 {count} 天有照片',
+        'manage.calPhotoCount': '{count} 张照片',
+        'manage.loadMore': '还有 {remaining} 张',
+        'manage.tagLoading': '加载标签中...',
+        'manage.tagNone': '暂无标签',
+        'manage.tagSelectHint': '勾选标签以筛选照片',
+        'tag.cat.face': '人物 / 宠物',
+        'tag.cat.event': '事件',
+        'tag.cat.location': '地标',
+        'tag.cat.common': '通用',
 
         // ── 时间轴设置窗口 ────────────────────────────────────
         'tsw.title': '时间轴设置',

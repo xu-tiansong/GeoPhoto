@@ -1139,7 +1139,7 @@
             await ipcRenderer.invoke('open-tag-select-window', { photoId: currentPhoto.id });
         });
 
-        ipcRenderer.on('tag-added', (_event, tagInfo) => {
+        ipcRenderer.on('tag-added', async (_event, tagInfo) => {
             if (!currentPhoto) return;
             const container = document.getElementById('tags-container');
             if (container.querySelector(`[data-tag-id="${tagInfo.tagId}"]`)) return;
@@ -1148,6 +1148,23 @@
                 name: tagInfo.tagName,
                 color: tagInfo.tagColor
             }, currentPhoto.id));
+
+            // 若是地标 tag 且成功为无位置照片补充了坐标，则刷新位置显示
+            if (tagInfo.locationApplied) {
+                const { lat, lng } = tagInfo.locationApplied;
+                currentPhoto.lat = lat;
+                currentPhoto.lng = lng;
+                document.getElementById('info-coordinates').textContent = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+                document.getElementById('info-location').textContent = i18n.t('photo.loading');
+                document.getElementById('miniMapContainer').style.display = 'block';
+                initMiniMap(lat, lng);
+                try {
+                    const cityName = await ipcRenderer.invoke('get-city-name', { lat, lng });
+                    document.getElementById('info-location').textContent = cityName;
+                } catch (_) {
+                    document.getElementById('info-location').textContent = i18n.t('photo.failedLoad');
+                }
+            }
         });
 
         // ── Match Tags ───────────────────────────────────

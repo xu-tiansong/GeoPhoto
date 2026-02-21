@@ -57,7 +57,7 @@
 
         /* 左侧容器 */
         .left-panel {
-            width: 250px;
+            width: 375px;
             background-color: #1a1a1a;
             border-right: 1px solid #2e2e2e;
             display: flex;
@@ -96,11 +96,27 @@
             background: transparent;
         }
 
+        .tab:disabled, .tab[disabled] {
+            cursor: not-allowed;
+            color: #3a3a3a;
+            pointer-events: none;
+        }
+        .tab:disabled:hover, .tab[disabled]:hover {
+            background: transparent;
+            color: #3a3a3a;
+        }
+
         /* Tab 内容区 */
         .tab-content {
             flex: 1;
             padding: 16px;
             overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+        .tab-content #direct-panel.active {
+            flex: 1;
+            overflow: hidden;
         }
 
         .tab-panel {
@@ -109,6 +125,65 @@
 
         .tab-panel.active {
             display: block;
+        }
+
+        /* 目录树 */
+        #direct-panel {
+            padding: 0;
+            height: 100%;
+        }
+        .dir-tree {
+            height: 100%;
+            overflow-y: auto;
+            padding: 4px 0;
+        }
+        .tree-node-label {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 8px;
+            cursor: pointer;
+            border-radius: 3px;
+            font-size: 12px;
+            color: #bbb;
+            white-space: nowrap;
+        }
+        .tree-node-label:hover {
+            background: rgba(255,255,255,0.07);
+            color: #eee;
+        }
+        .tree-node-label.selected {
+            background: rgba(74,158,255,0.2);
+            color: #4a9eff;
+        }
+        .tree-toggle {
+            width: 14px;
+            flex-shrink: 0;
+            font-size: 9px;
+            color: #666;
+            text-align: center;
+            transition: transform 0.15s;
+        }
+        .tree-icon {
+            flex-shrink: 0;
+            font-size: 13px;
+        }
+        .tree-name {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .tree-count {
+            flex-shrink: 0;
+            font-size: 10px;
+            color: #555;
+            margin-left: 4px;
+        }
+        .tree-children {
+            padding-left: 14px;
+        }
+        .tree-children.collapsed {
+            display: none;
         }
 
         /* 地图缩略图 */
@@ -244,10 +319,196 @@
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 3px; }
 
+        /* 加载更多按钮 */
+        .load-more-btn {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 16px 0 24px;
+            cursor: pointer;
+            color: #484848;
+            font-size: 12px;
+            gap: 4px;
+            transition: color 0.15s;
+            user-select: none;
+        }
+        .load-more-btn:hover { color: #909090; }
+        .load-more-arrow {
+            font-size: 24px;
+            line-height: 1;
+            animation: load-more-bounce 1.6s ease-in-out infinite;
+        }
+        @keyframes load-more-bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(6px); }
+        }
+
         .info-text {
             padding: 16px;
             color: #888;
             text-align: center;
+        }
+
+        /* ── Tag Filter Panel ───────────────────────────────── */
+        #tagTree { padding: 4px 0; }
+        .tag-cat-section { margin-bottom: 2px; }
+        .tag-cat-header {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 8px;
+            cursor: pointer;
+            border-radius: 3px;
+            font-size: 10px;
+            font-weight: 700;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            user-select: none;
+            transition: background 0.12s, color 0.12s;
+        }
+        .tag-cat-header:hover { background: rgba(255,255,255,0.05); color: #999; }
+        .tag-cat-toggle { font-size: 8px; color: #555; width: 10px; text-align: center; flex-shrink: 0; }
+        .tag-cat-children { padding-left: 2px; }
+        .tag-cat-children.collapsed { display: none; }
+        .tag-node-row {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-size: 12px;
+            color: #bbb;
+            cursor: pointer;
+            user-select: none;
+            transition: background 0.12s;
+        }
+        .tag-node-row:hover { background: rgba(255,255,255,0.06); color: #ddd; }
+        .tag-node-row input[type="checkbox"] {
+            width: 13px;
+            height: 13px;
+            accent-color: #4a9eff;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        .tag-node-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+        .tag-children { padding-left: 18px; }
+        .tag-filter-hint {
+            padding: 20px 12px;
+            color: #484848;
+            font-size: 11px;
+            text-align: center;
+        }
+
+        /* ── Calendar ───────────────────────────────────── */
+        .calendar-nav {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+
+        .calendar-nav button {
+            background: transparent;
+            border: 1px solid #3a3a3a;
+            border-radius: 4px;
+            color: #aaa;
+            cursor: pointer;
+            padding: 4px 12px;
+            font-size: 16px;
+            line-height: 1;
+            transition: background 0.15s, color 0.15s;
+            font-family: inherit;
+        }
+
+        .calendar-nav button:hover {
+            background: rgba(255,255,255,0.08);
+            color: #ddd;
+        }
+
+        .calendar-month-label {
+            font-size: 13px;
+            color: #ddd;
+            font-weight: 500;
+            letter-spacing: 0.5px;
+        }
+
+        .calendar-weekday-row {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            margin-bottom: 4px;
+        }
+
+        .calendar-weekday {
+            text-align: center;
+            font-size: 10px;
+            color: #555;
+            padding: 4px 0;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 2px;
+        }
+
+        .calendar-day {
+            text-align: center;
+            padding: 7px 2px;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #3a3a3a;
+            position: relative;
+            user-select: none;
+        }
+
+        .calendar-day.other-month {
+            color: #2a2a2a;
+        }
+
+        .calendar-day.has-photos {
+            color: #d0d0d0;
+            cursor: pointer;
+            font-weight: 500;
+        }
+
+        .calendar-day.has-photos:hover {
+            background: rgba(74, 158, 255, 0.18);
+            color: #fff;
+        }
+
+        .calendar-day.has-photos::after {
+            content: '';
+            display: block;
+            width: 4px;
+            height: 4px;
+            border-radius: 50%;
+            background: #4a9eff;
+            margin: 2px auto 0;
+        }
+
+        .calendar-day.selected {
+            background: #4a9eff !important;
+            color: #fff !important;
+        }
+
+        .calendar-day.selected::after {
+            background: rgba(255,255,255,0.7);
+        }
+
+        .calendar-day.today-marker {
+            border: 1px solid #4a6f9e;
+        }
+
+        .calendar-day-info {
+            margin-top: 12px;
+            font-size: 11px;
+            color: #666;
+            text-align: center;
+            min-height: 18px;
         }
 
     </style>
@@ -264,12 +525,13 @@
     <div class="left-panel">
         <div class="tabs">
             <button class="tab active" data-tab="direct" data-i18n="manage.tabDirect">Direct</button>
-            <button class="tab" data-tab="selected" data-i18n="manage.tabSelected">Selected</button>
+            <button class="tab" data-tab="selected" data-i18n="manage.tabSelected" disabled>Selected</button>
             <button class="tab" data-tab="tag" data-i18n="manage.tabTag">Tag</button>
+            <button class="tab" data-tab="calendar" data-i18n="manage.tabCalendar">Calendar</button>
         </div>
         <div class="tab-content">
             <div class="tab-panel active" id="direct-panel">
-                <div class="info-text" data-i18n="manage.directPlaceholder">Direct mode content will be here</div>
+                <div class="dir-tree" id="dirTree"></div>
             </div>
             <div class="tab-panel" id="selected-panel">
                 <div class="map-thumbnail">
@@ -281,7 +543,17 @@
                 <div class="info-text"><span data-i18n="manage.selected">Selected: </span><span id="selected-count">-</span></div>
             </div>
             <div class="tab-panel" id="tag-panel">
-                <div class="info-text" data-i18n="manage.tagPlaceholder">Tag management will be here</div>
+                <div id="tagTree"></div>
+            </div>
+            <div class="tab-panel" id="calendar-panel">
+                <div class="calendar-nav">
+                    <button id="calPrevBtn">&#8249;</button>
+                    <span class="calendar-month-label" id="calMonthLabel"></span>
+                    <button id="calNextBtn">&#8250;</button>
+                </div>
+                <div class="calendar-weekday-row" id="calWeekdays"></div>
+                <div class="calendar-grid" id="calendarGrid"></div>
+                <div class="calendar-day-info" id="calDayInfo"></div>
             </div>
         </div>
     </div>
@@ -309,6 +581,11 @@
         })();
         ipcRenderer.on('language-changed', (_event, lang) => {
             i18n.applyToDOM(document, lang);
+            // 日历星期标题和信息文字需要跟随语言重新渲染
+            const calPanel = document.getElementById('calendar-panel');
+            if (calPanel && calPanel.classList.contains('active')) {
+                renderCalendar();
+            }
         });
 
         let currentPhotos = [];
@@ -317,6 +594,21 @@
         let mapBounds = null;
         let intersectionObserver = null;
         let clickTimer = null; // 用于延迟处理单击事件
+
+        // 分页状态
+        let pageSize = 0;       // 每页显示数量（列数×行数≈50），首次渲染时根据容器宽度计算
+        let displayedCount = 0; // 当前已显示的照片数量
+
+        // 标签筛选状态
+        let tagTreeLoaded = false; // 标签树是否已加载（避免重复加载）
+
+        // 日历状态
+        let calendarYear = new Date().getFullYear();
+        let calendarMonth = new Date().getMonth(); // 0-indexed
+        let calendarSelectedDate = null; // 'YYYY-MM-DD'
+        let photoDateMap = new Map(); // 'YYYY-MM-DD' -> [photos] (基于 currentPhotos)
+        let allPhotoTimes = []; // 数据库中所有照片的时间字符串（仅用于日历高亮）
+        let allPhotoDateSet = new Set(); // 'YYYY-MM-DD' 集合，快速查找
         
         // 缩略图生成队列
         let thumbnailQueue = [];
@@ -339,6 +631,7 @@
 
             tabs.forEach(tab => {
                 tab.addEventListener('click', () => {
+                    if (tab.disabled) return;
                     const tabName = tab.dataset.tab;
                     switchTab(tabName);
                 });
@@ -365,6 +658,20 @@
                 console.error('找不到关闭按钮！');
             }
 
+            // 日历导航按钮
+            document.getElementById('calPrevBtn').addEventListener('click', () => {
+                calendarMonth--;
+                if (calendarMonth < 0) { calendarMonth = 11; calendarYear--; }
+                calendarSelectedDate = null;
+                renderCalendar();
+            });
+            document.getElementById('calNextBtn').addEventListener('click', () => {
+                calendarMonth++;
+                if (calendarMonth > 11) { calendarMonth = 0; calendarYear++; }
+                calendarSelectedDate = null;
+                renderCalendar();
+            });
+
             // 页面加载完成后，给右侧面板设置焦点
             const rightPanel = document.querySelector('.right-panel');
             if (rightPanel) {
@@ -372,6 +679,9 @@
                     rightPanel.focus();
                 }, 200);
             }
+
+            // 默认 direct tab 处于激活状态，初始加载目录树
+            loadDirectoryTree();
         }
 
         function switchTab(tabName) {
@@ -410,29 +720,66 @@
                     }
                 }, 150);
             }
+
+            // 如果切换到 calendar tab，渲染日历
+            if (tabName === 'calendar') {
+                renderCalendar();
+            }
+
+            // 如果切换到 direct tab，加载目录树
+            if (tabName === 'direct') {
+                loadDirectoryTree();
+            }
+
+            // 如果切换到 tag tab，加载标签树（首次）或重新应用筛选（后续）
+            if (tabName === 'tag') {
+                if (!tagTreeLoaded) {
+                    loadTagTree();
+                } else {
+                    onTagSelectionChange();
+                }
+            }
         }
 
         // 初始化照片数据
         ipcRenderer.on('init-photos', (event, options) => {
             console.log('收到初始化数据:', options);
-            
+
             // 先设置数据
             if (options.photos) {
                 currentPhotos = options.photos;
                 console.log('设置照片数量:', currentPhotos.length);
+                initCalendarToPhotos(); // 日历定位到照片最新月份
             }
-            
+
             if (options.bounds) {
                 mapBounds = options.bounds;
                 console.log('设置地图边界:', mapBounds);
+                // 地图选取模式：启用 selected tab
+                const selectedTabBtn = document.querySelector('.tab[data-tab="selected"]');
+                if (selectedTabBtn) selectedTabBtn.disabled = false;
             }
-            
+
+            // 异步加载数据库全部照片时间，供日历高亮使用
+            ipcRenderer.invoke('get-all-photo-dates').then(times => {
+                allPhotoTimes = times || [];
+                allPhotoDateSet = new Set();
+                allPhotoTimes.forEach(t => {
+                    if (!t) return;
+                    const d = new Date(t);
+                    if (!isNaN(d.getTime())) {
+                        allPhotoDateSet.add(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`);
+                    }
+                });
+                console.log('全库照片日期数:', allPhotoDateSet.size);
+            }).catch(err => console.error('获取全库日期失败:', err));
+
             // 然后切换tab
             if (options.tab) {
                 console.log('切换到tab:', options.tab);
                 switchTab(options.tab);
             }
-            
+
             // 最后渲染照片
             if (options.photos) {
                 setTimeout(() => {
@@ -445,16 +792,20 @@
         // 更新照片数据
         ipcRenderer.on('update-photos', (event, options) => {
             console.log('收到更新数据:', options);
-            
+
             // 先设置数据
             if (options.photos) {
                 currentPhotos = options.photos;
+                initCalendarToPhotos(); // 更新日历定位
             }
             
             if (options.bounds) {
                 mapBounds = options.bounds;
+                // 地图选取模式：启用 selected tab
+                const selectedTabBtn = document.querySelector('.tab[data-tab="selected"]');
+                if (selectedTabBtn) selectedTabBtn.disabled = false;
             }
-            
+
             // 然后切换tab
             if (options.tab) {
                 switchTab(options.tab);
@@ -500,62 +851,254 @@
             }
         });
 
-        // 渲染照片网格（异步分批渲染）
-        function renderPhotos() {
-            console.log('renderPhotos被调用，当前照片数量:', currentPhotos?.length);
+        // 渲染照片网格（分页显示，每页≈50张完整行）
+        // photosArray: 可选，指定要显示的照片数组；不传则使用 currentPhotos
+        function renderPhotos(photosArray) {
+            const photos = photosArray || currentPhotos;
+            console.log('renderPhotos被调用，照片数量:', photos?.length);
             const grid = document.getElementById('photosGrid');
             if (!grid) {
                 console.error('找不到photosGrid元素！');
                 return;
             }
-            
-            grid.innerHTML = '';
 
-            if (!currentPhotos || currentPhotos.length === 0) {
+            // 清空旧的缩略图生成队列，并重置处理标志
+            // 若前一轮队列正挂在 requestAnimationFrame 的 await 上，标志位仍为 true，
+            // 会导致新照片的 IntersectionObserver 回调触发时 processThumbnailQueue 直接返回。
+            thumbnailQueue = [];
+            isProcessingThumbnail = false;
+            grid.innerHTML = '';
+            displayedCount = 0;
+            removeLoadMoreButton();
+
+            // 重置滚动位置：新内容从顶部开始，避免 IntersectionObserver 误判"不可见"
+            const rightPanel = document.querySelector('.right-panel');
+            if (rightPanel) rightPanel.scrollTop = 0;
+
+            if (!photos || photos.length === 0) {
                 console.log('没有照片可显示');
                 grid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: #888;">${i18n.t('manage.noPhotos')}</div>`;
                 return;
             }
 
             // 按时间排序，并保存到全局变量供翻页导航使用
-            sortedCurrentPhotos = [...currentPhotos].sort((a, b) => {
+            sortedCurrentPhotos = [...photos].sort((a, b) => {
                 const timeA = a.time ? new Date(a.time).getTime() : 0;
                 const timeB = b.time ? new Date(b.time).getTime() : 0;
                 return timeA - timeB;
             });
-            const sortedPhotos = sortedCurrentPhotos;
 
-            console.log('开始渲染', sortedPhotos.length, '张照片');
-            
-            // 分批渲染，每批 20 张
-            const batchSize = 20;
-            let currentIndex = 0;
+            // 根据当前容器宽度计算每页显示数量
+            computePageSize();
 
-            function renderBatch() {
-                const endIndex = Math.min(currentIndex + batchSize, sortedPhotos.length);
-                
-                for (let i = currentIndex; i < endIndex; i++) {
-                    const photoItem = createPhotoItem(sortedPhotos[i]);
-                    grid.appendChild(photoItem);
-                }
+            // 渲染第一页
+            appendPhotosPage();
+        }
 
-                currentIndex = endIndex;
+        // 根据容器宽度计算每页显示数量（列数 × 行数 ≈ 50）
+        function computePageSize() {
+            const rightPanel = document.querySelector('.right-panel');
+            const itemWidth = 224;
+            const gap = 16;
+            const padding = 32; // 左右各 16px
+            const availableWidth = (rightPanel ? rightPanel.clientWidth : 800) - padding;
+            const cols = Math.max(1, Math.floor((availableWidth + gap) / (itemWidth + gap)));
+            const rows = Math.max(1, Math.floor(50 / cols));
+            pageSize = cols * rows;
+            console.log(`分页: 列数=${cols}, 行数=${rows}, 每页=${pageSize}`);
+        }
 
-                if (currentIndex < sortedPhotos.length) {
-                    // 使用 requestIdleCallback 或 setTimeout 继续渲染
-                    if (window.requestIdleCallback) {
-                        requestIdleCallback(renderBatch);
-                    } else {
-                        setTimeout(renderBatch, 0);
-                    }
-                } else {
-                    // 渲染完成，初始化 Intersection Observer
-                    initLazyLoading();
-                    updateSelectedCount();
-                }
+        // 追加下一页照片到网格
+        function appendPhotosPage() {
+            const grid = document.getElementById('photosGrid');
+            const slice = sortedCurrentPhotos.slice(displayedCount, displayedCount + pageSize);
+
+            for (const photo of slice) {
+                grid.appendChild(createPhotoItem(photo));
+            }
+            displayedCount += slice.length;
+
+            // 更新加载更多按钮
+            removeLoadMoreButton();
+            if (displayedCount < sortedCurrentPhotos.length) {
+                addLoadMoreButton();
             }
 
-            renderBatch();
+            initLazyLoading();
+            updateSelectedCount();
+        }
+
+        // 添加"加载更多"按钮
+        function addLoadMoreButton() {
+            const rightPanel = document.querySelector('.right-panel');
+            const remaining = sortedCurrentPhotos.length - displayedCount;
+            const btn = document.createElement('div');
+            btn.className = 'load-more-btn';
+            btn.id = 'loadMoreBtn';
+            btn.innerHTML = `<span class="load-more-arrow">⌄</span><span>${i18n.t('manage.loadMore', { remaining })}</span>`;
+            btn.addEventListener('click', appendPhotosPage);
+            rightPanel.appendChild(btn);
+        }
+
+        // 移除"加载更多"按钮
+        function removeLoadMoreButton() {
+            const existing = document.getElementById('loadMoreBtn');
+            if (existing) existing.remove();
+        }
+
+        // ── 标签筛选树 ────────────────────────────────────────
+
+        // 加载并渲染标签树
+        async function loadTagTree() {
+            const treeEl = document.getElementById('tagTree');
+            treeEl.innerHTML = `<div class="tag-filter-hint">${i18n.t('manage.tagLoading')}</div>`;
+            try {
+                const tree = await ipcRenderer.invoke('manage-get-tags-tree');
+                treeEl.innerHTML = '';
+                const categories = [
+                    { key: 'face',     label: i18n.t('tag.cat.face') },
+                    { key: 'event',    label: i18n.t('tag.cat.event') },
+                    { key: 'location', label: i18n.t('tag.cat.location') },
+                    { key: 'common',   label: i18n.t('tag.cat.common') }
+                ];
+                let hasAnyTag = false;
+                for (const { key, label } of categories) {
+                    const nodes = tree[key] || [];
+                    if (nodes.length === 0) continue;
+                    hasAnyTag = true;
+                    treeEl.appendChild(createTagCatSection(label, nodes));
+                }
+                if (!hasAnyTag) {
+                    treeEl.innerHTML = `<div class="tag-filter-hint">${i18n.t('manage.tagNone')}</div>`;
+                }
+                tagTreeLoaded = true;
+                // 初始显示提示（右侧无照片）
+                onTagSelectionChange();
+            } catch (err) {
+                console.error('加载标签树失败:', err);
+                treeEl.innerHTML = `<div class="tag-filter-hint">加载失败</div>`;
+            }
+        }
+
+        // 创建 category 分组节点
+        function createTagCatSection(label, nodes) {
+            const section = document.createElement('div');
+            section.className = 'tag-cat-section';
+
+            const header = document.createElement('div');
+            header.className = 'tag-cat-header';
+
+            const toggle = document.createElement('span');
+            toggle.className = 'tag-cat-toggle';
+            toggle.textContent = '▼';
+
+            const labelSpan = document.createElement('span');
+            labelSpan.textContent = label;
+
+            header.appendChild(toggle);
+            header.appendChild(labelSpan);
+
+            const childrenEl = document.createElement('div');
+            childrenEl.className = 'tag-cat-children';
+            for (const node of nodes) {
+                childrenEl.appendChild(createTagNode(node));
+            }
+
+            header.addEventListener('click', () => {
+                const collapsed = childrenEl.classList.toggle('collapsed');
+                toggle.textContent = collapsed ? '▶' : '▼';
+            });
+
+            section.appendChild(header);
+            section.appendChild(childrenEl);
+            return section;
+        }
+
+        // 递归创建标签节点（含子标签）
+        function createTagNode(tag) {
+            const node = document.createElement('div');
+            node.className = 'tag-node';
+            node.dataset.tagId = tag.id;
+
+            const row = document.createElement('div');
+            row.className = 'tag-node-row';
+
+            const cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.dataset.tagId = tag.id;
+
+            const dot = document.createElement('span');
+            dot.className = 'tag-node-dot';
+            dot.style.background = tag.color || '#3498db';
+
+            const nameSpan = document.createElement('span');
+            nameSpan.textContent = tag.name;
+
+            row.appendChild(cb);
+            row.appendChild(dot);
+            row.appendChild(nameSpan);
+            node.appendChild(row);
+
+            // 子标签
+            if (tag.children && tag.children.length > 0) {
+                const childrenEl = document.createElement('div');
+                childrenEl.className = 'tag-children';
+                for (const child of tag.children) {
+                    childrenEl.appendChild(createTagNode(child));
+                }
+                node.appendChild(childrenEl);
+            }
+
+            // 勾选 → 所有子孙一起勾选
+            // 取消勾选 → 所有上层祖先取消勾选
+            cb.addEventListener('change', () => {
+                if (cb.checked) {
+                    node.querySelectorAll('input[type="checkbox"]').forEach(d => { d.checked = true; });
+                } else {
+                    let el = node.parentElement;
+                    while (el && !el.classList.contains('tag-cat-section')) {
+                        if (el.classList.contains('tag-node')) {
+                            const parentCb = el.querySelector(':scope > .tag-node-row > input[type="checkbox"]');
+                            if (parentCb) parentCb.checked = false;
+                        }
+                        el = el.parentElement;
+                    }
+                }
+                onTagSelectionChange();
+            });
+
+            // 点击行（非 checkbox 区域）也可切换
+            row.addEventListener('click', (e) => {
+                if (e.target.type === 'checkbox') return;
+                cb.checked = !cb.checked;
+                cb.dispatchEvent(new Event('change'));
+            });
+
+            return node;
+        }
+
+        // 标签选择变化时，重新查询并渲染照片
+        async function onTagSelectionChange() {
+            const checkedIds = [];
+            document.querySelectorAll('#tagTree input[type="checkbox"]:checked').forEach(cb => {
+                checkedIds.push(parseInt(cb.dataset.tagId));
+            });
+
+            if (checkedIds.length === 0) {
+                // 无勾选：清空右侧并显示提示
+                thumbnailQueue = [];
+                const grid = document.getElementById('photosGrid');
+                grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:40px;color:#484848;">${i18n.t('manage.tagSelectHint')}</div>`;
+                sortedCurrentPhotos = [];
+                displayedCount = 0;
+                removeLoadMoreButton();
+                return;
+            }
+
+            const res = await ipcRenderer.invoke('manage-query-photos-by-tags', { tagIds: checkedIds });
+            if (res.success) {
+                renderPhotos(res.photos);
+            }
         }
 
         // 创建照片项（懒加载）
@@ -685,7 +1228,7 @@
                 entries.forEach(entry => {
                     if (entry.isIntersecting) {
                         const photoItem = entry.target;
-                        if (photoItem.dataset.loaded === 'false') {
+                        if (photoItem.dataset.loaded === 'false' && document.contains(photoItem)) {
                             loadPhotoContent(photoItem);
                             intersectionObserver.unobserve(photoItem);
                         }
@@ -702,35 +1245,90 @@
             photoItems.forEach(item => {
                 intersectionObserver.observe(item);
             });
+
+            // 兜底扫描：IntersectionObserver 回调为异步，若首帧未触发（如滚动位置刚重置）
+            // 则在下一帧手动加载处于可视区域内的项
+            requestAnimationFrame(() => {
+                const root = document.querySelector('.right-panel');
+                if (!root) return;
+                const rootRect = root.getBoundingClientRect();
+                document.querySelectorAll('.photo-item[data-loaded="false"]').forEach(item => {
+                    if (!document.contains(item)) return;
+                    const rect = item.getBoundingClientRect();
+                    const inView = rect.bottom > rootRect.top - 100 && rect.top < rootRect.bottom + 100;
+                    if (inView) {
+                        loadPhotoContent(item);
+                        if (intersectionObserver) intersectionObserver.unobserve(item);
+                    }
+                });
+            });
         }
 
-        // 处理缩略图生成队列（串行处理，一次只处理一张）
+        // 处理缩略图生成队列（串行处理，一次只处理一张，生成后立即显示）
         async function processThumbnailQueue() {
             if (isProcessingThumbnail || thumbnailQueue.length === 0) {
                 return;
             }
-            
             isProcessingThumbnail = true;
-            
+
             while (thumbnailQueue.length > 0) {
                 const task = thumbnailQueue.shift();
                 try {
-                    await ThumbnailGenerator.generateAndSaveThumbnail(task.element, task.path);
-                    console.log(`缩略图已生成: ${task.path}`);
+                    if (task.type === 'photo') {
+                        // 1. 加载原图到临时 Image 对象
+                        const tempImg = new Image();
+                        await new Promise((resolve, reject) => {
+                            tempImg.onload = resolve;
+                            tempImg.onerror = reject;
+                            tempImg.src = ThumbnailGenerator.toFileUrl(task.originalPath);
+                        });
+                        // 2. 生成并保存缩略图
+                        const thumbPath = await ThumbnailGenerator.generateAndSaveThumbnail(tempImg, task.originalPath);
+                        // 3. 等缩略图 img 加载完再继续，确保每张可见后才处理下一张
+                        const info = task.photoItem.querySelector('.photo-info');
+                        const img = document.createElement('img');
+                        await new Promise((resolve) => {
+                            img.onload = () => { task.photoItem.classList.remove('loading'); resolve(); };
+                            img.onerror = () => { task.photoItem.classList.remove('loading'); task.photoItem.style.backgroundColor = '#333'; resolve(); };
+                            task.photoItem.insertBefore(img, info);
+                            img.src = ThumbnailGenerator.toFileUrl(thumbPath);
+                        });
+                    } else if (task.type === 'video') {
+                        // 视频帧已就绪，直接生成缩略图（后台静默，不更新显示）
+                        await ThumbnailGenerator.generateAndSaveThumbnail(task.element, task.originalPath);
+                    }
                 } catch (err) {
                     console.error('生成缩略图失败:', err);
+                    if (task.type === 'photo') {
+                        // 生成失败则回退显示原图
+                        const info = task.photoItem.querySelector('.photo-info');
+                        const img = document.createElement('img');
+                        await new Promise((resolve) => {
+                            img.onload = () => { task.photoItem.classList.remove('loading'); resolve(); };
+                            img.onerror = () => { task.photoItem.classList.remove('loading'); task.photoItem.style.backgroundColor = '#333'; resolve(); };
+                            task.photoItem.insertBefore(img, info);
+                            img.src = ThumbnailGenerator.toFileUrl(task.originalPath);
+                        });
+                    }
                 }
-                
-                // 稍微延迟一下，避免占用过多CPU
-                await new Promise(resolve => setTimeout(resolve, 50));
+                // 让浏览器完成当前帧渲染后再处理下一张
+                await new Promise(resolve => requestAnimationFrame(resolve));
             }
-            
+
             isProcessingThumbnail = false;
+            // 处理完毕后，如果期间有新任务入队（新 renderPhotos 触发），重新启动
+            if (thumbnailQueue.length > 0) processThumbnailQueue();
         }
 
-        // 添加缩略图生成任务到队列
-        function enqueueThumbnailGeneration(element, path) {
-            thumbnailQueue.push({ element, path });
+        // 添加照片缩略图生成任务
+        function enqueueThumbnailGeneration(photoItem, originalPath) {
+            thumbnailQueue.push({ type: 'photo', photoItem, originalPath });
+            processThumbnailQueue();
+        }
+
+        // 添加视频缩略图生成任务（视频帧已在 element 中就绪）
+        function enqueueVideoThumbnailGeneration(element, originalPath) {
+            thumbnailQueue.push({ type: 'video', element, originalPath });
             processThumbnailQueue();
         }
 
@@ -741,34 +1339,24 @@
 
             photoItem.dataset.loaded = 'true';
 
-            // 获取缩略图路径
             const thumbnailInfo = ThumbnailGenerator.getThumbnailPath(originalPath);
-            const displayPath = thumbnailInfo.path;
-            const fileUrl = ThumbnailGenerator.toFileUrl(displayPath);
-
             const info = photoItem.querySelector('.photo-info');
 
             if (isVideo) {
                 if (thumbnailInfo.isThumbnail) {
-                    // 如果有缩略图，直接显示图片而不是视频
+                    // 有缓存缩略图：直接显示
                     const img = document.createElement('img');
-                    img.src = fileUrl;
-                    img.onload = () => {
-                        photoItem.classList.remove('loading');
-                    };
-                    img.onerror = () => {
-                        photoItem.classList.remove('loading');
-                        photoItem.style.backgroundColor = '#333';
-                    };
+                    img.src = ThumbnailGenerator.toFileUrl(thumbnailInfo.path);
+                    img.onload = () => photoItem.classList.remove('loading');
+                    img.onerror = () => { photoItem.classList.remove('loading'); photoItem.style.backgroundColor = '#333'; };
                     photoItem.insertBefore(img, info);
-
                     const overlay = document.createElement('div');
                     overlay.className = 'video-overlay';
                     photoItem.insertBefore(overlay, info);
                 } else {
-                    // 没有缩略图，加载视频并加入缩略图生成队列
+                    // 无缓存：加载视频帧，帧就绪后入队生成缩略图（不阻塞显示）
                     const video = document.createElement('video');
-                    video.src = fileUrl;
+                    video.src = ThumbnailGenerator.toFileUrl(originalPath);
                     video.preload = 'metadata';
                     video.muted = true;
                     video.addEventListener('loadedmetadata', () => {
@@ -776,38 +1364,26 @@
                         photoItem.classList.remove('loading');
                     });
                     video.addEventListener('seeked', () => {
-                        // 将缩略图生成任务加入队列
-                        enqueueThumbnailGeneration(video, originalPath);
+                        enqueueVideoThumbnailGeneration(video, originalPath);
                     }, { once: true });
-                    video.onerror = () => {
-                        photoItem.classList.remove('loading');
-                        photoItem.style.backgroundColor = '#333';
-                    };
+                    video.onerror = () => { photoItem.classList.remove('loading'); photoItem.style.backgroundColor = '#333'; };
                     photoItem.insertBefore(video, info);
-
                     const overlay = document.createElement('div');
                     overlay.className = 'video-overlay';
                     photoItem.insertBefore(overlay, info);
                 }
             } else {
-                const img = document.createElement('img');
-                img.src = fileUrl;
-                img.onload = () => {
-                    photoItem.classList.remove('loading');
-                    // 如果不是缩略图，将生成任务加入队列
-                    if (!thumbnailInfo.isThumbnail) {
-                        enqueueThumbnailGeneration(img, originalPath);
-                    }
-                };
-                img.onerror = () => {
-                    photoItem.classList.remove('loading');
-                    photoItem.style.backgroundColor = '#333';
-                    const errorDiv = document.createElement('div');
-                    errorDiv.style.cssText = 'display:flex;align-items:center;justify-content:center;height:100%;color:#666;';
-                    errorDiv.textContent = 'Failed to load';
-                    photoItem.insertBefore(errorDiv, photoItem.firstChild);
-                };
-                photoItem.insertBefore(img, info);
+                if (thumbnailInfo.isThumbnail) {
+                    // 有缓存缩略图：直接显示
+                    const img = document.createElement('img');
+                    img.src = ThumbnailGenerator.toFileUrl(thumbnailInfo.path);
+                    img.onload = () => photoItem.classList.remove('loading');
+                    img.onerror = () => { photoItem.classList.remove('loading'); photoItem.style.backgroundColor = '#333'; };
+                    photoItem.insertBefore(img, info);
+                } else {
+                    // 无缓存：保持骨架占位，入队串行生成缩略图，生成后立即显示
+                    enqueueThumbnailGeneration(photoItem, originalPath);
+                }
             }
         }
 
@@ -916,6 +1492,228 @@
                 console.log('更新徽章:', badge.textContent);
             } else {
                 console.error('找不到photo-count-badge元素！');
+            }
+        }
+
+        // ── 目录树功能 ────────────────────────────────────────
+
+        async function loadDirectoryTree() {
+            const treeEl = document.getElementById('dirTree');
+            treeEl.innerHTML = `<div class="info-text">${i18n.t('manage.directLoading')}</div>`;
+            try {
+                const roots = await ipcRenderer.invoke('get-directory-tree');
+                treeEl.innerHTML = '';
+                if (!roots || roots.length === 0) {
+                    treeEl.innerHTML = `<div class="info-text">${i18n.t('manage.directNoDirs')}</div>`;
+                    return;
+                }
+                for (const node of roots) {
+                    treeEl.appendChild(createTreeNode(node, true));
+                }
+            } catch (err) {
+                console.error('加载目录树失败:', err);
+                treeEl.innerHTML = `<div class="info-text">${i18n.t('manage.directLoadError')}</div>`;
+            }
+        }
+
+        function createTreeNode(node, expanded) {
+            const el = document.createElement('div');
+            el.className = 'tree-node';
+
+            const hasChildren = node.children && node.children.length > 0;
+
+            const label = document.createElement('div');
+            label.className = 'tree-node-label';
+
+            const toggle = document.createElement('span');
+            toggle.className = 'tree-toggle';
+            toggle.textContent = hasChildren ? (expanded ? '▼' : '▶') : '';
+            label.appendChild(toggle);
+
+            const icon = document.createElement('span');
+            icon.className = 'tree-icon';
+            icon.textContent = '📁';
+            label.appendChild(icon);
+
+            const name = document.createElement('span');
+            name.className = 'tree-name';
+            name.title = node.absPath || node.fullPath;
+            name.textContent = node.name;
+            label.appendChild(name);
+
+            if (node.photoCount > 0) {
+                const count = document.createElement('span');
+                count.className = 'tree-count';
+                count.textContent = node.photoCount;
+                label.appendChild(count);
+            }
+
+            el.appendChild(label);
+
+            let childrenEl = null;
+            if (hasChildren) {
+                childrenEl = document.createElement('div');
+                childrenEl.className = 'tree-children' + (expanded ? '' : ' collapsed');
+                for (const child of node.children) {
+                    childrenEl.appendChild(createTreeNode(child, false));
+                }
+                el.appendChild(childrenEl);
+            }
+
+            label.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                // 展开/折叠
+                if (hasChildren) {
+                    const isCollapsed = childrenEl.classList.contains('collapsed');
+                    childrenEl.classList.toggle('collapsed', !isCollapsed);
+                    toggle.textContent = isCollapsed ? '▼' : '▶';
+                }
+                // 高亮选中
+                document.querySelectorAll('.tree-node-label.selected').forEach(el => el.classList.remove('selected'));
+                label.classList.add('selected');
+                // 加载照片
+                if (node.photoCount > 0) {
+                    const photos = await ipcRenderer.invoke('query-photos-by-directory', node.fullPath);
+                    renderPhotos(photos);
+                } else {
+                    renderPhotos([]);
+                }
+            });
+
+            return el;
+        }
+
+        // ── 日历功能 ────────────────────────────────────────
+
+        // 构建 日期→照片数组 映射（基于 currentPhotos，用于日历点击后在右侧显示照片）
+        function buildPhotoDateMap() {
+            photoDateMap = new Map();
+            currentPhotos.forEach(photo => {
+                if (!photo.time) return;
+                const d = new Date(photo.time);
+                if (isNaN(d.getTime())) return;
+                const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+                if (!photoDateMap.has(key)) photoDateMap.set(key, []);
+                photoDateMap.get(key).push(photo);
+            });
+        }
+
+        // 自动将日历定位到照片最多或最新的月份
+        function initCalendarToPhotos() {
+            if (!currentPhotos || currentPhotos.length === 0) return;
+            // 找最新的照片时间
+            let latestTime = 0;
+            currentPhotos.forEach(p => {
+                if (p.time) {
+                    const t = new Date(p.time).getTime();
+                    if (t > latestTime) latestTime = t;
+                }
+            });
+            if (latestTime > 0) {
+                const d = new Date(latestTime);
+                calendarYear = d.getFullYear();
+                calendarMonth = d.getMonth();
+            }
+            calendarSelectedDate = null;
+        }
+
+        // 渲染日历
+        function renderCalendar() {
+
+            const grid = document.getElementById('calendarGrid');
+            const weekdayRow = document.getElementById('calWeekdays');
+            const label = document.getElementById('calMonthLabel');
+            const dayInfo = document.getElementById('calDayInfo');
+            if (!grid || !label) return;
+
+            // 月份标题
+            label.textContent = `${calendarYear} / ${String(calendarMonth + 1).padStart(2, '0')}`;
+
+            // 星期行（使用 i18n，与时间轴共用同一组星期名）
+            weekdayRow.innerHTML = '';
+            const weekdayNames = i18n.t('timeline.days').split(',');
+            weekdayNames.forEach(wd => {
+                const cell = document.createElement('div');
+                cell.className = 'calendar-weekday';
+                cell.textContent = wd;
+                weekdayRow.appendChild(cell);
+            });
+
+            grid.innerHTML = '';
+
+            const today = new Date();
+            const todayKey = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+
+            const firstDayOfWeek = new Date(calendarYear, calendarMonth, 1).getDay(); // 0=Sun
+            const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
+            const prevMonthDays = new Date(calendarYear, calendarMonth, 0).getDate();
+
+            // 上月补位
+            for (let i = 0; i < firstDayOfWeek; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'calendar-day other-month';
+                cell.textContent = prevMonthDays - firstDayOfWeek + i + 1;
+                grid.appendChild(cell);
+            }
+
+            // 当月天数
+            // 高亮基准：allPhotoDateSet（全库所有照片）
+            // 点击数据：photoDateMap（当前 currentPhotos，即地图选中区域的照片）
+            let highlightedDaysThisMonth = 0;
+            for (let day = 1; day <= daysInMonth; day++) {
+                const key = `${calendarYear}-${String(calendarMonth+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+                const cell = document.createElement('div');
+                cell.className = 'calendar-day';
+                cell.textContent = day;
+                cell.dataset.date = key;
+
+                // 使用全库日期集合决定高亮
+                if (allPhotoDateSet.has(key)) {
+                    cell.classList.add('has-photos');
+                    highlightedDaysThisMonth++;
+                }
+                if (key === todayKey) {
+                    cell.classList.add('today-marker');
+                }
+                if (key === calendarSelectedDate) {
+                    cell.classList.add('selected');
+                }
+
+                // 点击：从数据库查询当天全部照片（与地图选中区域无关）
+                if (allPhotoDateSet.has(key)) {
+                    cell.addEventListener('click', async () => {
+                        calendarSelectedDate = key;
+                        renderCalendar();
+                        // 用本地时区计算当天的起止时间戳，再转 ISO 供数据库比较
+                        const [y, mo, dy] = key.split('-').map(Number);
+                        const startTime = new Date(y, mo - 1, dy, 0, 0, 0, 0).toISOString();
+                        const endTime   = new Date(y, mo - 1, dy, 23, 59, 59, 999).toISOString();
+                        const dayPhotos = await ipcRenderer.invoke('query-photos-by-time', { startTime, endTime });
+                        renderPhotos(dayPhotos);
+                        if (dayInfo) {
+                            dayInfo.textContent = `${key}  ·  ${i18n.t('manage.calPhotoCount', { count: dayPhotos.length })}`;
+                        }
+                    });
+                }
+
+                grid.appendChild(cell);
+            }
+
+            // 下月补位
+            const totalCells = firstDayOfWeek + daysInMonth;
+            const trailing = totalCells % 7 === 0 ? 0 : 7 - (totalCells % 7);
+            for (let i = 1; i <= trailing; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'calendar-day other-month';
+                cell.textContent = i;
+                grid.appendChild(cell);
+            }
+
+            // 日期信息行（未选择日期时显示本月有照片的天数）
+            if (dayInfo && !calendarSelectedDate) {
+                dayInfo.textContent = highlightedDaysThisMonth > 0
+                    ? i18n.t('manage.calDaysWithPhotos', { count: highlightedDaysThisMonth })
+                    : '';
             }
         }
 
