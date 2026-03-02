@@ -47,6 +47,11 @@ class TagSelectWindow {
             this._removeHandlers();
             this.window = null;
             this._onSelectCallback = null;
+            // 显式把焦点还给调用方窗口，避免在多个模态子窗口并存时
+            // Windows 把焦点错误地交给兄弟窗口（如 photosManageWindow）
+            if (parentWindow && !parentWindow.isDestroyed()) {
+                parentWindow.focus();
+            }
         });
     }
 
@@ -55,7 +60,8 @@ class TagSelectWindow {
             if (this.window && !this.window.isDestroyed()) {
                 this.window.webContents.send('tag-select-init', {
                     lang: i18n.getLanguage(),
-                    lockedCategory: this._options.lockedCategory || null
+                    lockedCategory: this._options.lockedCategory || null,
+                    singleSelect:   this._options.singleSelect   || false
                 });
             }
         };
@@ -73,9 +79,9 @@ class TagSelectWindow {
             }
         };
 
-        this._handleConfirm = (_event, tagInfo) => {
+        this._handleConfirm = (_event, { tags }) => {
             if (this._onSelectCallback) {
-                this._onSelectCallback(tagInfo);
+                this._onSelectCallback(tags);
             }
             if (this.window && !this.window.isDestroyed()) this.window.close();
         };

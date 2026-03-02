@@ -9,6 +9,19 @@ const { FaceTag, EventTag, LandmarkTag, CommonTag } = require('./Tag');
 const TagSelectWindow = require('./TagSelectWindow');
 const i18n = require('./i18n');
 
+/**
+ * 计算两点之间的地表距离（Haversine 公式），返回单位：米
+ */
+function haversineDistance(lat1, lng1, lat2, lng2) {
+    const R = 6371000;
+    const φ1 = lat1 * Math.PI / 180;
+    const φ2 = lat2 * Math.PI / 180;
+    const dφ = (lat2 - lat1) * Math.PI / 180;
+    const dλ = (lng2 - lng1) * Math.PI / 180;
+    const a = Math.sin(dφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(dλ / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 const TAG_CLASSES = {
     face:     FaceTag,
     event:    EventTag,
@@ -222,8 +235,17 @@ class TagManageWindow {
             }
         };
 
+        // 定位到地图：转发坐标给主窗口并关闭标签窗体
+        this._handleLocateOnMap = (_event, { lat, lng }) => {
+            if (this.parentWindow && !this.parentWindow.isDestroyed()) {
+                this.parentWindow.webContents.send('locate-on-map', { lat, lng });
+            }
+            if (this.window && !this.window.isDestroyed()) this.window.close();
+        };
+
         ipcMain.once('tag-manage-window-ready', this._handleReady);
-        ipcMain.on  ('close-tag-manage-window', this._handleClose);
+        ipcMain.on  ('close-tag-manage-window',   this._handleClose);
+        ipcMain.on  ('locate-landmark-on-map',    this._handleLocateOnMap);
         ipcMain.handle('tag-manage-get-tags',    this._handleGetTags);
         ipcMain.handle('tag-manage-add-tag',     this._handleAddTag);
         ipcMain.handle('tag-manage-update-tag',  this._handleUpdateTag);
@@ -233,6 +255,17 @@ class TagManageWindow {
         ipcMain.handle('tag-manage-clear-face',  this._handleClearFace);
         ipcMain.handle('tag-manage-pick-image',  this._handlePickImage);
         ipcMain.handle('tag-manage-save-event',  this._handleSaveEvent);
+
+        this._handleCountPhotos = (_event, { tagId }) => ({
+            count: this.db.countPhotosByTag(tagId)
+        });
+        ipcMain.handle('tag-manage-count-photos', this._handleCountPhotos);
+
+        // 返回已标记该人物 tag 的照片路径列表（用于人脸识别样本预填充）
+        this._handleGetTaggedPhotos = (_event, { tagId }) => {
+            return this.db.getPhotosByTag(tagId, 20).map(p => p.fullPath);
+        };
+        ipcMain.handle('tag-manage-get-tagged-photos', this._handleGetTaggedPhotos);
 
         // 保存事件关联的地标标签
         this._handleSaveEventLocation = async (_event, { tagId, locationTagId }) => {
@@ -249,9 +282,11 @@ class TagManageWindow {
             return new Promise((resolve) => {
                 let resolved = false;
                 const selectWin = new TagSelectWindow(this.db);
-                selectWin.show(this.window, (tagInfo) => {
+                selectWin.show(this.window, (tags) => {
+                    // tags 是数组，取第一个元素作为选中的地标
+                    const tagInfo = Array.isArray(tags) ? tags[0] : tags;
                     if (!resolved) { resolved = true; resolve({ success: true, tag: tagInfo }); }
-                }, { lockedCategory: 'location' });
+                }, { lockedCategory: 'location', singleSelect: true });
 
                 // 如果用户关闭窗口未选择，返回 cancelled
                 selectWin.window.on('closed', () => {
@@ -262,6 +297,44 @@ class TagManageWindow {
 
         this._handleSaveLocation = async (_event, { tagId, lat, lng, radius }) => {
             try {
+                // 校验1：子标签圆心必须在父标签圆范围内
+                const parentLoc = this.db.getParentLocationData(tagId);
+                if (parentLoc && parentLoc.lat != null && parentLoc.radius != null) {
+                    const dist = haversineDistance(parentLoc.lat, parentLoc.lng, lat, lng);
+                    if (dist > parentLoc.radius) {
+                        return {
+                            success: false,
+                            error: `圆心必须在父地标「${parentLoc.name}」的范围内（当前距父中心 ${Math.round(dist)} m，父半径 ${Math.round(parentLoc.radius)} m）`
+                        };
+                    }
+                }
+
+                // 校验2：新圆必须包含所有子孙标签的圆心
+                const descendants = this.db.getLocationTagDescendants(tagId);
+                for (const desc of descendants) {
+                    if (desc.id === tagId) continue; // 跳过自身
+                    if (desc.lat == null || desc.lng == null) continue; // 无位置则不校验
+                    const dist = haversineDistance(lat, lng, desc.lat, desc.lng);
+                    if (dist > radius) {
+                        return {
+                            success: false,
+                            error: `圆形范围未能包含子孙地标「${desc.name}」的圆心（至少需要半径 ${Math.round(dist)} m）`
+                        };
+                    }
+                }
+
+                // 校验3：圆心不能落入同层任何兄弟地标的圆内
+                const siblings = this.db.getSiblingLocationTags(tagId);
+                for (const sib of siblings) {
+                    const dist = haversineDistance(sib.lat, sib.lng, lat, lng);
+                    if (dist <= sib.radius) {
+                        return {
+                            success: false,
+                            error: `圆心落入了同级地标「${sib.name}」的范围内（距其中心 ${Math.round(dist)} m，其半径 ${Math.round(sib.radius)} m）`
+                        };
+                    }
+                }
+
                 this.db.updateLocation(tagId, lat, lng, radius);
                 return { success: true };
             } catch (e) {
@@ -271,10 +344,75 @@ class TagManageWindow {
         ipcMain.handle('tag-manage-save-location', this._handleSaveLocation);
         ipcMain.handle('tag-manage-save-event-location', this._handleSaveEventLocation);
         ipcMain.handle('tag-manage-select-landmark',     this._handleSelectLandmark);
+
+        // 自动匹配：将时间范围+地标范围内的照片打上事件标签及最小地标标签，
+        // 并删除该地标的所有祖先地标标签（只保留最精确的一级）
+        // 每 CHUNK 张照片 yield 一次事件循环，并推送进度给渲染进程
+        this._handleAutoMatchEvent = async (_event, { tagId }) => {
+            try {
+                const tag = this.db.getTagById(tagId);
+                if (!tag || !tag.start_time || !tag.end_time || !tag.location_tag_id) {
+                    return { success: false, error: 'Missing dates or landmark' };
+                }
+
+                // 预加载地标及全部子孙，按深度从深到浅排序（最精确优先）
+                const locationTags = this.db.getLocationTagDescendants(tag.location_tag_id)
+                    .filter(lt => lt.lat != null && lt.lng != null && lt.radius != null)
+                    .sort((a, b) => b._depth - a._depth);
+
+                if (locationTags.length === 0) {
+                    return { success: false, error: 'Landmark has no location data set' };
+                }
+
+                // id → tag 映射，用于沿 parent_id 链查找祖先
+                const locTagMap = new Map(locationTags.map(lt => [lt.id, lt]));
+                // 所有已加载的地标 id 集合（仅删除这些范围内的祖先，不误删其他地标）
+                const locTagIds = new Set(locTagMap.keys());
+
+                const photos = this.db.getPhotosByTimeRange(tag.start_time, tag.end_time);
+                const total = photos.length;
+                let matched = 0;
+                const CHUNK = 20;
+
+                for (let i = 0; i < photos.length; i += CHUNK) {
+                    const end = Math.min(i + CHUNK, photos.length);
+                    for (let j = i; j < end; j++) {
+                        const photo = photos[j];
+                        let bestLoc = null;
+                        for (const lt of locationTags) {
+                            const dist = haversineDistance(lt.lat, lt.lng, photo.lat, photo.lng);
+                            if (dist <= lt.radius) { bestLoc = lt; break; }
+                        }
+                        if (bestLoc) {
+                            this.db.linkTagToPhoto(photo.id, tagId);
+                            this.db.linkTagToPhoto(photo.id, bestLoc.id);
+                            // 沿 parent_id 链删除祖先地标标签（只精确保留 bestLoc）
+                            let parentId = bestLoc.parent_id;
+                            while (parentId != null && locTagIds.has(parentId)) {
+                                this.db.unlinkTagFromPhoto(photo.id, parentId);
+                                parentId = locTagMap.get(parentId)?.parent_id ?? null;
+                            }
+                            matched++;
+                        }
+                    }
+                    // 推送本批进度，并 yield 事件循环让渲染进程能处理消息
+                    if (!_event.sender.isDestroyed()) {
+                        _event.sender.send('tag-manage-auto-match-progress', { current: end, total, matched });
+                    }
+                    await new Promise(resolve => setImmediate(resolve));
+                }
+
+                return { success: true, matched, total };
+            } catch (e) {
+                return { success: false, error: e.message };
+            }
+        };
+        ipcMain.handle('tag-manage-auto-match-event', this._handleAutoMatchEvent);
     }
 
     _removeHandlers() {
-        ipcMain.removeListener('close-tag-manage-window', this._handleClose);
+        ipcMain.removeListener('close-tag-manage-window',  this._handleClose);
+        ipcMain.removeListener('locate-landmark-on-map',   this._handleLocateOnMap);
         ipcMain.removeHandler('tag-manage-get-tags');
         ipcMain.removeHandler('tag-manage-add-tag');
         ipcMain.removeHandler('tag-manage-update-tag');
@@ -284,9 +422,12 @@ class TagManageWindow {
         ipcMain.removeHandler('tag-manage-clear-face');
         ipcMain.removeHandler('tag-manage-pick-image');
         ipcMain.removeHandler('tag-manage-save-event');
+        ipcMain.removeHandler('tag-manage-count-photos');
+        ipcMain.removeHandler('tag-manage-get-tagged-photos');
         ipcMain.removeHandler('tag-manage-save-event-location');
         ipcMain.removeHandler('tag-manage-select-landmark');
         ipcMain.removeHandler('tag-manage-save-location');
+        ipcMain.removeHandler('tag-manage-auto-match-event');
     }
 }
 

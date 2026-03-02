@@ -3,8 +3,10 @@
  * 使用模块化结构管理数据库、照片等功能
  */
 
-const { app, BrowserWindow, dialog, ipcMain } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, clipboard } = require('electron');
 const path = require('path');
+const fs = require('fs');
+const piexif = require('piexifjs');
 const DatabaseManager = require('./modules/Database');
 const PhotoFilesManager = require('./modules/PhotoFilesManager');
 const MenuManager = require('./modules/MenuManager');
@@ -15,6 +17,7 @@ const TagManageWindow = require('./modules/TagManageWindow');
 const TagSelectWindow = require('./modules/TagSelectWindow');
 const { EventTag, LandmarkTag } = require('./modules/Tag');
 const i18n = require('./modules/i18n');
+const AutoFaceScan = require('./modules/AutoFaceScan');
 
 // ==================== 全局变量 ====================
 let mainWindow;
@@ -27,6 +30,7 @@ let timelineSettingWindow;
 let tagManageWindow;
 let tagSelectWindow;
 let currentPhotoDirectory = null;
+let autoFaceScanner = null;
 
 // 待打开的 TimeLineSettingWindow 初始 Tab
 let pendingInitialTab = null;
@@ -246,9 +250,11 @@ function createWindow() {
         menuManager.setFullScreenState(false);
     });
     
-    // 窗口关闭前保存状态
+    // 窗口关闭前保存状态，并销毁正在运行的人脸扫描 worker
+    // （隐藏的 BrowserWindow 会阻止 window-all-closed 触发，导致进程无法退出）
     mainWindow.on('close', () => {
         saveWindowState();
+        if (autoFaceScanner) autoFaceScanner.destroy();
     });
 }
 
@@ -256,6 +262,59 @@ function createWindow() {
 function registerIpcHandlers() {
     // 获取当前语言
     ipcMain.handle('get-language', () => i18n.getLanguage());
+
+    // HEIC → JPEG 转换（Chromium 不原生支持 HEIC，通过主进程解码）
+    // Step 1: 命中 .gpj 缓存文件 → 直接返回（最快）
+    // Step 2: nativeImage.createFromPath() → 利用 Windows HEIC 解码器（快，需系统安装扩展）
+    // Step 3: heic-convert WASM → 纯软件解码（慢，但不依赖系统扩展）
+    // Step 4: exifr.thumbnail() 内嵌预览降级 → 低分辨率，需修正旋转
+    ipcMain.handle('convert-heic', async (_event, { filePath }) => {
+        const ext = path.extname(filePath);
+        const cacheFile = filePath.slice(0, -ext.length) + '.gpj';
+
+        // Step 1: 命中缓存
+        try {
+            const cached = fs.readFileSync(cacheFile);
+            if (cached.length > 5000) {
+                return { success: true, data: cached.toString('base64'), isPreview: false };
+            }
+        } catch (_) {}
+
+        // Step 2: 原生 OS 解码（Windows 安装了 HEIC 扩展时极快）
+        try {
+            const img = nativeImage.createFromPath(filePath);
+            if (!img.isEmpty()) {
+                const jpegBuf = img.toJPEG(92);
+                try { fs.writeFileSync(cacheFile, jpegBuf); } catch (_) {}
+                return { success: true, data: jpegBuf.toString('base64'), isPreview: false };
+            }
+        } catch (_) {}
+
+        // Step 3: heic-convert WASM（较慢，成功后写入缓存）
+        try {
+            const { default: heicConvert } = await import('heic-convert');
+            const inputBuffer = fs.readFileSync(filePath);
+            const outputBuffer = await heicConvert({ buffer: inputBuffer, format: 'JPEG', quality: 1 });
+            const jpegBuf = Buffer.from(outputBuffer);
+            try { fs.writeFileSync(cacheFile, jpegBuf); } catch (_) {}
+            return { success: true, data: jpegBuf.toString('base64'), isPreview: false };
+        } catch (convertErr) {
+            // Step 4: 内嵌 JPEG 预览降级（低分辨率，需修正旋转）
+            try {
+                const exifr = require('exifr');
+                const thumbnailBuf = await exifr.thumbnail(filePath);
+                if (thumbnailBuf && thumbnailBuf.length > 5000) {
+                    let orientation = 1;
+                    try {
+                        const meta = await exifr.parse(filePath, { pick: ['Orientation'] });
+                        orientation = meta?.Orientation || 1;
+                    } catch (_) {}
+                    return { success: true, data: Buffer.from(thumbnailBuf).toString('base64'), isPreview: true, orientation };
+                }
+            } catch (_) {}
+            return { success: false, error: convertErr.message };
+        }
+    });
 
     // 扫描目录
     ipcMain.handle('scan-directory', async () => {
@@ -270,9 +329,9 @@ function registerIpcHandlers() {
         return { count: result.newPhotos + result.newVideos };
     });
 
-    // 区域查询
+    // 区域查询（附带时间范围过滤）
     ipcMain.handle('query-area', (event, range) => {
-        return db.queryPhotosByArea(range.north, range.south, range.east, range.west);
+        return db.queryPhotosByArea(range.north, range.south, range.east, range.west, range.startTime, range.endTime);
     });
 
     // 获取所有照片
@@ -391,7 +450,11 @@ function registerIpcHandlers() {
             if (!latestPhotoData) {
                 return { success: false, error: '文件不存在或已移动，请重新扫描目录。' };
             }
-            photoWindow.show(latestPhotoData, navPhotos, currentIndex);
+            // 若从子窗口（如 photosManageWindow）打开，以该子窗口为 modal parent，
+            // 形成链式层级，避免与 photosManageWindow 同级产生的焦点争抢问题
+            const senderWindow = BrowserWindow.fromWebContents(event.sender);
+            const overrideParent = (senderWindow && senderWindow !== mainWindow) ? senderWindow : null;
+            photoWindow.show(latestPhotoData, navPhotos, currentIndex, overrideParent);
         }
         return { success: true };
     });
@@ -519,6 +582,10 @@ function registerIpcHandlers() {
         return db.getLocationTags();
     });
 
+    ipcMain.handle('get-location-tag-tree', () => {
+        return db.getLocationTagTree();
+    });
+
     // ── 照片管理窗口：标签树 & 按标签查询照片 ──────────────────
     ipcMain.handle('manage-get-tags-tree', () => {
         return {
@@ -569,25 +636,27 @@ function registerIpcHandlers() {
         const senderWindow = BrowserWindow.fromWebContents(event.sender);
         if (!senderWindow) return { success: false };
 
-        tagSelectWindow.show(senderWindow, (tagInfo) => {
-            try {
-                db.linkTagToPhoto(photoId, tagInfo.tagId);
-                let locationApplied = null;
-                if (tagInfo.tagCategory === 'location') {
-                    locationApplied = db.applyLandmarkLocationToPhoto(photoId, tagInfo.tagId);
+        tagSelectWindow.show(senderWindow, (tags) => {
+            for (const tagInfo of tags) {
+                try {
+                    db.linkTagToPhoto(photoId, tagInfo.tagId);
+                    let locationApplied = null;
+                    if (tagInfo.tagCategory === 'location') {
+                        locationApplied = db.applyLandmarkLocationToPhoto(photoId, tagInfo.tagId);
+                    }
+                    if (senderWindow && !senderWindow.isDestroyed()) {
+                        senderWindow.webContents.send('tag-added', { ...tagInfo, locationApplied });
+                    }
+                    if (locationApplied && mainWindow && !mainWindow.isDestroyed()) {
+                        mainWindow.webContents.send('photo-location-updated', {
+                            photoId,
+                            lat: locationApplied.lat,
+                            lng: locationApplied.lng
+                        });
+                    }
+                } catch (e) {
+                    console.error('Failed to link tag:', e);
                 }
-                if (senderWindow && !senderWindow.isDestroyed()) {
-                    senderWindow.webContents.send('tag-added', { ...tagInfo, locationApplied });
-                }
-                if (locationApplied && mainWindow && !mainWindow.isDestroyed()) {
-                    mainWindow.webContents.send('photo-location-updated', {
-                        photoId,
-                        lat: locationApplied.lat,
-                        lng: locationApplied.lng
-                    });
-                }
-            } catch (e) {
-                console.error('Failed to link tag:', e);
             }
         });
         return { success: true };
@@ -681,6 +750,244 @@ function registerIpcHandlers() {
         }
     });
 
+    // 获取时间上相邻的照片（编辑位置时参考用）
+    ipcMain.handle('get-photos-near-time', (_event, { photoId, count = 3 }) => {
+        return db.getPhotosNearTime(photoId, count);
+    });
+
+    // 更新照片坐标（照片窗口地图编辑）
+    ipcMain.handle('update-photo-location', async (_event, { photoId, lat, lng }) => {
+        try {
+            db.db.prepare('UPDATE photos SET lat = ?, lng = ? WHERE id = ?').run(lat, lng, photoId);
+
+            // 同步写入照片文件 EXIF GPS（仅 JPEG，不修改拍摄日期）
+            const photo = db.db.prepare('SELECT directory, filename, type FROM photos WHERE id = ?').get(photoId);
+            if (photo && photo.type !== 'video') {
+                const filePath = path.join(photo.directory, photo.filename);
+                writeGpsToFile(filePath, lat, lng);
+            }
+
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('photo-location-updated', { photoId, lat, lng });
+            }
+            return { success: true };
+        } catch (e) {
+            return { success: false, error: e.message };
+        }
+    });
+
+    // ── 全局人脸扫描 ────────────────────────────────────────
+    ipcMain.handle('start-global-face-scan', async (_event, { tagId, mode = 'balanced' }) => {
+        try {
+            if (!autoFaceScanner) {
+                autoFaceScanner = new AutoFaceScan(db, mainWindow);
+            }
+            const result = await autoFaceScanner.start(tagId, mode);
+            // 启动成功则关闭标签管理窗口
+            if (result.success && tagManageWindow && tagManageWindow.isOpen()) {
+                tagManageWindow.close();
+            }
+            return result;
+        } catch (err) {
+            console.error('start-global-face-scan 异常:', err);
+            return { success: false, error: err.message };
+        }
+    });
+
+    ipcMain.handle('cancel-face-scan', async () => {
+        if (autoFaceScanner && autoFaceScanner.cancel()) {
+            return { success: true };
+        }
+        return { success: false };
+    });
+
+    // 双击时间bar/时间轴触发设置窗口
+    ipcMain.on('open-timeline-settings', () => {
+        pendingInitialTab = null;
+        mainWindow.webContents.send('get-timeline-state');
+    });
+    ipcMain.on('open-timerange-settings', () => {
+        pendingInitialTab = 'TimeRange';
+        mainWindow.webContents.send('get-timeline-state');
+    });
+
+    // ── 照片右键菜单 ─────────────────────────────────────────
+    ipcMain.on('show-photo-context-menu', (event, { photoId, directory, filename, isVideo }) => {
+        const photoData = db.getPhotoByPath(directory, filename);
+        const fullPath  = photoData ? photoData.fullPath : null;
+        const senderWin = BrowserWindow.fromWebContents(event.sender);
+
+        // 获取该照片当前的标签列表
+        let currentTags = [];
+        try { currentTags = db.getPhotoTags(photoId) || []; } catch (_) {}
+
+        // 通知辅助：若 photo-window 正在展示此照片则发消息
+        const notifyPhotoWin = (channel, data) => {
+            if (photoWindow && photoWindow.isOpen() &&
+                photoWindow.currentPhoto && photoWindow.currentPhoto.id === photoId) {
+                photoWindow.photoWindow.webContents.send(channel, data);
+            }
+        };
+
+        // ── 标签子菜单 ────────────────────────────────────────
+        const tagsSubmenu = [
+            {
+                label: i18n.t('photo.contextMenu.addTag'),
+                click: () => {
+                    tagSelectWindow.show(senderWin, (tags) => {
+                        for (const tagInfo of tags) {
+                            try {
+                                db.linkTagToPhoto(photoId, tagInfo.tagId);
+                                let locationApplied = null;
+                                if (tagInfo.tagCategory === 'location') {
+                                    locationApplied = db.applyLandmarkLocationToPhoto(photoId, tagInfo.tagId);
+                                }
+                                notifyPhotoWin('tag-added', { ...tagInfo, locationApplied });
+                                if (locationApplied && mainWindow && !mainWindow.isDestroyed()) {
+                                    mainWindow.webContents.send('photo-location-updated', {
+                                        photoId,
+                                        lat: locationApplied.lat,
+                                        lng: locationApplied.lng
+                                    });
+                                }
+                            } catch (e) {
+                                console.error('Failed to link tag from context menu:', e);
+                            }
+                        }
+                    });
+                }
+            }
+        ];
+
+        if (currentTags.length > 0) {
+            tagsSubmenu.push({ type: 'separator' });
+            for (const tag of currentTags) {
+                tagsSubmenu.push({
+                    label: i18n.t('photo.contextMenu.removeTagPrefix') + tag.name,
+                    click: () => {
+                        try {
+                            db.unlinkTagFromPhoto(photoId, tag.id);
+                            notifyPhotoWin('tag-removed', { photoId, tagId: tag.id });
+                        } catch (e) {
+                            console.error('Failed to unlink tag from context menu:', e);
+                        }
+                    }
+                });
+            }
+        }
+
+        const template = [
+            {
+                label:   i18n.t('photo.contextMenu.copy'),
+                enabled: !isVideo && !!fullPath,
+                click: () => {
+                    try {
+                        clipboard.writeImage(nativeImage.createFromPath(fullPath));
+                    } catch (e) {
+                        console.error('复制照片失败:', e);
+                    }
+                }
+            },
+            {
+                label:   i18n.t('photo.contextMenu.saveAs'),
+                enabled: !!fullPath,
+                click: async () => {
+                    const ext = path.extname(filename).slice(1) || 'jpg';
+                    const { canceled, filePath: savePath } = await dialog.showSaveDialog({
+                        defaultPath: filename,
+                        filters: [{ name: 'Image', extensions: [ext] }]
+                    });
+                    if (!canceled && savePath) {
+                        try { fs.copyFileSync(fullPath, savePath); } catch (e) { console.error('另存失败:', e); }
+                    }
+                }
+            },
+            { type: 'separator' },
+            {
+                label:   i18n.t('photo.contextMenu.tags'),
+                submenu: tagsSubmenu
+            },
+            { type: 'separator' },
+            {
+                label:   i18n.t('photo.contextMenu.delete'),
+                enabled: true,
+                click: async () => {
+                    const { response } = await dialog.showMessageBox(senderWin, {
+                        type:      'warning',
+                        title:     i18n.t('photo.deleteConfirmTitle'),
+                        message:   i18n.t('photo.deleteConfirmMsg'),
+                        buttons:   [i18n.t('photo.deleteConfirmOk'), i18n.t('photo.deleteConfirmCancel')],
+                        defaultId: 1,
+                        cancelId:  1
+                    });
+                    if (response !== 0) return;
+
+                    // 删除原文件
+                    if (fullPath) {
+                        try { fs.unlinkSync(fullPath); } catch (_) {}
+                        const base = path.join(path.dirname(fullPath), path.basename(fullPath, path.extname(fullPath)));
+                        try { fs.unlinkSync(base + '.gpt'); } catch (_) {}  // 缩略图 sidecar
+                        try { fs.unlinkSync(base + '.gpj'); } catch (_) {}  // HEIC 转换缓存
+                    }
+
+                    // 从数据库删除（ON DELETE CASCADE 自动清理 photo_tags）
+                    db.deletePhoto(photoId);
+
+                    // 通知各窗口移除该照片
+                    if (photosManageWindow && photosManageWindow.isOpen()) {
+                        photosManageWindow.manageWindow.webContents.send('photo-deleted', { photoId });
+                    }
+                    if (photoWindow && photoWindow.isOpen()) {
+                        photoWindow.photoWindow.webContents.send('photo-deleted', { photoId });
+                    }
+                    if (mainWindow && !mainWindow.isDestroyed()) {
+                        mainWindow.webContents.send('photo-deleted', { photoId });
+                    }
+                }
+            }
+        ];
+
+        const menu = Menu.buildFromTemplate(template);
+        menu.popup({ window: senderWin });
+    });
+
+    // ── 删除照片（按钮直接触发，与右键菜单删除逻辑相同）─────────
+    ipcMain.handle('delete-photo', async (event, { photoId, directory, filename }) => {
+        const senderWin = BrowserWindow.fromWebContents(event.sender);
+        const { response } = await dialog.showMessageBox(senderWin, {
+            type:      'warning',
+            title:     i18n.t('photo.deleteConfirmTitle'),
+            message:   i18n.t('photo.deleteConfirmMsg'),
+            buttons:   [i18n.t('photo.deleteConfirmOk'), i18n.t('photo.deleteConfirmCancel')],
+            defaultId: 1,
+            cancelId:  1
+        });
+        if (response !== 0) return { cancelled: true };
+
+        const photoData = db.getPhotoByPath(directory, filename);
+        const fullPath  = photoData ? photoData.fullPath : null;
+
+        if (fullPath) {
+            try { fs.unlinkSync(fullPath); } catch (_) {}
+            const base = path.join(path.dirname(fullPath), path.basename(fullPath, path.extname(fullPath)));
+            try { fs.unlinkSync(base + '.gpt'); } catch (_) {}  // 缩略图 sidecar
+            try { fs.unlinkSync(base + '.gpj'); } catch (_) {}  // HEIC 转换缓存
+        }
+
+        db.deletePhoto(photoId);
+
+        if (photosManageWindow && photosManageWindow.isOpen()) {
+            photosManageWindow.manageWindow.webContents.send('photo-deleted', { photoId });
+        }
+        if (photoWindow && photoWindow.isOpen()) {
+            photoWindow.photoWindow.webContents.send('photo-deleted', { photoId });
+        }
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('photo-deleted', { photoId });
+        }
+        return { deleted: true };
+    });
+
     // 打开时间轴设置窗口
     ipcMain.on('timeline-state', (event, timelineState) => {
         if (!timelineSettingWindow || !timelineSettingWindow.window || timelineSettingWindow.window.isDestroyed()) {
@@ -698,6 +1005,10 @@ app.whenReady().then(() => {
     initializeModules();
     registerIpcHandlers();
     createWindow();
+
+    // 检查并自动恢复中断的人脸扫描任务
+    const resumed = AutoFaceScan.checkAndResume(db, mainWindow);
+    if (resumed) autoFaceScanner = resumed;
 });
 
 app.on('window-all-closed', () => {
@@ -712,3 +1023,50 @@ app.on('activate', () => {
         createWindow();
     }
 });
+
+// ── GPS 写入照片文件 ────────────────────────────────────────
+// 将十进制度转为 EXIF GPS 有理数格式 [度, 分, 秒]
+function _decimalToGps(decimal) {
+    const abs = Math.abs(decimal);
+    const d = Math.floor(abs);
+    const mFloat = (abs - d) * 60;
+    const m = Math.floor(mFloat);
+    const s = Math.round((mFloat - m) * 60 * 10000);
+    return [[d, 1], [m, 1], [s, 10000]];
+}
+
+// 将 GPS 坐标写入 JPEG 文件 EXIF，不修改 DateTimeOriginal
+function writeGpsToFile(filePath, lat, lng) {
+    const ext = path.extname(filePath).toLowerCase();
+    if (!['.jpg', '.jpeg'].includes(ext)) return; // 仅支持 JPEG
+
+    let buffer;
+    try {
+        buffer = fs.readFileSync(filePath);
+    } catch (e) {
+        console.error('writeGpsToFile: 读取文件失败', filePath, e.message);
+        return;
+    }
+
+    const data = buffer.toString('binary');
+    let exifObj;
+    try {
+        exifObj = piexif.load(data);
+    } catch (_) {
+        exifObj = { '0th': {}, 'Exif': {}, 'GPS': {}, '1st': {} };
+    }
+
+    exifObj['GPS'][piexif.GPSIFD.GPSLatitudeRef]  = lat >= 0 ? 'N' : 'S';
+    exifObj['GPS'][piexif.GPSIFD.GPSLatitude]      = _decimalToGps(lat);
+    exifObj['GPS'][piexif.GPSIFD.GPSLongitudeRef] = lng >= 0 ? 'E' : 'W';
+    exifObj['GPS'][piexif.GPSIFD.GPSLongitude]     = _decimalToGps(Math.abs(lng));
+
+    try {
+        const exifBytes = piexif.dump(exifObj);
+        const newData   = piexif.insert(exifBytes, data);
+        fs.writeFileSync(filePath, Buffer.from(newData, 'binary'));
+        console.log('GPS 写入文件成功:', filePath, lat, lng);
+    } catch (e) {
+        console.error('writeGpsToFile: 写入失败', filePath, e.message);
+    }
+}

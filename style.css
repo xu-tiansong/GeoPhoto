@@ -67,6 +67,12 @@ body {
     min-height: 0;
 }
 
+/* 矩形框选模式下强制十字光标，覆盖 marker/cluster 的 pointer */
+#map.leaflet-crosshair,
+#map.leaflet-crosshair * {
+    cursor: crosshair !important;
+}
+
 #photo-strip {
     width: 100%;
     height: 15vh;
@@ -409,6 +415,62 @@ body {
 .marker-cluster-large {
     background-color: rgba(241, 128, 23, 0.6);
 }
+/* ── 人脸扫描进度指示器 ────────────────────────────────── */
+#face-scan-overlay {
+    display: none;
+    position: fixed;
+    left: 16px;
+    bottom: 72px; /* 位于时间轴 (56px) 上方，留 16px 间距 */
+    z-index: 500;
+    flex-direction: column;
+    align-items: center;
+    background: rgba(0, 0, 0, 0.72);
+    border-radius: 12px;
+    padding: 8px 12px 8px;
+    gap: 4px;
+    pointer-events: none;
+    box-shadow: 0 2px 16px rgba(0,0,0,0.6);
+}
+
+#face-scan-overlay.visible {
+    display: flex;
+}
+
+#face-scan-title {
+    color: #a0c8ff;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+    text-align: center;
+    font-family: 'Segoe UI', sans-serif;
+    letter-spacing: 0.4px;
+}
+
+#face-scan-text {
+    color: #d0d0d0;
+    font-size: 11px;
+    white-space: nowrap;
+    text-align: center;
+    font-family: 'Segoe UI', sans-serif;
+}
+
+#face-scan-cancel {
+    pointer-events: auto;
+    margin-top: 4px;
+    padding: 3px 18px;
+    background: rgba(220, 60, 60, 0.75);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-size: 12px;
+    font-family: 'Segoe UI', sans-serif;
+    cursor: pointer;
+}
+
+#face-scan-cancel:hover {
+    background: rgba(220, 60, 60, 1);
+}
+
 .marker-cluster-large div {
     background-color: rgba(241, 128, 23, 0.9);
 }

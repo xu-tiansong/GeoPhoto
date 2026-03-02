@@ -103,6 +103,13 @@ ipcRenderer.on('photo-location-updated', (_event, { photoId, lat, lng }) => {
     }
 });
 
+// 监听照片删除，从地图上移除对应标记
+ipcRenderer.on('photo-deleted', (_event, { photoId }) => {
+    if (mapManager) {
+        mapManager.removePhotoMarker(photoId);
+    }
+});
+
 // 监听照片Like状态变化，刷新地图上的markers
 ipcRenderer.on('photo-like-changed', async (event, { directory, filename, like }) => {
     console.log('照片Like状态变化:', directory, filename, like);
@@ -194,6 +201,13 @@ window.onload = async () => {
     }, 100);
 };
 
+// 监听"定位到地图"指令，将地图平移到指定地标坐标
+ipcRenderer.on('locate-on-map', (_event, { lat, lng }) => {
+    if (mapManager) {
+        mapManager.setView(lat, lng, 14);
+    }
+});
+
 // 监听标签管理窗口关闭后刷新事件日期高亮和地标标签
 ipcRenderer.on('refresh-event-tag-dates', () => {
     loadEventTagDates();
@@ -234,6 +248,75 @@ ipcRenderer.on('get-timeline-state', () => {
     };
     console.log('Sending timeline state:', timelineState);
     ipcRenderer.send('timeline-state', timelineState);
+});
+
+// ==================== 人脸扫描进度指示器 ====================
+
+/**
+ * 更新扫描进度扇形图
+ */
+ipcRenderer.on('face-scan-progress', (_event, { scanned, total }) => {
+    const overlay = document.getElementById('face-scan-overlay');
+    const canvas  = document.getElementById('face-scan-canvas');
+    const text    = document.getElementById('face-scan-text');
+    if (!overlay || !canvas || !text) return;
+
+    overlay.classList.add('visible');
+
+    const ctx   = canvas.getContext('2d');
+    const cx    = 64, cy = 64, r = 60;  // 半径 64px，留 4px 边距
+    const ratio = total > 0 ? scanned / total : 0;
+
+    ctx.clearRect(0, 0, 128, 128);
+
+    // 背景圆
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    ctx.fill();
+
+    // 进度扇形（从顶部 -π/2 顺时针）
+    if (ratio > 0) {
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + ratio * Math.PI * 2);
+        ctx.closePath();
+        ctx.fillStyle = '#4a9eff';
+        ctx.fill();
+    }
+
+    // 中心圆（镂空效果）
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * 0.46, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(0,0,0,0.72)';
+    ctx.fill();
+
+    // 中心百分比文字
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 16px "Segoe UI", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(Math.round(ratio * 100) + '%', cx, cy);
+
+    text.textContent = `${scanned} / ${total}`;
+});
+
+/**
+ * 扫描完成：隐藏指示器并提示用户
+ */
+ipcRenderer.on('face-scan-complete', (_event, { tagName, matched, total, taggedTotal }) => {
+    const overlay = document.getElementById('face-scan-overlay');
+    if (overlay) overlay.classList.remove('visible');
+    alert(i18n.t('face.scan.complete', { name: tagName, matched, total, taggedTotal }));
+});
+
+ipcRenderer.on('face-scan-cancelled', () => {
+    const overlay = document.getElementById('face-scan-overlay');
+    if (overlay) overlay.classList.remove('visible');
+});
+
+document.getElementById('face-scan-cancel').addEventListener('click', () => {
+    ipcRenderer.invoke('cancel-face-scan');
 });
 
 ipcRenderer.on('update-timeline', (event, data) => {

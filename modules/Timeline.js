@@ -28,6 +28,7 @@ class Timeline {
         
         // 拖动状态
         this.isDragging = false;
+        this.hasDragged = false; // 鼠标是否实际发生了移动
         this.dragType = null; // 'left', 'right', 'move', 'pan'
         this.dragStartX = 0;
         this.dragStartSelectionStart = null;
@@ -888,7 +889,7 @@ class Timeline {
         
         document.addEventListener('mouseup', () => {
             stopArrowScroll();
-            if (this.isDragging) {
+            if (this.isDragging && this.hasDragged) {
                 if (this.dragType === 'left' || this.dragType === 'right') {
                     this.selectionStart = this.snapToTick(this.selectionStart, false);
                     this.selectionEnd = this.snapToTick(this.selectionEnd, true);
@@ -921,6 +922,7 @@ class Timeline {
                 }
             }
             this.isDragging = false;
+            this.hasDragged = false;
             this.dragType = null;
             this.container.style.cursor = 'grab';
         });
@@ -938,6 +940,26 @@ class Timeline {
         // 窗口大小变化
         window.addEventListener('resize', () => {
             this.onResize();
+        });
+
+        // 双击时间bar（scrollbar区域或thumb）打开时间范围设置
+        this.thumb.addEventListener('dblclick', (e) => {
+            e.stopPropagation();
+            this.ipcRenderer.send('open-timerange-settings');
+        });
+        this.scrollbar.addEventListener('dblclick', (e) => {
+            e.stopPropagation();
+            this.ipcRenderer.send('open-timerange-settings');
+        });
+
+        // 双击时间轴刻度行打开时间轴设置
+        this.upperRow.addEventListener('dblclick', (e) => {
+            e.stopPropagation();
+            this.ipcRenderer.send('open-timeline-settings');
+        });
+        this.lowerRow.addEventListener('dblclick', (e) => {
+            e.stopPropagation();
+            this.ipcRenderer.send('open-timeline-settings');
         });
     }
 
@@ -978,6 +1000,7 @@ class Timeline {
      */
     startDrag(e, type) {
         this.isDragging = true;
+        this.hasDragged = false;
         this.dragType = type;
         this.dragStartX = e.clientX;
         this.dragStartSelectionStart = new Date(this.selectionStart);
@@ -995,6 +1018,11 @@ class Timeline {
      */
     onDrag(e) {
         const deltaX = e.clientX - this.dragStartX;
+        
+        // 标记鼠标已实际移动（超过3像素阈值）
+        if (Math.abs(deltaX) > 3) {
+            this.hasDragged = true;
+        }
         
         if (this.dragType === 'left') {
             const startPixel = this.timeToPixel(this.dragStartSelectionStart);

@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1/dist/face-api.js"></script>
+</head>
+<body>
+<script>
+/**
+ * face-scan-worker.html
+ * 隐藏的 BrowserWindow，用于人脸识别后台扫描
+ * 通过 IPC 与主进程通信，接收照片路径，返回是否匹配
+ *
+ * 三档识别模式：
+ *   loose    宽泛 — 不漏人，误识别多，仅用 SSDMobileNetV1
+ *   balanced 平衡 — 默认，兼顾精度与召回，仅用 SSDMobileNetV1（参数收紧）
+ *   strict   严格 — 误识别最少，额外加载 MTCNN 精确检测，推理更慢
+ *
+ * 共识投票：每张待扫照片中，被 N 张参考照片同时认可（距离 < threshold）
+ * 才算匹配，减少单张参考照片异常导致的误识别。
+ */
+
+const { ipcRenderer } = require('electron');
+
+const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1/model';
+
+// ── 三档参数预设 ─────────────────────────────────────────────
+const MODE_CONFIG = {
+    loose: {
+        /** 每张参考照片的欧氏距离阈值 */
+        threshold:    0.52,
+        /** 参考照片中需达成共识的最低比例 */
+        matchRatio:   0.20,
+        /** 人脸面积占图片面积最低比例（过小=模糊/远景，忽略） */
+        faceRatio:    0.02,
+        /** 人脸检测器：ssd = SSDMobileNetV1 */
+        detector:     'ssd',
+        /** SSD 最低置信度 */
+        ssdMinConf:   0.45,
+    },
+    balanced: {
+        threshold:    0.42,
+        matchRatio:   0.35,
+        faceRatio:    0.03,
+        detector:     'ssd',
+        ssdMinConf:   0.55,
+    },
+    strict: {
+        threshold:    0.38,
+        matchRatio:   0.50,
+        faceRatio:    0.04,
+        /** mtcnn = Multi-task Cascaded CNN，精度更高，速度较慢 */
+        detector:     'mtcnn',
+        /** MTCNN 最小人脸像素尺寸 */
+        mtcnnMinSize: 60,
+    },
+};
+// ─────────────────────────────────────────────────────────────
+
+let refDescriptors = [];   // Float32Array[]
+let currentMode    = 'balanced';
+let faceApiLoaded  = false;
+let mtcnnLoaded    = false;
+
+async function ensureModelsLoaded(needMtcnn) {
+    if (!faceApiLoaded) {
+        try {
+            await Promise.all([
+                faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL),
+                faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+                faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
+            ]);
+            faceApiLoaded = true;
+        } catch (err) {
+            console.error('FaceScanWorker: 基础模型加载失败', err);
+            return false;
+        }
+    }
+    if (needMtcnn && !mtcnnLoaded) {
+        try {
+            await faceapi.nets.mtcnn.loadFromUri(MODEL_URL);
+            mtcnnLoaded = true;
+        } catch (err) {
+            console.error('FaceScanWorker: MTCNN 模型加载失败，降级为 SSD', err);
+            // 降级到 SSD，不阻断扫描
+            currentMode = 'balanced';
+        }
+    }
+    return true;
+}
+
+/**
+ * 共识投票匹配
+ * @param {Float32Array} queryDescriptor
+ * @param {object}       cfg  - 当前 MODE_CONFIG 条目
+ */
+function isConsensusMatch(queryDescriptor, cfg) {
+    if (refDescriptors.length === 0) return false;
+    let matchCount = 0;
+    for (const ref of refDescriptors) {
+        if (faceapi.euclideanDistance(queryDescriptor, ref) < cfg.threshold) {
+            matchCount++;
+        }
+    }
+    return (matchCount / refDescriptors.length) >= cfg.matchRatio;
+}
+
+// 初始化：加载模型 + 存储参考特征向量
+ipcRenderer.on('face-worker-init', async (_event, { tagId, descriptors, mode = 'balanced' }) => {
+    currentMode = MODE_CONFIG[mode] ? mode : 'balanced';
+    const cfg   = MODE_CONFIG[currentMode];
+
+    const loaded = await ensureModelsLoaded(cfg.detector === 'mtcnn');
+    if (!loaded) {
+        ipcRenderer.send('face-worker-ready', { success: false, error: '人脸模型加载失败' });
+        return;
+    }
+    try {
+        refDescriptors = descriptors.map(d => new Float32Array(d));
+        ipcRenderer.send('face-worker-ready', { success: true });
+    } catch (err) {
+        console.error('FaceScanWorker: 初始化失败', err);
+        ipcRenderer.send('face-worker-ready', { success: false, error: err.message });
+    }
+});
+
+// 处理单张照片
+ipcRenderer.on('face-worker-process', async (_event, { photoId, photoPath }) => {
+    if (!faceApiLoaded || refDescriptors.length === 0) {
+        ipcRenderer.send('face-worker-result', { photoId, matched: false, error: '未初始化' });
+        return;
+    }
+    const cfg = MODE_CONFIG[currentMode];
+    try {
+        const img      = await loadImage(photoPath);
+        const canvas   = resizeForDetection(img);
+        const imgArea  = canvas.width * canvas.height;
+
+        // 根据模式选择检测器
+        let detections;
+        if (cfg.detector === 'mtcnn' && mtcnnLoaded) {
+            detections = await faceapi
+                .detectAllFaces(canvas, new faceapi.MtcnnOptions({ minFaceSize: cfg.mtcnnMinSize }))
+                .withFaceLandmarks()
+                .withFaceDescriptors();
+        } else {
+            detections = await faceapi
+                .detectAllFaces(canvas, new faceapi.SsdMobilenetv1Options({ minConfidence: cfg.ssdMinConf }))
+                .withFaceLandmarks()
+                .withFaceDescriptors();
+        }
+
+        let matched = false;
+        for (const det of detections) {
+            // 过滤面积过小的人脸
+            const box = det.detection.box;
+            if ((box.width * box.height) / imgArea < cfg.faceRatio) continue;
+
+            if (isConsensusMatch(det.descriptor, cfg)) {
+                matched = true;
+                break;
+            }
+        }
+        ipcRenderer.send('face-worker-result', { photoId, matched });
+    } catch (err) {
+        console.error('FaceScanWorker: 处理照片出错', photoId, err);
+        ipcRenderer.send('face-worker-result', { photoId, matched: false, error: err.message });
+    }
+});
+
+function loadImage(filePath) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload  = () => resolve(img);
+        img.onerror = () => reject(new Error('无法加载图片: ' + filePath));
+        img.src = 'file:///' + filePath.replace(/\\/g, '/');
+    });
+}
+
+function resizeForDetection(img) {
+    const MAX   = 800;
+    const w     = img.naturalWidth  || img.width;
+    const h     = img.naturalHeight || img.height;
+    const scale = Math.min(1, MAX / Math.max(w, h));
+    const canvas = document.createElement('canvas');
+    canvas.width  = Math.round(w * scale);
+    canvas.height = Math.round(h * scale);
+    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+    return canvas;
+}
+</script>
+</body>
+</html>

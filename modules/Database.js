@@ -107,6 +107,11 @@ class DatabaseManager {
             this.db.exec(`ALTER TABLE tag_events ADD COLUMN location_tag_id INTEGER REFERENCES tags(id) ON DELETE SET NULL`);
         } catch (_) { /* 列已存在则忽略 */ }
 
+        // 3.2.2 迁移：为 tag_faces 添加 auto_scan_cursor 列（记录上次自动扫描完成时的系统最大照片 ID）
+        try {
+            this.db.exec(`ALTER TABLE tag_faces ADD COLUMN auto_scan_cursor INTEGER DEFAULT 0`);
+        } catch (_) { /* 列已存在则忽略 */ }
+
         // 3.4. 扩展：地点属性表 (解决地理位置属性)
         this.db.exec(`
             CREATE TABLE IF NOT EXISTS tag_locations (
@@ -459,6 +464,23 @@ class DatabaseManager {
         ).run(previewPath, tagId);
     }
 
+    /** 获取人物标签上次自动扫描完成时记录的照片游标（0 表示从未扫描过） */
+    getTagAutoScanCursor(tagId) {
+        const row = this.db.prepare('SELECT auto_scan_cursor FROM tag_faces WHERE tag_id = ?').get(tagId);
+        return row ? (row.auto_scan_cursor || 0) : 0;
+    }
+
+    /** 扫描完成后写入游标（当前系统最大照片 ID） */
+    setTagAutoScanCursor(tagId, photoId) {
+        this.db.prepare('UPDATE tag_faces SET auto_scan_cursor = ? WHERE tag_id = ?').run(photoId, tagId);
+    }
+
+    /** 返回 photos 表中当前最大的照片 ID（无照片时返回 0） */
+    getMaxPhotoId() {
+        const row = this.db.prepare('SELECT MAX(id) AS maxId FROM photos').get();
+        return row && row.maxId ? row.maxId : 0;
+    }
+
     // ── 事件日期操作 ──────────────────────────────────
 
     /**
@@ -508,6 +530,52 @@ class DatabaseManager {
         `).all();
     }
 
+    getLocationTagTree() {
+        const allTags = this.db.prepare(`
+            SELECT t.id, t.name, t.color, t.parent_id, l.lat, l.lng, l.radius
+            FROM tags t
+            LEFT JOIN tag_locations l ON l.tag_id = t.id
+            WHERE t.category = 'location'
+            ORDER BY t.name ASC
+        `).all();
+
+        const buildTree = (parentId = null) => {
+            return allTags
+                .filter(tag => tag.parent_id === parentId)
+                .map(tag => ({ ...tag, children: buildTree(tag.id) }));
+        };
+
+        return buildTree();
+    }
+
+    /** 获取与 tagId 同父、同层的其他地标及其位置数据（用于兄弟重叠校验） */
+    getSiblingLocationTags(tagId) {
+        const tag = this.db.prepare('SELECT parent_id FROM tags WHERE id = ?').get(tagId);
+        if (!tag) return [];
+        const parentId = tag.parent_id; // null 表示顶层
+        return this.db.prepare(`
+            SELECT t.id, t.name, l.lat, l.lng, l.radius
+            FROM tags t
+            JOIN tag_locations l ON l.tag_id = t.id
+            WHERE t.category = 'location'
+              AND t.id != ?
+              AND t.parent_id IS ?
+              AND l.lat IS NOT NULL AND l.lng IS NOT NULL AND l.radius IS NOT NULL
+        `).all(tagId, parentId);
+    }
+
+    /** 获取指定地标标签的父标签位置数据（用于保存前约束校验），无父或父无位置时返回 null */
+    getParentLocationData(tagId) {
+        const tag = this.db.prepare('SELECT parent_id FROM tags WHERE id = ?').get(tagId);
+        if (!tag || !tag.parent_id) return null;
+        return this.db.prepare(`
+            SELECT t.id, t.name, l.lat, l.lng, l.radius
+            FROM tags t
+            LEFT JOIN tag_locations l ON l.tag_id = t.id
+            WHERE t.id = ?
+        `).get(tag.parent_id) || null;
+    }
+
     updateLocation(tagId, lat, lng, radius) {
         return this.db.prepare(`
             INSERT INTO tag_locations (tag_id, lat, lng, radius)
@@ -551,6 +619,45 @@ class DatabaseManager {
     linkTagToPhoto(photoId, tagId) {
         const stmt = this.db.prepare('INSERT OR IGNORE INTO photo_tags (photo_id, tag_id) VALUES (?, ?)');
         return stmt.run(photoId, tagId);
+    }
+
+    /** 返回拥有指定标签的照片总数 */
+    countPhotosByTag(tagId) {
+        const row = this.db.prepare('SELECT COUNT(*) AS cnt FROM photo_tags WHERE tag_id = ?').get(tagId);
+        return row ? row.cnt : 0;
+    }
+
+    /**
+     * 获取指定时间范围内含坐标的照片（用于事件自动匹配）
+     * @param {string} startTime - ISO 8601 字符串（含）
+     * @param {string} endTime   - ISO 8601 字符串（含）
+     * @returns {{ id, lat, lng, time }[]}
+     */
+    getPhotosByTimeRange(startTime, endTime) {
+        return this.db.prepare(`
+            SELECT id, lat, lng, time
+            FROM photos
+            WHERE time >= ? AND time <= ?
+              AND lat IS NOT NULL AND lng IS NOT NULL
+            ORDER BY time
+        `).all(startTime, endTime);
+    }
+
+    /**
+     * 返回拥有指定标签的照片（仅非视频，含完整路径），用于人脸识别样本预填充
+     * @param {number} tagId
+     * @param {number} limit  最多返回张数，默认 20
+     */
+    getPhotosByTag(tagId, limit = 20) {
+        const photos = this.db.prepare(`
+            SELECT p.id, p.directory, p.filename
+            FROM photos p
+            JOIN photo_tags pt ON p.id = pt.photo_id
+            WHERE pt.tag_id = ? AND p.type != 'video'
+            ORDER BY p.id
+            LIMIT ?
+        `).all(tagId, limit);
+        return this.filterExistingPhotos(this.addFullPathToPhotos(photos));
     }
 
     getPhotoTags(photoId) {
@@ -863,14 +970,50 @@ class DatabaseManager {
     /**
      * 根据区域查询照片
      */
-    queryPhotosByArea(north, south, east, west) {
-        const sql = `
-            SELECT * FROM photos 
-            WHERE lat <= ? AND lat >= ? 
-            AND lng <= ? AND lng >= ?
-        `;
-        const photos = this.db.prepare(sql).all(north, south, east, west);
+    queryPhotosByArea(north, south, east, west, startTime, endTime) {
+        let sql;
+        let params;
+        if (startTime && endTime) {
+            sql = `
+                SELECT * FROM photos 
+                WHERE lat <= ? AND lat >= ? 
+                AND lng <= ? AND lng >= ?
+                AND time >= ? AND time < ?
+            `;
+            params = [north, south, east, west, startTime, endTime];
+        } else {
+            sql = `
+                SELECT * FROM photos 
+                WHERE lat <= ? AND lat >= ? 
+                AND lng <= ? AND lng >= ?
+            `;
+            params = [north, south, east, west];
+        }
+        const photos = this.db.prepare(sql).all(...params);
         return this.filterExistingPhotos(this.addFullPathToPhotos(photos));
+    }
+
+    /**
+     * 获取时间上相邻的照片（前N张 + 后N张）
+     * @param {number} photoId - 当前照片ID
+     * @param {number} count - 前后各取几张
+     */
+    getPhotosNearTime(photoId, count = 3) {
+        const current = this.db.prepare('SELECT time FROM photos WHERE id = ?').get(photoId);
+        if (!current || !current.time) return { before: [], after: [] };
+
+        const before = this.db.prepare(
+            'SELECT * FROM photos WHERE id != ? AND time <= ? AND lat IS NOT NULL AND lng IS NOT NULL ORDER BY time DESC, id DESC LIMIT ?'
+        ).all(photoId, current.time, count);
+
+        const after = this.db.prepare(
+            'SELECT * FROM photos WHERE id != ? AND time >= ? AND lat IS NOT NULL AND lng IS NOT NULL ORDER BY time ASC, id ASC LIMIT ?'
+        ).all(photoId, current.time, count);
+
+        return {
+            before: this.addFullPathToPhotos(before.reverse()),
+            after: this.addFullPathToPhotos(after)
+        };
     }
 
     /**
@@ -893,6 +1036,76 @@ class DatabaseManager {
             WHERE directory = ? AND filename = ?
         `);
         return stmt.run(like ? 1 : 0, directory, filename);
+    }
+
+    // ==================== 人脸扫描进度 ====================
+
+    /**
+     * 获取待扫描照片列表（非视频，尚未打上指定 face tag，photo.id > afterId）
+     * @param {number} tagId
+     * @param {number} afterId - 游标（0 = 从头开始）
+     * @returns {{ id: number, directory: string, filename: string }[]}
+     */
+    getPhotosForFaceScan(tagId, afterId = 0) {
+        return this.db.prepare(`
+            SELECT p.id, p.directory, p.filename
+            FROM photos p
+            WHERE p.type != 'video'
+              AND p.id > ?
+              AND NOT EXISTS (
+                  SELECT 1 FROM photo_tags pt
+                  WHERE pt.photo_id = p.id AND pt.tag_id = ?
+              )
+            ORDER BY p.id ASC
+        `).all(afterId, tagId);
+    }
+
+    /**
+     * 读取人脸扫描状态
+     * @returns {{ tagId: number, lastPhotoId: number, scanned: number, total: number }}
+     */
+    getFaceScanState() {
+        const tagIdStr       = this.getSetting('face_scan_tag_id');
+        const lastPhotoIdStr = this.getSetting('face_scan_last_photo_id');
+        const scannedStr     = this.getSetting('face_scan_scanned');
+        const totalStr       = this.getSetting('face_scan_total');
+        const tagId       = (tagIdStr === null || tagIdStr === '-1') ? -1 : parseInt(tagIdStr, 10);
+        const lastPhotoId = lastPhotoIdStr ? parseInt(lastPhotoIdStr, 10) : 0;
+        const scanned     = scannedStr ? parseInt(scannedStr, 10) : 0;
+        const total       = totalStr ? parseInt(totalStr, 10) : 0;
+        return { tagId, lastPhotoId, scanned, total };
+    }
+
+    /**
+     * 保存人脸扫描进度
+     * @param {number} tagId
+     * @param {number} lastPhotoId - 最后成功处理的照片 ID
+     * @param {number} scanned     - 累计已扫描张数
+     * @param {number} total       - 本次扫描总张数（大计）
+     */
+    saveFaceScanProgress(tagId, lastPhotoId, scanned, total) {
+        this.saveSetting('face_scan_tag_id',        String(tagId));
+        this.saveSetting('face_scan_last_photo_id', String(lastPhotoId));
+        this.saveSetting('face_scan_scanned',       String(scanned));
+        this.saveSetting('face_scan_total',         String(total));
+    }
+
+    /**
+     * 永久删除照片记录（photo_tags 通过 ON DELETE CASCADE 自动清理）
+     * @param {number} id - 照片 ID
+     */
+    deletePhoto(id) {
+        this.db.prepare('DELETE FROM photos WHERE id = ?').run(id);
+    }
+
+    /**
+     * 清除人脸扫描状态（扫描完成或取消）
+     */
+    clearFaceScanState() {
+        this.saveSetting('face_scan_tag_id',        '-1');
+        this.saveSetting('face_scan_last_photo_id', '0');
+        this.saveSetting('face_scan_scanned',       '0');
+        this.saveSetting('face_scan_total',         '0');
     }
 
     // ==================== 设置操作 ====================

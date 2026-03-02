@@ -29,8 +29,9 @@ class PhotoWindow {
      * @param {object} photoData - 照片数据
      * @param {Array|null} navPhotos - 导航列表 [{directory, filename}, ...]，为 null 时不显示翻页箭头
      * @param {number} currentIndex - 当前照片在导航列表中的索引
+     * @param {BrowserWindow|null} overrideParent - 指定父窗口（如从子窗口打开时传入该子窗口）
      */
-    show(photoData, navPhotos = null, currentIndex = -1) {
+    show(photoData, navPhotos = null, currentIndex = -1, overrideParent = null) {
         if (this.photoWindow) {
             this.photoWindow.close();
         }
@@ -39,8 +40,12 @@ class PhotoWindow {
         this.navPhotos = navPhotos;
         this.currentIndex = currentIndex;
 
+        // 确定实际父窗口：若调用方传入 overrideParent（如 photosManageWindow），
+        // 则以它为 modal parent，形成正确的链式层级，避免同级 modal 的焦点争抢问题
+        const effectiveParent = overrideParent || this.parentWindow;
+
         // 获取父窗口尺寸和位置
-        const parentBounds = this.parentWindow.getBounds();
+        const parentBounds = effectiveParent.getBounds();
         const windowWidth = parentBounds.width - 112;
         const windowHeight = parentBounds.height - 112;
         const windowX = parentBounds.x + 56;
@@ -52,7 +57,7 @@ class PhotoWindow {
             height: windowHeight,
             x: windowX,
             y: windowY,
-            parent: this.parentWindow,
+            parent: effectiveParent,
             modal: true,
             frame: false,
             resizable: false,
@@ -87,12 +92,12 @@ class PhotoWindow {
         // 监听父窗口大小变化
         this.parentResizeListener = () => {
             if (this.photoWindow && !this.photoWindow.isDestroyed()) {
-                const newBounds = this.parentWindow.getBounds();
+                const newBounds = effectiveParent.getBounds();
                 const newWidth = newBounds.width - 112;
                 const newHeight = newBounds.height - 112;
                 const newX = newBounds.x + 56;
                 const newY = newBounds.y + 56;
-                
+
                 this.photoWindow.setBounds({
                     x: newX,
                     y: newY,
@@ -102,13 +107,13 @@ class PhotoWindow {
             }
         };
 
-        this.parentWindow.on('resize', this.parentResizeListener);
-        this.parentWindow.on('move', this.parentResizeListener);
+        effectiveParent.on('resize', this.parentResizeListener);
+        effectiveParent.on('move', this.parentResizeListener);
 
         // 窗口关闭时清理
         this.photoWindow.on('closed', () => {
-            this.parentWindow.removeListener('resize', this.parentResizeListener);
-            this.parentWindow.removeListener('move', this.parentResizeListener);
+            effectiveParent.removeListener('resize', this.parentResizeListener);
+            effectiveParent.removeListener('move', this.parentResizeListener);
             this.photoWindow = null;
             this.currentPhoto = null;
             this.navPhotos = null;
@@ -158,10 +163,11 @@ class PhotoWindow {
      */
     setFullScreen(isFullScreen) {
         if (!this.photoWindow || this.photoWindow.isDestroyed()) return;
-        
+
         if (isFullScreen) {
-            // 保存当前窗口位置
+            // 保存当前窗口位置和父窗口引用
             this.savedBounds = this.photoWindow.getBounds();
+            this.savedParent = this.photoWindow.getParentWindow();
             // 临时解除模态关系以实现真正全屏
             this.photoWindow.setParentWindow(null);
             // 设置全屏
@@ -169,8 +175,11 @@ class PhotoWindow {
         } else {
             // 退出全屏
             this.photoWindow.setFullScreen(false);
-            // 恢复模态关系
-            this.photoWindow.setParentWindow(this.parentWindow);
+            // 恢复模态关系（使用记录的父窗口，可能是 overrideParent）
+            if (this.savedParent && !this.savedParent.isDestroyed()) {
+                this.photoWindow.setParentWindow(this.savedParent);
+            }
+            this.savedParent = null;
             // 恢复窗口位置
             if (this.savedBounds) {
                 this.photoWindow.setBounds(this.savedBounds);

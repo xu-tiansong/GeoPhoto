@@ -177,6 +177,12 @@
             background: #2a2a2a;
             display: flex;
             flex-direction: column;
+            transition: width 0.3s ease;
+            flex-shrink: 0;
+        }
+
+        .sidebar.editing {
+            width: 50%;
         }
 
         /* Tab导航 */
@@ -240,6 +246,40 @@
             color: #e0e0e0;
             font-size: 14px;
             word-break: break-all;
+        }
+
+        /* ── 坐标复制弹出菜单 ─────────────────────────── */
+        #info-coordinates {
+            cursor: pointer;
+        }
+        #info-coordinates:hover {
+            text-decoration: underline dotted #888;
+        }
+        #coord-copy-menu {
+            position: fixed;
+            background: #252525;
+            border: 1px solid #444;
+            border-radius: 5px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+            z-index: 9999;
+            overflow: hidden;
+            min-width: 130px;
+        }
+        .coord-copy-item {
+            padding: 8px 14px;
+            cursor: pointer;
+            font-size: 13px;
+            color: #e0e0e0;
+            white-space: nowrap;
+        }
+        .coord-copy-item:hover { background: #383838; }
+
+        /* ── 目录复制 ──────────────────────────────────── */
+        #info-directory {
+            cursor: pointer;
+        }
+        #info-directory:hover {
+            text-decoration: underline dotted #888;
         }
 
         /* Remark输入框样式 */
@@ -328,6 +368,30 @@
 
         .like-btn .heart-icon {
             font-size: 18px;
+        }
+
+        .delete-btn {
+            width: 100%;
+            margin-top: 8px;
+            padding: 10px;
+            background: #2a2a2a;
+            border: 1px solid #383838;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            color: #888;
+            font-size: 13px;
+            font-family: inherit;
+            transition: all 0.15s;
+        }
+
+        .delete-btn:hover {
+            background: #3a1a1a;
+            border-color: #c62828;
+            color: #e57373;
         }
 
         /* Similar Photos面板 */
@@ -432,17 +496,254 @@
             background: #1a1a1a;
         }
 
+        .mini-map-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+
         .mini-map-label {
             color: #777;
             font-size: 11px;
-            margin-bottom: 8px;
+        }
+
+        .edit-location-btn {
+            font-size: 11px;
+            padding: 2px 8px;
+            background: #333;
+            border: 1px solid #555;
+            color: #ccc;
+            cursor: pointer;
+            border-radius: 3px;
+            font-family: inherit;
+        }
+        .edit-location-btn:hover { background: #444; }
+        .edit-location-btn.cancel { border-color: #e57373; color: #e57373; }
+        .edit-location-btn.cancel:hover { background: rgba(229,115,115,0.1); }
+
+        .edit-location-hint {
+            font-size: 11px;
+            color: #4a9eff;
+            margin-bottom: 6px;
+            text-align: center;
+            padding: 4px 8px;
+            background: rgba(74,158,255,0.1);
+            border-radius: 3px;
         }
 
         #miniMap {
             width: 100%;
             height: 180px;
             border-radius: 4px;
+            transition: height 0.3s ease;
         }
+
+        .sidebar.editing #miniMap {
+            height: 360px;
+        }
+
+        /* 地址搜索框 */
+        .location-search {
+            position: relative;
+            margin-bottom: 6px;
+        }
+
+        .location-search-row {
+            display: flex;
+            gap: 4px;
+        }
+
+        .location-search-input {
+            flex: 1;
+            background: #222;
+            border: 1px solid #444;
+            color: #e0e0e0;
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-size: 12px;
+            font-family: inherit;
+            outline: none;
+            min-width: 0;
+        }
+        .location-search-input:focus { border-color: #4a9eff; }
+
+        .location-search-btn {
+            padding: 4px 10px;
+            background: #333;
+            border: 1px solid #555;
+            color: #ccc;
+            cursor: pointer;
+            border-radius: 3px;
+            font-size: 12px;
+            font-family: inherit;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        .location-search-btn:hover { background: #444; }
+
+        .location-search-results {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: #2a2a2a;
+            border: 1px solid #444;
+            border-top: none;
+            border-radius: 0 0 4px 4px;
+            z-index: 9999;
+            max-height: 180px;
+            overflow-y: auto;
+        }
+
+        .search-result-item {
+            padding: 6px 8px;
+            font-size: 11px;
+            color: #ccc;
+            cursor: pointer;
+            border-bottom: 1px solid #333;
+            line-height: 1.4;
+        }
+        .search-result-item:hover { background: #3a3a3a; color: #fff; }
+        .search-result-item:last-child { border-bottom: none; }
+        .search-status-item { padding: 6px 8px; font-size: 11px; color: #666; }
+
+        /* 相邻照片参考条 */
+        .nearby-photos-strip {
+            margin-top: 6px;
+            padding-top: 4px;
+        }
+        .nearby-strip-label {
+            color: #555;
+            font-size: 10px;
+            margin-bottom: 4px;
+        }
+        .nearby-photos-row {
+            display: flex;
+            gap: 4px;
+            overflow-x: auto;
+            padding-bottom: 2px;
+            align-items: stretch;
+        }
+        .nearby-photos-row::-webkit-scrollbar { height: 3px; }
+        .nearby-photos-row::-webkit-scrollbar-thumb { background: #444; border-radius: 3px; }
+        .nearby-photo-item {
+            flex-shrink: 0;
+            width: 84px;
+            cursor: pointer;
+            border-radius: 3px;
+            overflow: hidden;
+            position: relative;
+            border: 1.5px solid #383838;
+            transition: border-color 0.15s;
+        }
+        .nearby-photo-item:hover { border-color: #4a9eff; }
+        .nearby-photo-item.no-location { opacity: 0.4; cursor: default; }
+        .nearby-photo-item.no-location:hover { border-color: #383838; }
+        .nearby-photo-thumb {
+            width: 84px;
+            height: 84px;
+            object-fit: cover;
+            display: block;
+            background: #111;
+        }
+        .nearby-photo-video {
+            width: 84px;
+            height: 84px;
+            background: #111;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+        }
+        .nearby-photo-loc {
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            font-size: 11px;
+            line-height: 1;
+            filter: drop-shadow(0 1px 1px rgba(0,0,0,0.9));
+        }
+        .nearby-strip-sep {
+            width: 1px;
+            flex-shrink: 0;
+            background: #333;
+            border-radius: 1px;
+            align-self: stretch;
+            margin: 0 2px;
+        }
+
+        /* 地图/地标内部 Tab */
+        .loc-tab-nav {
+            display: flex;
+            margin-bottom: 6px;
+            background: #1e1e1e;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        .loc-tab-btn {
+            flex: 1;
+            padding: 5px 0;
+            background: transparent;
+            border: none;
+            color: #666;
+            cursor: pointer;
+            font-size: 12px;
+            font-family: inherit;
+            transition: all 0.15s;
+            border-bottom: 2px solid transparent;
+        }
+        .loc-tab-btn:hover { color: #bbb; background: rgba(255,255,255,0.04); }
+        .loc-tab-btn.active { color: #e0e0e0; border-bottom-color: #4a9eff; }
+
+        /* 地标树 */
+        .landmark-tree-container {
+            max-height: 220px;
+            overflow-y: auto;
+            margin-bottom: 6px;
+            background: #1a1a1a;
+            border-radius: 3px;
+            padding: 4px 0;
+        }
+        .landmark-tree-container::-webkit-scrollbar { width: 4px; }
+        .landmark-tree-container::-webkit-scrollbar-thumb { background: #444; border-radius: 2px; }
+        .landmark-node {
+            padding: 4px 8px;
+            font-size: 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            transition: background 0.12s;
+            user-select: none;
+            color: #ccc;
+        }
+        .landmark-node:hover { background: rgba(255,255,255,0.06); }
+        .landmark-node.selected { background: rgba(74,158,255,0.18); color: #4a9eff; }
+        .landmark-node.no-location { color: #555; cursor: default; }
+        .landmark-node.no-location:hover { background: transparent; }
+        .landmark-node .node-toggle { font-size: 9px; color: #555; flex-shrink: 0; width: 10px; text-align: center; }
+        .landmark-node .node-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+        .landmark-node .node-name { flex: 1; }
+        .landmark-node .node-loc-icon { font-size: 11px; flex-shrink: 0; }
+        .landmark-confirm-row {
+            display: flex;
+            justify-content: flex-end;
+            padding-top: 4px;
+        }
+        .landmark-confirm-btn {
+            padding: 5px 18px;
+            background: #4a9eff;
+            border: none;
+            border-radius: 3px;
+            color: #fff;
+            cursor: pointer;
+            font-size: 12px;
+            font-family: inherit;
+            transition: background 0.15s;
+        }
+        .landmark-confirm-btn:hover:not(:disabled) { background: #3a8eef; }
+        .landmark-confirm-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
         /* 占位符文本 */
         .placeholder {
@@ -503,6 +804,10 @@
                     <div class="info-value" id="info-filename">-</div>
                 </div>
                 <div class="info-row">
+                    <div class="info-label" data-i18n="photo.filesize">File Size</div>
+                    <div class="info-value" id="info-filesize">-</div>
+                </div>
+                <div class="info-row">
                     <div class="info-label" data-i18n="photo.directory">Directory</div>
                     <div class="info-value" id="info-directory">-</div>
                 </div>
@@ -519,8 +824,39 @@
                     <div class="info-value" id="info-coordinates">-</div>
                 </div>
                 <div class="mini-map-container" id="miniMapContainer" style="display: none;">
-                    <div class="mini-map-label" data-i18n="photo.mapLocation">Map Location</div>
-                    <div id="miniMap"></div>
+                    <div class="mini-map-header">
+                        <div class="mini-map-label" data-i18n="photo.mapLocation">Map Location</div>
+                        <button class="edit-location-btn" id="editLocationBtn" data-i18n="photo.editLocation">Edit</button>
+                    </div>
+                    <!-- 编辑模式内部 Tab 导航 -->
+                    <div class="loc-tab-nav" id="locTabNav" style="display:none;">
+                        <button class="loc-tab-btn active" data-loctab="map">地图</button>
+                        <button class="loc-tab-btn" data-loctab="landmark">地标</button>
+                    </div>
+                    <!-- 地图 Tab 面板 -->
+                    <div id="mapTabPanel">
+                        <div class="location-search" id="locationSearch" style="display:none;">
+                            <div class="location-search-row">
+                                <input type="text" class="location-search-input" id="locationSearchInput"
+                                       data-i18n-placeholder="photo.searchAddress" placeholder="Search address...">
+                                <button class="location-search-btn" id="locationSearchBtn" data-i18n="photo.search">Search</button>
+                            </div>
+                            <div class="location-search-results" id="locationSearchResults" style="display:none;"></div>
+                        </div>
+                        <div class="edit-location-hint" id="editLocationHint" style="display:none;" data-i18n="photo.editLocationHint">Double-click map to set new location</div>
+                        <div id="miniMap"></div>
+                        <div class="nearby-photos-strip" id="nearbyPhotosStrip" style="display:none;">
+                            <div class="nearby-strip-label" data-i18n="photo.nearbyHint">Click a nearby photo to copy its location</div>
+                            <div class="nearby-photos-row" id="nearbyPhotosRow"></div>
+                        </div>
+                    </div>
+                    <!-- 地标 Tab 面板 -->
+                    <div id="landmarkTabPanel" style="display:none;">
+                        <div class="landmark-tree-container" id="landmarkTreeContainer"></div>
+                        <div class="landmark-confirm-row">
+                            <button class="landmark-confirm-btn" id="landmarkConfirmBtn" disabled>确定</button>
+                        </div>
+                    </div>
                 </div>
                 <div class="remark-container">
                     <div class="info-label" data-i18n="photo.remark">Remark</div>
@@ -531,6 +867,10 @@
                     <button class="like-btn" id="likeBtn">
                         <span class="heart-icon">♥</span>
                         <span class="like-text" data-i18n="photo.like">Like this photo</span>
+                    </button>
+                    <button class="delete-btn" id="deleteBtn">
+                        <span>🗑</span>
+                        <span data-i18n="photo.contextMenu.delete">Delete Photo</span>
                     </button>
                 </div>
             </div>
@@ -558,7 +898,42 @@
         const { ipcRenderer } = require('electron');
         const L = require('leaflet');
         const { pathToFileURL } = require('url');
+        const fs = require('fs');
         const i18n = require('./modules/i18n');
+
+        function formatFileSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+            return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+        }
+
+        // EXIF orientation → rotation degrees (for embedded previews without own EXIF rotation)
+        // Handles the common rotation-only cases; flip-only cases (2,4) treated as 0°
+        const EXIF_ORIENT_DEG = { 3: 180, 5: 90, 6: 90, 7: 270, 8: 270 };
+
+        // Rotate a JPEG blob by degrees using an off-screen canvas
+        function rotateBlobByDegrees(blob, degrees) {
+            if (!degrees || degrees % 360 === 0) return Promise.resolve(blob);
+            return new Promise((resolve) => {
+                const img = new Image();
+                const url = URL.createObjectURL(blob);
+                img.onload = () => {
+                    URL.revokeObjectURL(url);
+                    const swap = degrees === 90 || degrees === 270;
+                    const canvas = document.createElement('canvas');
+                    canvas.width  = swap ? img.naturalHeight : img.naturalWidth;
+                    canvas.height = swap ? img.naturalWidth  : img.naturalHeight;
+                    const ctx = canvas.getContext('2d');
+                    ctx.translate(canvas.width / 2, canvas.height / 2);
+                    ctx.rotate(degrees * Math.PI / 180);
+                    ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
+                    canvas.toBlob(newBlob => resolve(newBlob || blob), 'image/jpeg', 0.92);
+                };
+                img.onerror = () => { URL.revokeObjectURL(url); resolve(blob); };
+                img.src = url;
+            });
+        }
 
         // i18n 初始化
         (async () => {
@@ -580,6 +955,7 @@
         let startY = 0;
         let miniMap = null;
         let miniMapMarker = null;
+        let isEditingLocation = false;
         let originalRemark = '';
 
         const photoContainer = document.getElementById('photoContainer');
@@ -592,6 +968,31 @@
         ipcRenderer.on('load-photo', (event, photoData) => {
             currentPhoto = photoData;
             loadPhoto(photoData);
+        });
+
+        // 右键菜单（在照片画面上）
+        photoContainer.addEventListener('contextmenu', () => {
+            if (!currentPhoto) return;
+            ipcRenderer.send('show-photo-context-menu', {
+                photoId:   currentPhoto.id,
+                directory: currentPhoto.directory,
+                filename:  currentPhoto.filename,
+                isVideo:   currentPhoto.type === 'video'
+            });
+        });
+
+        // 当前显示的照片被删除时：尝试翻页，否则关闭窗口
+        ipcRenderer.on('photo-deleted', async (_event, { photoId }) => {
+            if (!currentPhoto || currentPhoto.id !== photoId) return;
+            if (navTotal > 1) {
+                const next = await ipcRenderer.invoke('navigate-photo', 'next');
+                if (!next || !next.success) {
+                    const prev = await ipcRenderer.invoke('navigate-photo', 'prev');
+                    if (!prev || !prev.success) window.close();
+                }
+            } else {
+                window.close();
+            }
         });
 
         // 翻页导航信息
@@ -613,6 +1014,15 @@
         document.getElementById('navNext').addEventListener('click', async (e) => {
             e.stopPropagation();
             await ipcRenderer.invoke('navigate-photo', 'next');
+        });
+
+        // 键盘左右键翻页
+        document.addEventListener('keydown', async (e) => {
+            if (e.key === 'ArrowLeft') {
+                await ipcRenderer.invoke('navigate-photo', 'prev');
+            } else if (e.key === 'ArrowRight') {
+                await ipcRenderer.invoke('navigate-photo', 'next');
+            }
         });
 
         // 加载照片
@@ -672,16 +1082,31 @@
             } else {
                 videoPlayer.classList.remove('active');
                 photoImage.classList.add('active');
-                photoImage.src = fileUrl;
-                
-                // 等待图片加载完成后再重置缩放
-                photoImage.onload = () => {
-                    resetZoom();
-                };
-                
-                // 如果图片已经缓存加载完成
-                if (photoImage.complete && photoImage.naturalWidth > 0) {
-                    resetZoom();
+
+                if (/\.heic$/i.test(filePath)) {
+                    // HEIC 格式：Chromium 不原生支持，通过主进程转换为 JPEG
+                    photoImage.src = '';
+                    const result = await ipcRenderer.invoke('convert-heic', { filePath });
+                    if (result.success) {
+                        let blob = new Blob([Buffer.from(result.data, 'base64')], { type: 'image/jpeg' });
+                        // 内嵌预览通常不含 EXIF 旋转，需手动用 canvas 修正方向
+                        if (result.isPreview) {
+                            const deg = EXIF_ORIENT_DEG[result.orientation] || 0;
+                            if (deg) blob = await rotateBlobByDegrees(blob, deg);
+                        }
+                        const objUrl = URL.createObjectURL(blob);
+                        photoImage.onload = () => { URL.revokeObjectURL(objUrl); resetZoom(); };
+                        photoImage.src = objUrl;
+                    } else {
+                        photoImage.alt = `HEIC conversion failed: ${result.error || 'unknown error'}`;
+                        console.error('HEIC 转换失败:', result.error);
+                    }
+                } else {
+                    photoImage.src = fileUrl;
+                    // 等待图片加载完成后再重置缩放
+                    photoImage.onload = () => { resetZoom(); };
+                    // 如果图片已经缓存加载完成
+                    if (photoImage.complete && photoImage.naturalWidth > 0) { resetZoom(); }
                 }
             }
             
@@ -689,15 +1114,21 @@
             document.getElementById('info-filename').textContent = photo.filename || '-';
             document.getElementById('info-directory').textContent = photo.directory || '-';
             document.getElementById('info-datetime').textContent = photo.time ? new Date(photo.time).toLocaleString() : '-';
+            try {
+                const stat = fs.statSync(filePath);
+                document.getElementById('info-filesize').textContent = formatFileSize(stat.size);
+            } catch (_) {
+                document.getElementById('info-filesize').textContent = '-';
+            }
             
+            // 始终显示地图容器（含编辑按钮），方便为无定位照片添加位置
+            document.getElementById('miniMapContainer').style.display = 'block';
+
             if (photo.lat && photo.lng) {
                 document.getElementById('info-coordinates').textContent = `${photo.lat.toFixed(6)}, ${photo.lng.toFixed(6)}`;
                 document.getElementById('info-location').textContent = i18n.t('photo.loading');
 
-                // 显示地图容器
-                document.getElementById('miniMapContainer').style.display = 'block';
-
-                // 初始化小地图
+                // 初始化小地图（有坐标）
                 initMiniMap(photo.lat, photo.lng);
 
                 // 异步获取城市名称
@@ -711,8 +1142,8 @@
             } else {
                 document.getElementById('info-coordinates').textContent = '-';
                 document.getElementById('info-location').textContent = i18n.t('photo.noLocation');
-                // 隐藏地图容器
-                document.getElementById('miniMapContainer').style.display = 'none';
+                // 初始化小地图（无坐标，显示世界视图供编辑）
+                initMiniMap(null, null);
             }
 
             // 加载remark
@@ -928,8 +1359,11 @@
             return 1;
         }
 
-        // 初始化小地图
+        // 初始化小地图（lat/lng 为 null 时显示世界视图供编辑）
         function initMiniMap(lat, lng) {
+            // 退出编辑模式
+            if (isEditingLocation) exitLocationEditMode();
+
             // 如果地图已存在，先移除
             if (miniMap) {
                 miniMap.remove();
@@ -937,12 +1371,17 @@
                 miniMapMarker = null;
             }
 
+            const hasLocation = lat !== null && lng !== null;
+            const centerLat = hasLocation ? lat : 20;
+            const centerLng = hasLocation ? lng : 0;
+            const zoom = hasLocation ? 13 : 2;
+
             // 等待DOM元素准备好
             setTimeout(() => {
                 // 创建小地图
                 miniMap = L.map('miniMap', {
-                    center: [lat, lng],
-                    zoom: 13,
+                    center: [centerLat, centerLng],
+                    zoom: zoom,
                     zoomControl: false,
                     attributionControl: false,
                     dragging: false,
@@ -962,13 +1401,15 @@
                     subdomains: 'abcd'
                 }).addTo(miniMap);
 
-                // 添加标记
-                miniMapMarker = L.marker([lat, lng]).addTo(miniMap);
-
-                // 缩放时保持标记在中心
-                miniMap.on('zoomend', function() {
-                    miniMap.setView([lat, lng]);
-                });
+                if (hasLocation) {
+                    // 有坐标：添加标记，缩放时保持在中心（仅非编辑模式）
+                    miniMapMarker = L.marker([lat, lng]).addTo(miniMap);
+                    miniMap.on('zoomend', function() {
+                        if (!isEditingLocation) {
+                            miniMap.setView([lat, lng]);
+                        }
+                    });
+                }
 
                 // 调整地图大小
                 setTimeout(() => {
@@ -976,6 +1417,690 @@
                 }, 100);
             }, 50);
         }
+
+        let _editMapLandmarkLayer = null;
+        let _editMapLandmarkCircles = []; // [{circle, centerLatLng, radius, color}]
+
+        // 判断地图当前可视范围四角是否都在圆形内部
+        function _isMiniMapBoundsInsideCircle(bounds, centerLatLng, radiusMeters) {
+            return [
+                bounds.getNorthWest(),
+                bounds.getNorthEast(),
+                bounds.getSouthEast(),
+                bounds.getSouthWest()
+            ].every(corner => centerLatLng.distanceTo(corner) < radiusMeters);
+        }
+
+        // 根据缩放/平移更新地标圆圈透明度
+        function _updateMiniMapLandmarkOpacity() {
+            if (!miniMap || _editMapLandmarkCircles.length === 0) return;
+            const bounds = miniMap.getBounds();
+            for (const { circle, centerLatLng, radius, color } of _editMapLandmarkCircles) {
+                if (_isMiniMapBoundsInsideCircle(bounds, centerLatLng, radius)) {
+                    circle.setStyle({ opacity: 0, fillOpacity: 0 });
+                } else {
+                    circle.setStyle({ opacity: 0.6, fillOpacity: 0.15, color, fillColor: color });
+                }
+            }
+        }
+
+        // 在编辑地图上加载地标 tag
+        async function loadLandmarksOnEditMap() {
+            if (!miniMap) return;
+            try {
+                const tags = await ipcRenderer.invoke('get-location-tags');
+                if (!tags || tags.length === 0) return;
+
+                if (_editMapLandmarkLayer) {
+                    miniMap.removeLayer(_editMapLandmarkLayer);
+                }
+                _editMapLandmarkLayer = L.layerGroup().addTo(miniMap);
+                _editMapLandmarkCircles = [];
+
+                const flagIcon = L.divIcon({
+                    html: '<span style="font-size:14px;line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.5))">&#x1F6A9;</span>',
+                    className: '',
+                    iconSize: [14, 14],
+                    iconAnchor: [3, 14]
+                });
+
+                for (const tag of tags) {
+                    const color = tag.color || '#e53935';
+                    const radius = tag.radius || 10;
+                    const centerLatLng = L.latLng(tag.lat, tag.lng);
+                    const circle = L.circle(centerLatLng, {
+                        radius,
+                        color,
+                        weight: 1.5,
+                        fillColor: color,
+                        fillOpacity: 0.15,
+                        opacity: 0.6
+                    });
+                    circle.bindTooltip(tag.name, { direction: 'top', offset: [0, -4] });
+                    circle.addTo(_editMapLandmarkLayer);
+                    L.marker(centerLatLng, { icon: flagIcon, interactive: false })
+                        .addTo(_editMapLandmarkLayer);
+                    _editMapLandmarkCircles.push({ circle, centerLatLng, radius, color });
+                }
+
+                miniMap.on('zoomend moveend', _updateMiniMapLandmarkOpacity);
+                _updateMiniMapLandmarkOpacity();
+            } catch (e) {
+                console.error('加载地标到编辑地图失败:', e);
+            }
+        }
+
+        // 从编辑地图移除地标 tag
+        function removeLandmarksFromEditMap() {
+            if (miniMap) {
+                miniMap.off('zoomend moveend', _updateMiniMapLandmarkOpacity);
+            }
+            if (_editMapLandmarkLayer && miniMap) {
+                miniMap.removeLayer(_editMapLandmarkLayer);
+                _editMapLandmarkLayer = null;
+            }
+            _editMapLandmarkCircles = [];
+        }
+
+        // ── 地图/地标 内部 Tab ────────────────────────────────────
+        let selectedLandmarkTag = null;
+
+        function switchLocTab(tabName) {
+            document.querySelectorAll('.loc-tab-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.loctab === tabName);
+            });
+            if (tabName === 'map') {
+                document.getElementById('mapTabPanel').style.display = 'block';
+                document.getElementById('landmarkTabPanel').style.display = 'none';
+                if (miniMap) setTimeout(() => miniMap.invalidateSize(), 50);
+            } else {
+                document.getElementById('mapTabPanel').style.display = 'none';
+                document.getElementById('landmarkTabPanel').style.display = 'block';
+                loadLandmarkTree();
+            }
+        }
+
+        document.getElementById('locTabNav').addEventListener('click', (e) => {
+            const btn = e.target.closest('.loc-tab-btn');
+            if (btn && isEditingLocation) switchLocTab(btn.dataset.loctab);
+        });
+
+        async function loadLandmarkTree() {
+            const container = document.getElementById('landmarkTreeContainer');
+            // 避免重复加载
+            if (container.dataset.loaded === 'true') return;
+            container.innerHTML = '<div style="color:#555;font-size:11px;padding:8px 10px;">加载中...</div>';
+            try {
+                const tree = await ipcRenderer.invoke('get-location-tag-tree');
+                container.innerHTML = '';
+                if (!tree || tree.length === 0) {
+                    container.innerHTML = '<div style="color:#555;font-size:11px;padding:8px 10px;">暂无地标</div>';
+                    return;
+                }
+                renderLandmarkTree(tree, container);
+                container.dataset.loaded = 'true';
+            } catch (e) {
+                console.error('加载地标树失败:', e);
+                container.innerHTML = '<div style="color:#555;font-size:11px;padding:8px 10px;">加载失败</div>';
+            }
+        }
+
+        function renderLandmarkTree(nodes, container, depth = 0) {
+            for (const node of nodes) {
+                const hasLoc = node.lat !== null && node.lat !== undefined;
+                const hasChildren = node.children && node.children.length > 0;
+
+                const nodeEl = document.createElement('div');
+                nodeEl.className = 'landmark-node' + (hasLoc ? '' : ' no-location');
+                nodeEl.style.paddingLeft = `${8 + depth * 14}px`;
+
+                const toggle = document.createElement('span');
+                toggle.className = 'node-toggle';
+                toggle.textContent = hasChildren ? '▶' : '';
+                nodeEl.appendChild(toggle);
+
+                const dot = document.createElement('span');
+                dot.className = 'node-dot';
+                dot.style.backgroundColor = node.color || '#3498db';
+                nodeEl.appendChild(dot);
+
+                const name = document.createElement('span');
+                name.className = 'node-name';
+                name.textContent = node.name;
+                nodeEl.appendChild(name);
+
+                if (hasLoc) {
+                    const locIcon = document.createElement('span');
+                    locIcon.className = 'node-loc-icon';
+                    locIcon.textContent = '📍';
+                    nodeEl.appendChild(locIcon);
+                }
+
+                container.appendChild(nodeEl);
+
+                let childrenEl = null;
+                if (hasChildren) {
+                    childrenEl = document.createElement('div');
+                    childrenEl.style.display = 'none';
+                    renderLandmarkTree(node.children, childrenEl, depth + 1);
+                    container.appendChild(childrenEl);
+                }
+
+                nodeEl.addEventListener('click', () => {
+                    // 展开/折叠子节点
+                    if (childrenEl) {
+                        const expanded = childrenEl.style.display !== 'none';
+                        childrenEl.style.display = expanded ? 'none' : 'block';
+                        toggle.textContent = expanded ? '▶' : '▼';
+                    }
+                    // 选中有定位的节点
+                    if (hasLoc) {
+                        document.querySelectorAll('#landmarkTreeContainer .landmark-node.selected')
+                            .forEach(n => n.classList.remove('selected'));
+                        nodeEl.classList.add('selected');
+                        selectedLandmarkTag = node;
+                        document.getElementById('landmarkConfirmBtn').disabled = false;
+                    }
+                });
+            }
+        }
+
+        document.getElementById('landmarkConfirmBtn').addEventListener('click', async () => {
+            if (!selectedLandmarkTag || !selectedLandmarkTag.lat || !selectedLandmarkTag.lng) return;
+            if (!currentPhoto) return;
+            const lat = selectedLandmarkTag.lat;
+            const lng = selectedLandmarkTag.lng;
+
+            exitLocationEditMode();
+
+            await ipcRenderer.invoke('update-photo-location', { photoId: currentPhoto.id, lat, lng });
+
+            currentPhoto.lat = lat;
+            currentPhoto.lng = lng;
+            document.getElementById('info-coordinates').textContent = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+            document.getElementById('info-location').textContent = i18n.t('photo.loading');
+            try {
+                const cityName = await ipcRenderer.invoke('get-city-name', { lat, lng });
+                document.getElementById('info-location').textContent = cityName;
+            } catch (_) {
+                document.getElementById('info-location').textContent = i18n.t('photo.failedLoad');
+            }
+
+            if (miniMap) {
+                if (miniMapMarker) miniMap.removeLayer(miniMapMarker);
+                miniMapMarker = L.marker([lat, lng]).addTo(miniMap);
+                miniMap.setView([lat, lng]);
+                miniMap.off('zoomend');
+                miniMap.on('zoomend', function() {
+                    if (!isEditingLocation) miniMap.setView([lat, lng]);
+                });
+            }
+        });
+
+        // 地址搜索
+        async function searchAddress(query) {
+            // 先判断是否为直接输入的坐标（如 39.123456, 116.123456）
+            const coordMatch = query.match(/^(-?\d+\.?\d*)\s*[,，]\s*(-?\d+\.?\d*)$/);
+            if (coordMatch) {
+                const lat = parseFloat(coordMatch[1]);
+                const lng = parseFloat(coordMatch[2]);
+                if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+                    document.getElementById('locationSearchResults').style.display = 'none';
+                    document.getElementById('locationSearchInput').value = '';
+                    miniMap.setView([lat, lng], 14);
+                    return;
+                }
+            }
+
+            const resultsEl = document.getElementById('locationSearchResults');
+            resultsEl.style.display = 'block';
+            resultsEl.innerHTML = `<div class="search-status-item">${i18n.t('photo.searching')}</div>`;
+            try {
+                const res = await fetch(
+                    `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=5`,
+                    { headers: { 'User-Agent': 'GeoPhoto/1.0' } }
+                );
+                const data = await res.json();
+                if (!data || data.length === 0) {
+                    resultsEl.innerHTML = `<div class="search-status-item">${i18n.t('photo.noResults')}</div>`;
+                    return;
+                }
+                resultsEl.innerHTML = '';
+                for (const item of data) {
+                    const div = document.createElement('div');
+                    div.className = 'search-result-item';
+                    div.textContent = item.display_name;
+                    div.addEventListener('click', () => {
+                        miniMap.setView([parseFloat(item.lat), parseFloat(item.lon)], 14);
+                        resultsEl.style.display = 'none';
+                        document.getElementById('locationSearchInput').value = '';
+                    });
+                    resultsEl.appendChild(div);
+                }
+            } catch (_) {
+                resultsEl.innerHTML = `<div class="search-status-item">${i18n.t('photo.searchFailed')}</div>`;
+            }
+        }
+
+        // 进入位置编辑模式
+        function enterLocationEditMode() {
+            if (!miniMap) return;
+            isEditingLocation = true;
+            document.querySelector('.sidebar').classList.add('editing');
+            const btn = document.getElementById('editLocationBtn');
+            btn.textContent = i18n.t('photo.cancelEdit');
+            btn.classList.add('cancel');
+
+            // 显示内部 Tab 导航，并切换到地图 Tab
+            document.getElementById('locTabNav').style.display = 'flex';
+            switchLocTab('map');
+
+            document.getElementById('locationSearch').style.display = 'block';
+            document.getElementById('editLocationHint').style.display = 'block';
+
+            // 启用地图交互（scrollWheelZoom 始终开启，无需重复enable）
+            miniMap.dragging.enable();
+            miniMap.doubleClickZoom.disable();
+
+            // 移除定位标记
+            if (miniMapMarker) {
+                miniMap.removeLayer(miniMapMarker);
+                miniMapMarker = null;
+            }
+
+            // 等待CSS过渡完成后刷新地图尺寸，然后加载地标和相邻照片
+            setTimeout(() => {
+                miniMap.invalidateSize();
+                loadLandmarksOnEditMap();
+            }, 320);
+
+            // 加载相邻照片条
+            document.getElementById('nearbyPhotosStrip').style.display = 'block';
+            loadNearbyPhotos();
+
+            // 双击选取新位置
+            miniMap.on('dblclick', onLocationPick);
+        }
+
+        // 退出位置编辑模式
+        function exitLocationEditMode() {
+            isEditingLocation = false;
+            document.querySelector('.sidebar').classList.remove('editing');
+            const btn = document.getElementById('editLocationBtn');
+            btn.textContent = i18n.t('photo.editLocation');
+            btn.classList.remove('cancel');
+
+            // 隐藏内部 Tab 导航，恢复到地图面板
+            document.getElementById('locTabNav').style.display = 'none';
+            document.getElementById('mapTabPanel').style.display = 'block';
+            document.getElementById('landmarkTabPanel').style.display = 'none';
+
+            document.getElementById('locationSearch').style.display = 'none';
+            document.getElementById('locationSearchResults').style.display = 'none';
+            document.getElementById('locationSearchInput').value = '';
+            document.getElementById('editLocationHint').style.display = 'none';
+
+            // 移除地标图层
+            removeLandmarksFromEditMap();
+
+            // 隐藏相邻照片条
+            document.getElementById('nearbyPhotosStrip').style.display = 'none';
+
+            // 重置地标选择状态
+            selectedLandmarkTag = null;
+            document.getElementById('landmarkConfirmBtn').disabled = true;
+            // 清除地标树缓存，下次进入编辑时重新加载
+            document.getElementById('landmarkTreeContainer').dataset.loaded = '';
+
+            // 禁用地图交互（scrollWheelZoom 保持开启，仅禁用拖拽）
+            if (miniMap) {
+                miniMap.dragging.disable();
+                miniMap.off('dblclick', onLocationPick);
+                // 恢复当前照片的定位标记
+                if (currentPhoto && currentPhoto.lat && currentPhoto.lng && !miniMapMarker) {
+                    miniMapMarker = L.marker([currentPhoto.lat, currentPhoto.lng]).addTo(miniMap);
+                    miniMap.setView([currentPhoto.lat, currentPhoto.lng]);
+                }
+                setTimeout(() => miniMap.invalidateSize(), 320);
+            }
+        }
+
+        // 加载相邻照片（时间上前三后三）
+        async function loadNearbyPhotos() {
+            if (!currentPhoto || !currentPhoto.id) return;
+            const row = document.getElementById('nearbyPhotosRow');
+            row.innerHTML = '<span style="color:#555;font-size:11px;line-height:56px;padding:0 4px;">...</span>';
+
+            try {
+                const { before, after } = await ipcRenderer.invoke('get-photos-near-time', {
+                    photoId: currentPhoto.id,
+                    count: 3
+                });
+
+                row.innerHTML = '';
+
+                if (before.length === 0 && after.length === 0) {
+                    row.innerHTML = '<span style="color:#555;font-size:10px;padding:0 4px;">暂无相邻照片</span>';
+                    return;
+                }
+
+                before.forEach(p => row.appendChild(createNearbyPhotoItem(p)));
+
+                if (before.length > 0 && after.length > 0) {
+                    const sep = document.createElement('div');
+                    sep.className = 'nearby-strip-sep';
+                    row.appendChild(sep);
+                }
+
+                after.forEach(p => row.appendChild(createNearbyPhotoItem(p)));
+            } catch (e) {
+                console.error('加载相邻照片失败:', e);
+                row.innerHTML = '';
+            }
+        }
+
+        // 创建相邻照片缩略图元素
+        function createNearbyPhotoItem(photo) {
+            const hasLoc = !!(photo.lat && photo.lng);
+            const item = document.createElement('div');
+            item.className = 'nearby-photo-item' + (hasLoc ? '' : ' no-location');
+            item.title = photo.filename + (hasLoc ? `\n${photo.lat.toFixed(4)}, ${photo.lng.toFixed(4)}` : '\n无定位');
+
+            if (photo.type === 'video') {
+                const icon = document.createElement('div');
+                icon.className = 'nearby-photo-video';
+                icon.textContent = '🎬';
+                item.appendChild(icon);
+            } else {
+                const img = document.createElement('img');
+                img.className = 'nearby-photo-thumb';
+                if (photo.fullPath) {
+                    img.src = pathToFileURL(photo.fullPath).href;
+                }
+                img.onerror = () => {
+                    img.style.display = 'none';
+                    const fb = document.createElement('div');
+                    fb.className = 'nearby-photo-video';
+                    fb.textContent = '🖼';
+                    item.insertBefore(fb, img);
+                };
+                item.appendChild(img);
+            }
+
+            const loc = document.createElement('div');
+            loc.className = 'nearby-photo-loc';
+            loc.textContent = hasLoc ? '📍' : '—';
+            item.appendChild(loc);
+
+            if (hasLoc) {
+                item.addEventListener('click', () => panMapToNearbyPhoto(photo));
+            }
+
+            return item;
+        }
+
+        // 点击相邻照片，将地图平移并缩放到该照片位置（不保存，让用户继续双击选点）
+        function panMapToNearbyPhoto(photo) {
+            if (photo.lat == null || photo.lng == null || !miniMap) return;
+            const zoom = Math.max(miniMap.getZoom(), 16);
+            miniMap.setView([photo.lat, photo.lng], zoom);
+        }
+
+        // 点击相邻照片，复制其定位到当前照片（已弃用，保留备用）
+        async function applyNearbyPhotoLocation(photo) {
+            if (!photo.lat || !photo.lng || !currentPhoto) return;
+            const lat = photo.lat;
+            const lng = photo.lng;
+
+            exitLocationEditMode();
+
+            await ipcRenderer.invoke('update-photo-location', { photoId: currentPhoto.id, lat, lng });
+
+            currentPhoto.lat = lat;
+            currentPhoto.lng = lng;
+
+            document.getElementById('info-coordinates').textContent = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+            document.getElementById('info-location').textContent = i18n.t('photo.loading');
+            try {
+                const cityName = await ipcRenderer.invoke('get-city-name', { lat, lng });
+                document.getElementById('info-location').textContent = cityName;
+            } catch (_) {
+                document.getElementById('info-location').textContent = i18n.t('photo.failedLoad');
+            }
+
+            if (miniMap) {
+                if (miniMapMarker) miniMap.removeLayer(miniMapMarker);
+                miniMapMarker = L.marker([lat, lng]).addTo(miniMap);
+                miniMap.setView([lat, lng]);
+                miniMap.off('zoomend');
+                miniMap.on('zoomend', function() {
+                    if (!isEditingLocation) miniMap.setView([lat, lng]);
+                });
+            }
+        }
+
+        // 双击地图选取新位置
+        async function onLocationPick(e) {
+            const { lat, lng } = e.latlng;
+            exitLocationEditMode();
+
+            // 保存到数据库
+            await ipcRenderer.invoke('update-photo-location', {
+                photoId: currentPhoto.id,
+                lat, lng
+            });
+
+            // 更新当前照片数据
+            currentPhoto.lat = lat;
+            currentPhoto.lng = lng;
+
+            // 刷新坐标显示
+            document.getElementById('info-coordinates').textContent = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+            document.getElementById('info-location').textContent = i18n.t('photo.loading');
+            try {
+                const cityName = await ipcRenderer.invoke('get-city-name', { lat, lng });
+                document.getElementById('info-location').textContent = cityName;
+            } catch (_) {
+                document.getElementById('info-location').textContent = i18n.t('photo.failedLoad');
+            }
+
+            // 更新小地图标记位置，并重新绑定 zoomend（使用新坐标）
+            if (miniMap) {
+                if (miniMapMarker) miniMap.removeLayer(miniMapMarker);
+                miniMapMarker = L.marker([lat, lng]).addTo(miniMap);
+                miniMap.setView([lat, lng]);
+                miniMap.off('zoomend');
+                miniMap.on('zoomend', function() {
+                    if (!isEditingLocation) {
+                        miniMap.setView([lat, lng]);
+                    }
+                });
+            }
+        }
+
+        // 编辑位置按钮
+        document.getElementById('editLocationBtn').addEventListener('click', () => {
+            if (isEditingLocation) {
+                exitLocationEditMode();
+            } else {
+                enterLocationEditMode();
+            }
+        });
+
+        // 点击坐标文本 → 有坐标时弹复制菜单，无坐标时尝试从剪贴板粘贴
+        (function () {
+            const { clipboard } = require('electron');
+            const coordEl = document.getElementById('info-coordinates');
+            let copyMenu = null;
+
+            function removeCopyMenu() {
+                if (copyMenu) { copyMenu.remove(); copyMenu = null; }
+            }
+
+            /**
+             * 解析剪贴板文字中的地理坐标，返回 { lat, lng } 或 null。
+             * 支持常见格式：
+             *   "39.9042, 116.4074"         (十进制，逗号/空格分隔)
+             *   "39.9042°N, 116.4074°E"     (十进制 + 方向字母)
+             *   "N39.9042, E116.4074"       (方向字母前置)
+             */
+            function parseGeoCoord(text) {
+                if (!text) return null;
+                text = text.trim();
+                function valid(lat, lng) {
+                    return lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+                }
+                // 格式1: "-90.123, -180.456" 或 "39.9 116.4"
+                let m = text.match(/^(-?\d{1,3}(?:\.\d+)?)\s*°?\s*[,\s]\s*(-?\d{1,3}(?:\.\d+)?)\s*°?$/);
+                if (m) {
+                    const lat = parseFloat(m[1]), lng = parseFloat(m[2]);
+                    if (valid(lat, lng)) return { lat, lng };
+                }
+                // 格式2: "39.9042°N, 116.4074°E"
+                m = text.match(/(\d{1,3}(?:\.\d+)?)\s*°?\s*([NS])\s*[,\s]\s*(\d{1,3}(?:\.\d+)?)\s*°?\s*([EW])/i);
+                if (m) {
+                    let lat = parseFloat(m[1]), lng = parseFloat(m[3]);
+                    if (/s/i.test(m[2])) lat = -lat;
+                    if (/w/i.test(m[4])) lng = -lng;
+                    if (valid(lat, lng)) return { lat, lng };
+                }
+                // 格式3: "N39.9042, E116.4074"
+                m = text.match(/([NS])\s*(\d{1,3}(?:\.\d+)?)\s*°?\s*[,\s]\s*([EW])\s*(\d{1,3}(?:\.\d+)?)\s*°?/i);
+                if (m) {
+                    let lat = parseFloat(m[2]), lng = parseFloat(m[4]);
+                    if (/s/i.test(m[1])) lat = -lat;
+                    if (/w/i.test(m[3])) lng = -lng;
+                    if (valid(lat, lng)) return { lat, lng };
+                }
+                return null;
+            }
+
+            coordEl.addEventListener('click', async (e) => {
+                const text = coordEl.textContent.trim();
+
+                // ── 有坐标：弹出复制菜单 ─────────────────────────
+                if (text && text !== '-') {
+                    removeCopyMenu();
+                    copyMenu = document.createElement('div');
+                    copyMenu.id = 'coord-copy-menu';
+                    const item = document.createElement('div');
+                    item.className = 'coord-copy-item';
+                    item.textContent = i18n.t('photo.copyCoords');
+                    item.addEventListener('click', (ev) => {
+                        ev.stopPropagation();
+                        clipboard.writeText(text);
+                        removeCopyMenu();
+                    });
+                    copyMenu.appendChild(item);
+                    document.body.appendChild(copyMenu);
+                    const rect = coordEl.getBoundingClientRect();
+                    copyMenu.style.left = `${rect.left}px`;
+                    copyMenu.style.top  = `${rect.bottom + 4}px`;
+                    e.stopPropagation();
+                    return;
+                }
+
+                // ── 无坐标：尝试从剪贴板粘贴 ─────────────────────
+                if (!currentPhoto) return;
+                const coord = parseGeoCoord(clipboard.readText());
+                if (!coord) return;
+
+                const { lat, lng } = coord;
+
+                // 保存到数据库和照片文件
+                await ipcRenderer.invoke('update-photo-location', { photoId: currentPhoto.id, lat, lng });
+
+                // 更新当前照片对象
+                currentPhoto.lat = lat;
+                currentPhoto.lng = lng;
+
+                // 刷新坐标和地址显示
+                coordEl.textContent = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+                document.getElementById('info-location').textContent = i18n.t('photo.loading');
+                try {
+                    const cityName = await ipcRenderer.invoke('get-city-name', { lat, lng });
+                    document.getElementById('info-location').textContent = cityName;
+                } catch (_) {
+                    document.getElementById('info-location').textContent = i18n.t('photo.failedLoad');
+                }
+
+                // 更新小地图（从世界视图聚焦到该坐标）
+                if (miniMap) {
+                    if (miniMapMarker) miniMap.removeLayer(miniMapMarker);
+                    miniMapMarker = L.marker([lat, lng]).addTo(miniMap);
+                    miniMap.setView([lat, lng], Math.max(miniMap.getZoom(), 14));
+                    miniMap.off('zoomend');
+                    miniMap.on('zoomend', function() {
+                        if (!isEditingLocation) miniMap.setView([lat, lng]);
+                    });
+                }
+            });
+
+            document.addEventListener('click', () => removeCopyMenu());
+        })();
+
+        // 点击目录文本 → 弹出复制路径菜单
+        (function () {
+            const { clipboard } = require('electron');
+            const dirEl = document.getElementById('info-directory');
+            let dirMenu = null;
+
+            function removeDirMenu() {
+                if (dirMenu) { dirMenu.remove(); dirMenu = null; }
+            }
+
+            dirEl.addEventListener('click', (e) => {
+                if (!currentPhoto || dirEl.textContent.trim() === '-') return;
+                removeDirMenu();
+
+                const fullPath = currentPhoto.fullPath ||
+                    (currentPhoto.directory.includes(currentPhoto.filename)
+                        ? currentPhoto.directory
+                        : `${currentPhoto.directory}\\${currentPhoto.filename}`);
+
+                dirMenu = document.createElement('div');
+                dirMenu.id = 'coord-copy-menu';
+                const item = document.createElement('div');
+                item.className = 'coord-copy-item';
+                item.textContent = i18n.t('photo.copyPath');
+                item.addEventListener('click', (ev) => {
+                    ev.stopPropagation();
+                    clipboard.writeText(fullPath);
+                    removeDirMenu();
+                });
+                dirMenu.appendChild(item);
+                document.body.appendChild(dirMenu);
+                const rect = dirEl.getBoundingClientRect();
+                dirMenu.style.left = `${rect.left}px`;
+                dirMenu.style.top  = `${rect.bottom + 4}px`;
+                e.stopPropagation();
+            });
+
+            document.addEventListener('click', () => removeDirMenu());
+        })();
+
+        // 地址搜索按钮
+        document.getElementById('locationSearchBtn').addEventListener('click', () => {
+            const q = document.getElementById('locationSearchInput').value.trim();
+            if (q) searchAddress(q);
+        });
+
+        // 回车触发搜索
+        document.getElementById('locationSearchInput').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                const q = e.target.value.trim();
+                if (q) searchAddress(q);
+            }
+            // ESC 关闭结果
+            if (e.key === 'Escape') {
+                document.getElementById('locationSearchResults').style.display = 'none';
+            }
+        });
+
+        // 点击地图区域关闭搜索结果
+        document.getElementById('miniMap').addEventListener('click', () => {
+            document.getElementById('locationSearchResults').style.display = 'none';
+        });
 
         // Tab切换
         document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -1075,6 +2200,16 @@
             }
         });
 
+        // 删除按钮
+        document.getElementById('deleteBtn').addEventListener('click', async () => {
+            if (!currentPhoto) return;
+            await ipcRenderer.invoke('delete-photo', {
+                photoId:   currentPhoto.id,
+                directory: currentPhoto.directory,
+                filename:  currentPhoto.filename
+            });
+        });
+
         // 视频全屏处理
         document.addEventListener('fullscreenchange', () => {
             if (document.fullscreenElement === videoPlayer) {
@@ -1137,6 +2272,12 @@
         document.querySelector('.add-tag-btn').addEventListener('click', async () => {
             if (!currentPhoto || !currentPhoto.id) return;
             await ipcRenderer.invoke('open-tag-select-window', { photoId: currentPhoto.id });
+        });
+
+        ipcRenderer.on('tag-removed', (_event, { tagId }) => {
+            const container = document.getElementById('tags-container');
+            const pill = container.querySelector(`[data-tag-id="${tagId}"]`);
+            if (pill) pill.remove();
         });
 
         ipcRenderer.on('tag-added', async (_event, tagInfo) => {

@@ -115,6 +115,51 @@
         }
         .node-row.selected .node-name { color: #e8e8e8; }
 
+        .node-check {
+            width: 15px; height: 15px;
+            flex-shrink: 0;
+            border: 1px solid #444;
+            border-radius: 3px;
+            margin-left: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            color: transparent;
+            transition: all 0.1s;
+        }
+        .node-row.selected .node-check {
+            border-color: #4a9eff;
+            background: #4a9eff;
+            color: #fff;
+        }
+
+        /* 单选模式：圆形 radio 点 */
+        .node-radio {
+            width: 15px; height: 15px;
+            flex-shrink: 0;
+            border: 1px solid #444;
+            border-radius: 50%;
+            margin-left: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.1s;
+        }
+        .node-radio::after {
+            content: '';
+            width: 7px; height: 7px;
+            border-radius: 50%;
+            background: transparent;
+            transition: background 0.1s;
+        }
+        .node-row.selected .node-radio {
+            border-color: #4a9eff;
+        }
+        .node-row.selected .node-radio::after {
+            background: #4a9eff;
+        }
+
         /* Confirm bar */
         .confirm-bar {
             border-top: 1px solid #2e2e2e;
@@ -185,9 +230,9 @@ function t(key) { return (DICT[currentLang] || DICT.en)[key] || key; }
 
 let currentCat = 'face';
 let lockedCategory = null;
+let singleSelect = false;
 let tagsTree = [];
-let selId = null;
-let selTag = null;
+let selMap = new Map(); // id → node
 let expandState = {};
 
 function applyI18n() {
@@ -201,9 +246,10 @@ function applyI18n() {
 
 // Init
 api.send('tag-select-window-ready');
-api.on('tag-select-init', async ({ lang, lockedCategory: lc }) => {
+api.on('tag-select-init', async ({ lang, lockedCategory: lc, singleSelect: ss }) => {
     currentLang = lang || 'en';
     lockedCategory = lc || null;
+    singleSelect = !!ss;
 
     // 如果锁定到某个分类，切换到该 tab 并禁用其他
     if (lockedCategory) {
@@ -230,8 +276,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
         document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         currentCat = btn.dataset.cat;
-        selId = null;
-        selTag = null;
+        selMap.clear();
         expandState = {};
         updateConfirmBtn();
         loadTags();
@@ -273,7 +318,7 @@ function renderNodes(nodes, container, depth) {
 
         const wrap = document.createElement('div');
         const row = document.createElement('div');
-        row.className = 'node-row' + (node.id === selId ? ' selected' : '');
+        row.className = 'node-row' + (selMap.has(node.id) ? ' selected' : '');
         row.style.paddingLeft = (10 + depth * 18) + 'px';
 
         const tog = document.createElement('span');
@@ -298,17 +343,44 @@ function renderNodes(nodes, container, depth) {
         nameEl.textContent = node.name;
         row.appendChild(nameEl);
 
+        // 选择指示器：单选模式用圆形 radio，多选模式用方形 checkbox
+        const checkEl = document.createElement('span');
+        if (singleSelect) {
+            checkEl.className = 'node-radio';
+        } else {
+            checkEl.className = 'node-check';
+            checkEl.textContent = selMap.has(node.id) ? '\u2713' : '';
+        }
+        row.appendChild(checkEl);
+
         row.addEventListener('click', () => {
-            selId = node.id;
-            selTag = node;
-            renderTree();
+            if (singleSelect) {
+                // 单选：清除其他所有选中，选中当前行
+                if (!selMap.has(node.id)) {
+                    document.querySelectorAll('.node-row.selected').forEach(r => r.classList.remove('selected'));
+                    selMap.clear();
+                    selMap.set(node.id, node);
+                    row.classList.add('selected');
+                }
+            } else {
+                // 多选：toggle 当前行
+                if (selMap.has(node.id)) {
+                    selMap.delete(node.id);
+                    row.classList.remove('selected');
+                    checkEl.textContent = '';
+                } else {
+                    selMap.set(node.id, node);
+                    row.classList.add('selected');
+                    checkEl.textContent = '\u2713';
+                }
+            }
             updateConfirmBtn();
         });
 
-        // Double-click to confirm directly
+        // 双击：选中该项并立即确认
         row.addEventListener('dblclick', () => {
-            selId = node.id;
-            selTag = node;
+            if (singleSelect) selMap.clear();
+            selMap.set(node.id, node);
             doConfirm();
         });
 
@@ -327,18 +399,27 @@ function renderNodes(nodes, container, depth) {
 
 function updateConfirmBtn() {
     const btn = document.getElementById('confirm-btn');
-    btn.disabled = !selId;
-    btn.textContent = selTag ? `${t('confirm')} (${selTag.name})` : t('confirm');
+    const count = selMap.size;
+    btn.disabled = count === 0;
+    if (count === 0) {
+        btn.textContent = t('confirm');
+    } else if (count === 1) {
+        const [tag] = selMap.values();
+        btn.textContent = `${t('confirm')} (${tag.name})`;
+    } else {
+        btn.textContent = `${t('confirm')} (${count})`;
+    }
 }
 
 function doConfirm() {
-    if (!selTag) return;
-    api.send('tag-select-confirm', {
-        tagId: selTag.id,
-        tagName: selTag.name,
-        tagColor: selTag.color || '#3498db',
-        tagCategory: selTag.category || currentCat
-    });
+    if (selMap.size === 0) return;
+    const tags = Array.from(selMap.values()).map(tag => ({
+        tagId: tag.id,
+        tagName: tag.name,
+        tagColor: tag.color || '#3498db',
+        tagCategory: tag.category || currentCat
+    }));
+    api.send('tag-select-confirm', { tags });
 }
 
 document.getElementById('confirm-btn').addEventListener('click', doConfirm);
@@ -349,7 +430,7 @@ document.getElementById('close-btn').addEventListener('click', () => {
 
 document.addEventListener('keydown', e => {
     if (e.key === 'Escape') api.send('close-tag-select-window');
-    if (e.key === 'Enter' && selTag) doConfirm();
+    if (e.key === 'Enter' && selMap.size > 0) doConfirm();
 });
 </script>
 </body>

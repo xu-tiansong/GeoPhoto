@@ -851,6 +851,14 @@
             }
         });
 
+        // 照片被删除时，从网格和数据数组中移除
+        ipcRenderer.on('photo-deleted', (_event, { photoId }) => {
+            currentPhotos       = currentPhotos.filter(p => p.id !== photoId);
+            sortedCurrentPhotos = sortedCurrentPhotos.filter(p => p.id !== photoId);
+            const item = document.querySelector(`.photo-item[data-photo-id="${photoId}"]`);
+            if (item) item.remove();
+        });
+
         // 渲染照片网格（分页显示，每页≈50张完整行）
         // photosArray: 可选，指定要显示的照片数组；不传则使用 currentPhotos
         function renderPhotos(photosArray) {
@@ -1149,6 +1157,16 @@
                 }, 250); // 250ms 内如果有第二次点击，则视为双击
             });
 
+            // 右键菜单
+            div.addEventListener('contextmenu', () => {
+                ipcRenderer.send('show-photo-context-menu', {
+                    photoId:   photo.id,
+                    directory: photo.directory,
+                    filename:  photo.filename,
+                    isVideo:   photo.type === 'video'
+                });
+            });
+
             // 双击事件 - 先选中再打开照片窗口
             div.addEventListener('dblclick', async (e) => {
                 // 清除单击定时器，防止执行单击操作
@@ -1275,13 +1293,21 @@
                 const task = thumbnailQueue.shift();
                 try {
                     if (task.type === 'photo') {
-                        // 1. 加载原图到临时 Image 对象
+                        // 1. 加载原图到临时 Image 对象（HEIC 需先转换为 JPEG）
                         const tempImg = new Image();
+                        let heicObjUrl = null;
+                        if (/\.heic$/i.test(task.originalPath)) {
+                            const result = await ipcRenderer.invoke('convert-heic', { filePath: task.originalPath });
+                            if (!result.success) throw new Error(result.error || 'HEIC conversion failed');
+                            const blob = new Blob([Buffer.from(result.data, 'base64')], { type: 'image/jpeg' });
+                            heicObjUrl = URL.createObjectURL(blob);
+                        }
                         await new Promise((resolve, reject) => {
                             tempImg.onload = resolve;
                             tempImg.onerror = reject;
-                            tempImg.src = ThumbnailGenerator.toFileUrl(task.originalPath);
+                            tempImg.src = heicObjUrl || ThumbnailGenerator.toFileUrl(task.originalPath);
                         });
+                        if (heicObjUrl) URL.revokeObjectURL(heicObjUrl);
                         // 2. 生成并保存缩略图
                         const thumbPath = await ThumbnailGenerator.generateAndSaveThumbnail(tempImg, task.originalPath);
                         // 3. 等缩略图 img 加载完再继续，确保每张可见后才处理下一张

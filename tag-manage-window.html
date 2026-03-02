@@ -454,20 +454,43 @@
         .face-re-recognize-btn.danger { border-color: #c62828; color: #ef9a9a; }
         .face-re-recognize-btn.danger:hover { background: rgba(198,40,40,0.25); }
 
+        .face-hint-box {
+            background: #1a2030;
+            border: 1px solid #2a3a55;
+            border-radius: 6px;
+            padding: 8px 12px;
+            margin-bottom: 10px;
+            font-size: 11px;
+            color: #8ca0c0;
+            line-height: 1.6;
+        }
+        .face-hint-box strong { color: #a8bcd8; }
+        .face-hint-box ul { margin: 3px 0 0 0; padding-left: 14px; }
+        .face-hint-box li { margin-bottom: 1px; }
+        .face-count-hint {
+            font-size: 11px;
+            color: #666;
+            margin-bottom: 8px;
+            text-align: right;
+        }
+        .face-count-hint.enough { color: #4caf50; }
+        .face-count-hint.warn   { color: #ff9800; }
+
         .face-dropzones {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 14px;
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 6px;
+            margin-bottom: 8px;
         }
         .face-dropzone {
-            width: 100px; height: 100px;
+            aspect-ratio: 1;
             border: 2px dashed #444;
             border-radius: 6px;
             display: flex;
             align-items: center;
             justify-content: center;
             color: #555;
-            font-size: 28px;
+            font-size: 20px;
             cursor: pointer;
             transition: all 0.15s;
             position: relative;
@@ -519,6 +542,29 @@
             font-size: 13px;
             font-style: italic;
         }
+
+        .face-global-scan-btn {
+            background: #1b5e20;
+            border: 1px solid #388e3c;
+            color: #a5d6a7;
+            padding: 5px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.15s;
+        }
+        .face-global-scan-btn:hover { background: #2e7d32; color: #fff; border-color: #4caf50; }
+
+        .face-mode-select {
+            background: #252525;
+            border: 1px solid #444;
+            color: #ccc;
+            padding: 4px 6px;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+        .face-mode-select:focus { outline: none; border-color: #666; }
 
         /* Face picker overlay — select a face from multi-face photo */
         .face-picker-overlay {
@@ -703,6 +749,36 @@
             transition: all 0.15s;
         }
         .landmark-clear-btn:hover { background: #444; color: #fff; }
+        .landmark-auto-btn {
+            background: #1a3a1a;
+            border: 1px solid #2d5a2d;
+            color: #6dbf6d;
+            padding: 5px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.15s;
+        }
+        .landmark-auto-btn:hover:not(:disabled) { background: #224a22; color: #8dd48d; border-color: #3a7a3a; }
+        .landmark-auto-btn:disabled { opacity: 0.45; cursor: default; }
+        .landmark-auto-btn.running {
+            position: relative;
+            overflow: hidden;
+            color: #8dd48d;
+            border-color: #3a7a3a;
+            cursor: default;
+            min-width: 90px;
+            opacity: 1;
+        }
+        .landmark-auto-btn.running::before {
+            content: '';
+            position: absolute;
+            left: 0; top: 0;
+            height: 100%;
+            width: var(--progress, 0%);
+            background: rgba(100, 200, 100, 0.2);
+            transition: width 0.15s ease;
+        }
 
         /* Location section */
         .detail-bottom:has(.location-section) { overflow: hidden; }
@@ -778,6 +854,16 @@
         }
         .location-save-btn:hover { background: #3a8eef; }
         .location-save-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .location-locate-btn {
+            background: transparent;
+            border: 1px solid #4a9eff; color: #4a9eff;
+            padding: 4px 10px;
+            border-radius: 4px; cursor: pointer;
+            font-size: 11px;
+            white-space: nowrap;
+        }
+        .location-locate-btn:hover { background: rgba(74,158,255,0.12); }
+        .location-locate-btn:disabled { opacity: 0.4; cursor: not-allowed; }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1/dist/face-api.js"></script>
 </head>
@@ -851,6 +937,18 @@
     </div>
 </div>
 
+<!-- Few Photos Warning Modal -->
+<div class="modal-overlay" id="few-photos-modal" style="display:none">
+    <div class="modal">
+        <div class="modal-header" id="few-photos-modal-title"></div>
+        <div class="modal-body"><p id="few-photos-modal-msg" style="padding:4px 0;color:#c0c0c0;font-size:13px;line-height:1.6;"></p></div>
+        <div class="modal-footer">
+            <button class="modal-btn" id="few-photos-back"></button>
+            <button class="modal-btn" id="few-photos-continue"></button>
+        </div>
+    </div>
+</div>
+
 <!-- Delete Confirm Modal -->
 <div class="modal-overlay" id="del-modal" style="display:none">
     <div class="modal">
@@ -885,7 +983,7 @@ const DICT = {
         'tmw.tab.locations': 'Locations', 'tmw.tab.common': 'Common',
         'tmw.btn.add': '+ Add', 'tmw.btn.addChild': '+ Child',
         'tmw.btn.edit': 'Edit', 'tmw.btn.move': 'Move', 'tmw.btn.delete': 'Delete',
-        'tmw.btn.save': 'Save',
+        'tmw.btn.save': 'Save', 'tmw.btn.locateOnMap': 'Locate on Map',
         'tmw.noSelection': 'Select a tag to view details',
         'tmw.tagInfo': 'Tag Info',
         'tmw.label.name': 'Name', 'tmw.label.remark': 'Remark', 'tmw.label.color': 'Color',
@@ -924,6 +1022,27 @@ const DICT = {
         'tmw.face.clearConfirm': 'Clear all face recognition data for \u201c{name}\u201d? This cannot be undone.',
         'tmw.face.pickFace': 'Multiple faces detected in image {n}. Click the face you want to recognize:',
         'tmw.face.pickCancel': 'Cancel',
+        'tmw.face.globalScan': 'Global Scan',
+        'tmw.face.globalScanBusy': 'Only one face scan can run at a time',
+        'tmw.face.scanMode.loose': 'Loose',
+        'tmw.face.scanMode.balanced': 'Balanced',
+        'tmw.face.scanMode.strict': 'Strict',
+        'tmw.face.taggedPhotoCount': 'Tagged photos: {count}',
+        'tmw.face.workflowHint': 'Recommended workflow: First find photos of this person in your library and tag them with this tag (10\u201320 photos recommended, covering various angles). The system will automatically fill the slots below with those tagged photos for training. You can remove any slot and drag in a better photo.',
+        'tmw.face.dropHint': 'Up to 20 photos. At least 5 required, 10+ recommended.',
+        'tmw.face.photoTipsTitle': 'Best photos to provide:',
+        'tmw.face.tip1': 'Front-facing, three-quarter, and profile angles',
+        'tmw.face.tip2': 'Various lighting conditions (indoor, outdoor, bright, overcast)',
+        'tmw.face.tip3': 'Different expressions (neutral, smiling, laughing)',
+        'tmw.face.tip4': 'Different ages or hairstyles, if available',
+        'tmw.face.tip5': 'Avoid heavy occlusions (sunglasses, hats, masks)',
+        'tmw.face.error.needPhotos': 'Please provide at least 5 photos',
+        'tmw.face.countHint': '{count} / 20 photos added',
+        'tmw.face.warnFewTitle': 'Fewer than 10 photos',
+        'tmw.face.warnFewPhotos': 'You have only added {count} photo(s). Providing 10 or more samples significantly improves recognition accuracy. Continue with {count} photo(s)?',
+        'tmw.face.warnContinue': 'Continue',
+        'tmw.face.warnBack': 'Add More',
+        'tmw.face.prefillHint': 'Pre-filled {count} already-tagged photo(s). Remove any slot and drag in a better one.',
         'tmw.event.singleDay': 'Single Day',
         'tmw.event.multiDay': 'Multi-Day',
         'tmw.event.date': 'Date:',
@@ -942,6 +1061,9 @@ const DICT = {
         'tmw.event.noLandmark': 'No landmark set',
         'tmw.event.landmarkSaved': 'Landmark saved',
         'tmw.event.landmarkCleared': 'Landmark cleared',
+        'tmw.event.autoMatch': 'Auto Match',
+        'tmw.event.autoMatching': 'Matching...',
+        'tmw.event.autoMatchResult': 'Matched {matched} / {total} photos',
         'tmw.location.radius': 'Radius:',
         'tmw.location.search': 'Search',
         'tmw.location.searchPlaceholder': 'Address or place name',
@@ -954,7 +1076,7 @@ const DICT = {
         'tmw.tab.locations': '\u5730\u6807', 'tmw.tab.common': '\u5176\u4ed6',
         'tmw.btn.add': '+ \u6dfb\u52a0', 'tmw.btn.addChild': '+ \u5b50\u6807\u7b7e',
         'tmw.btn.edit': '\u7f16\u8f91', 'tmw.btn.move': '\u79fb\u52a8', 'tmw.btn.delete': '\u5220\u9664',
-        'tmw.btn.save': '\u4fdd\u5b58',
+        'tmw.btn.save': '\u4fdd\u5b58', 'tmw.btn.locateOnMap': '\u5b9a\u4f4d\u5230\u5730\u56fe',
         'tmw.noSelection': '\u9009\u62e9\u4e00\u4e2a\u6807\u7b7e\u67e5\u770b\u8be6\u60c5',
         'tmw.tagInfo': '\u6807\u7b7e\u4fe1\u606f',
         'tmw.label.name': '\u540d\u79f0', 'tmw.label.remark': '\u5907\u6ce8', 'tmw.label.color': '\u989c\u8272',
@@ -994,6 +1116,27 @@ const DICT = {
         'tmw.face.clearConfirm': '\u6e05\u9664\u300c{name}\u300d\u7684\u6240\u6709\u4eba\u8138\u8bc6\u522b\u6570\u636e\uff1f\u6b64\u64cd\u4f5c\u4e0d\u53ef\u64a4\u9500\u3002',
         'tmw.face.pickFace': '\u56fe\u7247 {n} \u4e2d\u68c0\u6d4b\u5230\u591a\u5f20\u4eba\u8138\uff0c\u8bf7\u70b9\u51fb\u8981\u8bc6\u522b\u7684\u4eba\u8138\uff1a',
         'tmw.face.pickCancel': '\u53d6\u6d88',
+        'tmw.face.globalScan': '\u5168\u5c40\u626b\u63cf',
+        'tmw.face.globalScanBusy': '\u6bcf\u6b21\u53ea\u80fd\u626b\u63cf\u4e00\u4e2a\u4eba\u7269',
+        'tmw.face.scanMode.loose': '\u5bbd\u6cdb',
+        'tmw.face.scanMode.balanced': '\u5e73\u8861',
+        'tmw.face.scanMode.strict': '\u4e25\u683c',
+        'tmw.face.taggedPhotoCount': '\u5df2\u6807\u6ce8\u7167\u7247\uff1a{count} \u5f20',
+        'tmw.face.workflowHint': '\u63a8\u8350\u505a\u6cd5\uff1a\u5148\u5728\u7167\u7247\u5e93\u4e2d\u627e\u5230\u8be5\u4eba\u7269\u7684\u7167\u7247\uff0c\u4e3a\u5176\u6253\u4e0a\u6b64\u6807\u7b7e\uff08\u5efa\u8bae 10\uff5e20 \u5f20\uff0c\u6db5\u76d6\u5404\u79cd\u89d2\u5ea6\uff09\uff0c\u7cfb\u7edf\u4f1a\u81ea\u52a8\u5c06\u8fd9\u4e9b\u7167\u7247\u586b\u5165\u4e0b\u65b9\u69fd\u4f4d\u7528\u4e8e\u7279\u5f81\u5b66\u4e60\uff0c\u4e5f\u53ef\u5220\u9664\u5176\u4e2d\u4efb\u610f\u4e00\u5f20\u5e76\u66ff\u6362\u4e3a\u66f4\u5408\u9002\u7684\u7167\u7247\u3002',
+        'tmw.face.dropHint': '\u6700\u591a 20 \u5f20\uff0c\u81f3\u5c11 5 \u5f20\uff0c10 \u5f20\u4ee5\u4e0a\u6548\u679c\u66f4\u4f73\u3002',
+        'tmw.face.photoTipsTitle': '\u5efa\u8bae\u63d0\u4f9b\u7684\u7167\u7247\u7c7b\u578b\uff1a',
+        'tmw.face.tip1': '\u6b63\u9762\u3001\u56db\u5206\u4e4b\u4e09\u4fa7\u9762\u3001\u7eaf\u4fa7\u9762\u7b49\u4e0d\u540c\u89d2\u5ea6',
+        'tmw.face.tip2': '\u4e0d\u540c\u5149\u7ebf\uff08\u5ba4\u5185\u3001\u5ba4\u5916\u3001\u660e\u4eae\u3001\u9634\u5929\uff09',
+        'tmw.face.tip3': '\u4e0d\u540c\u8868\u60c5\uff08\u81ea\u7136\u3001\u5fae\u7b11\u3001\u5927\u7b11\uff09',
+        'tmw.face.tip4': '\u4e0d\u540c\u5e74\u9f84\u6bb5\u6216\u53d1\u578b\uff08\u82e5\u6709\uff09',
+        'tmw.face.tip5': '\u907f\u514d\u906e\u6321\uff08\u58a8\u955c\u3001\u5e3d\u5b50\u3001\u53e3\u7f69\u7b49\uff09',
+        'tmw.face.error.needPhotos': '\u8bf7\u81f3\u5c11\u63d0\u4f9b 5 \u5f20\u7167\u7247',
+        'tmw.face.countHint': '\u5df2\u6dfb\u52a0 {count} / 20 \u5f20',
+        'tmw.face.warnFewTitle': '\u6837\u672c\u4e0d\u8db3 10 \u5f20',
+        'tmw.face.warnFewPhotos': '\u76ee\u524d\u4ec5\u6dfb\u52a0\u4e86 {count} \u5f20\u7167\u7247\u3002\u63d0\u4f9b 10 \u5f20\u4ee5\u4e0a\u7684\u6837\u672c\u80fd\u663e\u8457\u63d0\u5347\u8bc6\u522b\u51c6\u786e\u7387\uff0c\u786e\u5b9a\u4ee5 {count} \u5f20\u7ee7\u7eed\u5417\uff1f',
+        'tmw.face.warnContinue': '\u7ee7\u7eed\u8bc6\u522b',
+        'tmw.face.warnBack': '\u7ee7\u7eed\u6dfb\u52a0',
+        'tmw.face.prefillHint': '\u5df2\u81ea\u52a8\u586b\u5145 {count} \u5f20\u5df2\u6807\u6ce8\u7167\u7247\uff0c\u53ef\u5220\u9664\u4efb\u610f\u69fd\u4f4d\u5e76\u62d6\u5165\u66f4\u5408\u9002\u7684\u7167\u7247\u3002',
         'tmw.event.singleDay': '\u5355\u65e5',
         'tmw.event.multiDay': '\u591a\u65e5',
         'tmw.event.date': '\u65e5\u671f\uff1a',
@@ -1012,6 +1155,9 @@ const DICT = {
         'tmw.event.noLandmark': '\u672a\u8bbe\u7f6e\u5730\u6807',
         'tmw.event.landmarkSaved': '\u5730\u6807\u5df2\u4fdd\u5b58',
         'tmw.event.landmarkCleared': '\u5730\u6807\u5df2\u6e05\u9664',
+        'tmw.event.autoMatch': '\u81ea\u52a8\u5339\u914d',
+        'tmw.event.autoMatching': '\u5339\u914d\u4e2d\u2026',
+        'tmw.event.autoMatchResult': '\u5339\u914d {matched} / {total} \u5f20\u7167\u7247',
         'tmw.location.radius': '\u8986\u76d6\u534a\u5f84\uff1a',
         'tmw.location.search': '\u641c\u7d22',
         'tmw.location.searchPlaceholder': '\u5730\u5740\u6216\u5730\u540d',
@@ -1436,6 +1582,7 @@ function renderLocationSection(container) {
                 <input type="number" id="loc-radius" min="1" max="100000" value="${savedRadius}">
                 <span style="font-size:12px;color:#666;">m</span>
                 <button class="location-save-btn" id="loc-save" disabled>${t('tmw.btn.save')}</button>
+                <button class="location-locate-btn" id="loc-locate" ${hasLocation ? '' : 'disabled'}>${t('tmw.btn.locateOnMap')}</button>
             </div>
         </div>`;
 
@@ -1495,9 +1642,17 @@ function renderLocationSection(container) {
                 selTag.lat = latlng.lat;
                 selTag.lng = latlng.lng;
                 selTag.radius = radius;
+                document.getElementById('loc-locate').disabled = false;
             } else {
                 showStatus(res.error || t('tmw.err.saveFailed'));
             }
+        });
+
+        // Locate on map button
+        document.getElementById('loc-locate').addEventListener('click', () => {
+            if (!selTag.lat || !selTag.lng) return;
+            api.send('locate-landmark-on-map', { lat: selTag.lat, lng: selTag.lng });
+            api.send('close-tag-manage-window');
         });
 
         // Search
@@ -1744,6 +1899,7 @@ function renderEventLandmarkSection(parentContainer) {
             if (!res.success) return;
             const lm = flatFindTag(res.tags, locationTagId);
             if (lm) {
+                const hasDates = !!(selTag.start_time);
                 section.innerHTML = `
                     <div class="event-landmark-title">${t('tmw.event.landmark')}</div>
                     <div class="landmark-display">
@@ -1753,6 +1909,7 @@ function renderEventLandmarkSection(parentContainer) {
                     <div class="landmark-btn-row">
                         <button class="landmark-select-btn" id="evt-lm-change">${t('tmw.event.changeLandmark')}</button>
                         <button class="landmark-clear-btn" id="evt-lm-clear">${t('tmw.event.clearLandmark')}</button>
+                        ${hasDates ? `<button class="landmark-auto-btn" id="evt-lm-auto">${t('tmw.event.autoMatch')}</button>` : ''}
                     </div>`;
             } else {
                 renderNoLandmark(section);
@@ -1792,6 +1949,9 @@ function bindLandmarkButtons() {
 
     const clearBtn = document.getElementById('evt-lm-clear');
     if (clearBtn) clearBtn.addEventListener('click', clearEventLandmark);
+
+    const autoBtn = document.getElementById('evt-lm-auto');
+    if (autoBtn) autoBtn.addEventListener('click', autoMatchEvent);
 }
 
 async function openLandmarkSelector() {
@@ -1826,12 +1986,46 @@ async function clearEventLandmark() {
     }
 }
 
+async function autoMatchEvent() {
+    if (!selTag) return;
+    const btn = document.getElementById('evt-lm-auto');
+    if (!btn) return;
+
+    // 进入进度条模式
+    btn.disabled = true;
+    btn.classList.add('running');
+    btn.style.setProperty('--progress', '0%');
+    btn.textContent = '0 / ?';
+
+    // 监听进度事件
+    const removeProgressListener = api.on('tag-manage-auto-match-progress', ({ current, total, matched }) => {
+        const pct = total > 0 ? Math.round(current / total * 100) : 0;
+        btn.style.setProperty('--progress', pct + '%');
+        btn.textContent = `${current} / ${total}`;
+    });
+
+    const res = await api.invoke('tag-manage-auto-match-event', { tagId: selTag.id });
+
+    // 清理监听器，恢复按钮
+    removeProgressListener();
+    btn.classList.remove('running');
+    btn.style.removeProperty('--progress');
+    btn.disabled = false;
+    btn.textContent = t('tmw.event.autoMatch');
+
+    if (res.success) {
+        showStatus(t('tmw.event.autoMatchResult', { matched: res.matched, total: res.total }), true);
+    } else {
+        showStatus(res.error || t('tmw.err.saveFailed'));
+    }
+}
+
 // ── Face Recognition ──────────────────────────────────────────
 
-let faceDropImages = [null, null, null]; // {path, fileUrl, imgElement} per zone
+let faceDropImages = new Array(20).fill(null); // {path, fileUrl, imgElement} per zone
 let faceApiLoaded = false;
 
-function renderFaceSection(container) {
+async function renderFaceSection(container) {
     if (!selTag) { container.innerHTML = ''; return; }
 
     const isLeaf = !(selTag.children && selTag.children.length > 0);
@@ -1846,6 +2040,8 @@ function renderFaceSection(container) {
 
     // View A: Has face data — show portrait + re-recognize
     if (hasDesc && preview) {
+        const countRes = await api.invoke('tag-manage-count-photos', { tagId: selTag.id });
+        const photoCount = countRes ? countRes.count : 0;
         container.innerHTML = `
             <div class="face-section">
                 <div class="face-portrait">
@@ -1854,12 +2050,25 @@ function renderFaceSection(container) {
                         <div class="face-portrait-info">
                             ${t('tmw.face.descriptorCount', { count: selTag.descriptors.length })}
                         </div>
+                        <div class="face-portrait-info">
+                            ${t('tmw.face.taggedPhotoCount', { count: photoCount })}
+                        </div>
                         <div class="face-btn-row">
                             <button class="face-re-recognize-btn" id="btn-re-recognize">
                                 ${t('tmw.face.reRecognize')}
                             </button>
                             <button class="face-re-recognize-btn danger" id="btn-clear-face">
                                 ${t('tmw.face.clearData')}
+                            </button>
+                        </div>
+                        <div class="face-btn-row" style="margin-top:8px;">
+                            <select class="face-mode-select" id="scan-mode-select">
+                                <option value="loose">${t('tmw.face.scanMode.loose')}</option>
+                                <option value="balanced" selected>${t('tmw.face.scanMode.balanced')}</option>
+                                <option value="strict">${t('tmw.face.scanMode.strict')}</option>
+                            </select>
+                            <button class="face-global-scan-btn" id="btn-global-scan">
+                                ${t('tmw.face.globalScan')}
                             </button>
                         </div>
                     </div>
@@ -1878,6 +2087,19 @@ function renderFaceSection(container) {
                 selectTag(selId);
             }
         });
+        document.getElementById('btn-global-scan').addEventListener('click', async () => {
+            const mode = document.getElementById('scan-mode-select').value;
+            try {
+                const res = await api.invoke('start-global-face-scan', { tagId: selTag.id, mode });
+                if (!res.success) {
+                    showStatus(res.error || t('tmw.face.globalScanBusy'));
+                }
+                // 成功时主进程会关闭此窗口
+            } catch (err) {
+                console.error('start-global-face-scan error:', err);
+                showStatus(t('tmw.face.globalScanBusy'));
+            }
+        });
         return;
     }
 
@@ -1885,31 +2107,54 @@ function renderFaceSection(container) {
     renderFaceDropzones(container);
 }
 
-function renderFaceDropzones(container) {
-    faceDropImages = [null, null, null];
+async function renderFaceDropzones(container) {
+    faceDropImages = new Array(20).fill(null);
 
     container.innerHTML = `
         <div class="face-section">
-            <p style="font-size:12px;color:#777;margin-bottom:12px;line-height:1.5;">
-                ${t('tmw.face.dropHint')}
-            </p>
+            <div class="face-hint-box">
+                <div style="color:#b8cfec;margin-bottom:6px;">${t('tmw.face.workflowHint')}</div>
+                <div style="border-top:1px solid #2a3a55;margin:4px 0 6px;"></div>
+                <div>${t('tmw.face.dropHint')}</div>
+                <strong>${t('tmw.face.photoTipsTitle')}</strong>
+                <ul>
+                    <li>${t('tmw.face.tip1')}</li>
+                    <li>${t('tmw.face.tip2')}</li>
+                    <li>${t('tmw.face.tip3')}</li>
+                    <li>${t('tmw.face.tip4')}</li>
+                    <li>${t('tmw.face.tip5')}</li>
+                </ul>
+            </div>
             <div class="face-dropzones">
-                ${[0,1,2].map(i => `
+                ${Array.from({length: 20}, (_, i) => `
                     <div class="face-dropzone" id="face-dz-${i}" data-idx="${i}">
                         <span class="dz-plus">+</span>
                     </div>
                 `).join('')}
             </div>
+            <div class="face-count-hint" id="face-count-hint">${t('tmw.face.countHint', { count: 0 })}</div>
             <button class="face-recognize-btn" id="btn-start-recognize" disabled>
                 ${t('tmw.face.recognize')}
             </button>
             <div class="face-status" id="face-status"></div>
         </div>`;
 
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 20; i++) {
         setupDropzone(document.getElementById(`face-dz-${i}`), i);
     }
     document.getElementById('btn-start-recognize').addEventListener('click', startFaceRecognition);
+
+    // 用已标记该人物的照片预填充空槽位
+    if (selTag && selTag.id) {
+        const paths = await api.invoke('tag-manage-get-tagged-photos', { tagId: selTag.id });
+        if (paths && paths.length > 0) {
+            const fill = Math.min(paths.length, 20);
+            for (let i = 0; i < fill; i++) {
+                loadImageToZone(paths[i], i);
+            }
+            setFaceStatus(t('tmw.face.prefillHint', { count: fill }));
+        }
+    }
 }
 
 function setupDropzone(dz, idx) {
@@ -1927,9 +2172,12 @@ function setupDropzone(dz, idx) {
         e.stopPropagation();
         dz.classList.remove('drag-over');
         const file = e.dataTransfer.files[0];
-        if (!file || !file.type.startsWith('image/')) return;
-        const filePath = file.path;
-        if (filePath) loadImageToZone(filePath, idx);
+        if (!file) return;
+        const ext = (file.path || file.name || '').split('.').pop().toLowerCase();
+        const isImage = file.type.startsWith('image/') ||
+            ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tiff', 'heic', 'heif'].includes(ext);
+        if (!isImage) return;
+        loadImageFileToZone(file, idx);
     });
     dz.addEventListener('click', async () => {
         if (faceDropImages[idx]) return; // already has image, use remove button
@@ -1961,9 +2209,46 @@ function loadImageToZone(filePath, idx) {
     img.src = fileUrl;
 }
 
+// 从拖入的 File 对象加载图片（使用 blob URL，不依赖 file.path）
+function loadImageFileToZone(file, idx) {
+    const blobUrl = URL.createObjectURL(file);
+    const filePath = file.path || '';
+    const dz = document.getElementById(`face-dz-${idx}`);
+    const img = new Image();
+    img.onload = () => {
+        const prev = faceDropImages[idx];
+        if (prev && prev.fileUrl && prev.fileUrl.startsWith('blob:')) {
+            URL.revokeObjectURL(prev.fileUrl);
+        }
+        faceDropImages[idx] = { path: filePath, fileUrl: blobUrl, imgElement: img };
+        dz.innerHTML = `<img src="${blobUrl}"><button class="remove-img" data-idx="${idx}">&times;</button>`;
+        dz.classList.add('has-image');
+        dz.querySelector('.remove-img').addEventListener('click', e => {
+            e.stopPropagation();
+            URL.revokeObjectURL(blobUrl);
+            faceDropImages[idx] = null;
+            dz.innerHTML = '<span class="dz-plus">+</span>';
+            dz.classList.remove('has-image');
+            updateRecognizeButton();
+        });
+        updateRecognizeButton();
+    };
+    img.onerror = () => {
+        URL.revokeObjectURL(blobUrl);
+        setFaceStatus(t('tmw.face.error.noFace', { n: idx + 1 }), true);
+    };
+    img.src = blobUrl;
+}
+
 function updateRecognizeButton() {
-    const btn = document.getElementById('btn-start-recognize');
-    if (btn) btn.disabled = faceDropImages.filter(Boolean).length < 3;
+    const count = faceDropImages.filter(Boolean).length;
+    const btn  = document.getElementById('btn-start-recognize');
+    const hint = document.getElementById('face-count-hint');
+    if (btn)  btn.disabled = count < 5;
+    if (hint) {
+        hint.textContent = t('tmw.face.countHint', { count });
+        hint.className   = 'face-count-hint' + (count >= 10 ? ' enough' : count >= 5 ? ' warn' : '');
+    }
 }
 
 function setFaceStatus(msg, isError = false) {
@@ -1995,11 +2280,45 @@ async function ensureFaceApiLoaded() {
     }
 }
 
+function showFewPhotosWarning(count) {
+    return new Promise(resolve => {
+        document.getElementById('few-photos-modal-title').textContent = t('tmw.face.warnFewTitle');
+        document.getElementById('few-photos-modal-msg').textContent   = t('tmw.face.warnFewPhotos', { count });
+        document.getElementById('few-photos-back').textContent        = t('tmw.face.warnBack');
+        document.getElementById('few-photos-continue').textContent    = t('tmw.face.warnContinue');
+        document.getElementById('few-photos-modal').style.display = 'flex';
+
+        function onContinue() { cleanup(); resolve(true); }
+        function onBack()     { cleanup(); resolve(false); }
+        function onKey(e) {
+            if (e.key === 'Enter')  onContinue();
+            if (e.key === 'Escape') onBack();
+        }
+        function cleanup() {
+            document.getElementById('few-photos-modal').style.display = 'none';
+            document.getElementById('few-photos-continue').removeEventListener('click', onContinue);
+            document.getElementById('few-photos-back').removeEventListener('click', onBack);
+            document.removeEventListener('keydown', onKey);
+        }
+        document.getElementById('few-photos-continue').addEventListener('click', onContinue);
+        document.getElementById('few-photos-back').addEventListener('click', onBack);
+        document.addEventListener('keydown', onKey);
+    });
+}
+
 async function startFaceRecognition() {
-    const filled = faceDropImages.filter(Boolean);
-    if (filled.length < 3) {
+    // 只处理已填充的槽位，索引按顺序排列
+    const filledIndices = faceDropImages.map((img, i) => img ? i : -1).filter(i => i >= 0);
+
+    if (filledIndices.length < 5) {
         setFaceStatus(t('tmw.face.error.needPhotos'), true);
         return;
+    }
+
+    // 不足10张时先询问用户
+    if (filledIndices.length < 10) {
+        const proceed = await showFewPhotosWarning(filledIndices.length);
+        if (!proceed) return;
     }
 
     const btn = document.getElementById('btn-start-recognize');
@@ -2016,7 +2335,8 @@ async function startFaceRecognition() {
 
     const descriptors = [];
 
-    for (let i = 0; i < 3; i++) {
+    for (let n = 0; n < filledIndices.length; n++) {
+        const i     = filledIndices[n];
         const entry = faceDropImages[i];
         try {
             // Resize large images for performance
@@ -2028,7 +2348,7 @@ async function startFaceRecognition() {
                 .withFaceDescriptors();
 
             if (allDetections.length === 0) {
-                setFaceStatus(t('tmw.face.error.noFace', { n: i + 1 }), true);
+                setFaceStatus(t('tmw.face.error.noFace', { n: n + 1 }), true);
                 btn.disabled = false; btn.textContent = t('tmw.face.recognize');
                 return;
             }
@@ -2040,7 +2360,7 @@ async function startFaceRecognition() {
             } else {
                 // Multiple faces — let user pick
                 const scale = entry.imgElement.naturalWidth / canvas.width;
-                const picked = await showFacePicker(entry.imgElement, allDetections, scale, i + 1);
+                const picked = await showFacePicker(entry.imgElement, allDetections, scale, n + 1);
                 if (picked === null) {
                     // User cancelled
                     setFaceStatus('', false);
@@ -2059,15 +2379,16 @@ async function startFaceRecognition() {
                 box: { x: box.x * scale, y: box.y * scale, width: box.width * scale, height: box.height * scale }
             });
         } catch (err) {
-            console.error('Detection error for image', i, err);
-            setFaceStatus(t('tmw.face.error.noFace', { n: i + 1 }), true);
+            console.error('Detection error for image', n, err);
+            setFaceStatus(t('tmw.face.error.noFace', { n: n + 1 }), true);
             btn.disabled = false; btn.textContent = t('tmw.face.recognize');
             return;
         }
     }
 
-    // Generate 64x64 portrait thumbnail from the first image's detected face
-    const thumbnail = generateFaceThumbnail(faceDropImages[0].imgElement, descriptors[0].box);
+    // Generate 64x64 portrait thumbnail from the first filled slot's detected face
+    const firstEntry = faceDropImages[filledIndices[0]];
+    const thumbnail = generateFaceThumbnail(firstEntry.imgElement, descriptors[0].box);
 
     // Save via IPC
     const res = await api.invoke('tag-manage-save-face', {

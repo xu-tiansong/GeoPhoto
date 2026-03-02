@@ -17,6 +17,10 @@ class MapManager {
         this.currentPhotosCache = [];
         this.cityCache = new Map();
         
+        // 当前时间轴选择的时间范围
+        this.currentTimeStart = null;
+        this.currentTimeEnd = null;
+        
         // 逆地理编码请求队列和速率限制
         this.geocodeQueue = [];
         this.isProcessingQueue = false;
@@ -416,6 +420,10 @@ class MapManager {
                 return;
             }
             
+            // 保存当前时间范围，供矩形框选时使用
+            this.currentTimeStart = start;
+            this.currentTimeEnd = end;
+            
             const photos = await this.ipcRenderer.invoke('query-photos-by-time', {
                 startTime: start.toISOString(),
                 endTime: end.toISOString()
@@ -576,6 +584,12 @@ class MapManager {
             west: bounds.getWest()
         };
 
+        // 附带当前时间轴的时间范围，确保只返回时间范围内的照片
+        if (this.currentTimeStart && this.currentTimeEnd) {
+            range.startTime = this.currentTimeStart.toISOString();
+            range.endTime = this.currentTimeEnd.toISOString();
+        }
+
         const areaPhotos = await this.ipcRenderer.invoke('query-area', range);
         
         console.log("区域内照片列表:", areaPhotos);
@@ -588,6 +602,7 @@ class MapManager {
                 bounds: range
             });
         } else {
+            this.drawnItems.clearLayers();
             alert(i18n.t('map.noPhotosInArea'));
         }
     }
@@ -682,6 +697,19 @@ class MapManager {
     /**
      * 清除地图上的矩形选框
      */
+    /**
+     * 从地图上移除指定照片的标记
+     */
+    removePhotoMarker(photoId) {
+        for (const layer of this.markersLayer.getLayers()) {
+            if (layer.photoData && layer.photoData.id === photoId) {
+                this.markersLayer.removeLayer(layer);
+                break;
+            }
+        }
+        this.currentPhotosCache = this.currentPhotosCache.filter(p => p.id !== photoId);
+    }
+
     clearRectangle() {
         if (this.drawnItems) {
             this.drawnItems.clearLayers();

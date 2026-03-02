@@ -41,6 +41,14 @@
         </div>
     </div>
 
+    <!-- 人脸扫描进度指示器（固定在地图左下角） -->
+    <div id="face-scan-overlay">
+        <div id="face-scan-title" data-i18n="face.scan.title">全局扫描</div>
+        <canvas id="face-scan-canvas" width="128" height="128"></canvas>
+        <div id="face-scan-text"></div>
+        <button id="face-scan-cancel" data-i18n="face.scan.cancel">取消</button>
+    </div>
+
     <script src="renderer.js"></script>
 </body>
 </html>
