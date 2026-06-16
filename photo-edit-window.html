@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>Photo Editing</title>
+<style>
+    /* ====================== 设计变量 ====================== */
+    :root {
+        --bg:        #1e1e1e;
+        --bg-2:      #262626;
+        --bg-3:      #2e2e2e;
+        --border:    #383838;
+        --text:      #e0e0e0;
+        --text-dim:  #9a9a9a;
+        --accent:    #4a9eff;
+        --radius:    6px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+        height: 100%;
+        background: var(--bg);
+        color: var(--text);
+        font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+        font-size: 13px;
+        user-select: none;
+        overflow: hidden;
+    }
+
+    body { display: flex; flex-direction: column; }
+
+    /* ====================== 1. 顶部栏 ====================== */
+    .titlebar {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        height: 34px;
+        padding: 0 6px 0 10px;
+        background: var(--bg-2);
+        border-bottom: 1px solid var(--border);
+        /* 整条标题栏作为拖动区 */
+        -webkit-app-region: drag;
+        flex: 0 0 auto;
+    }
+    .titlebar .title {
+        flex: 1;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: .3px;
+        color: var(--text);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .titlebar .title .sub {
+        color: var(--text-dim);
+        font-weight: 400;
+        margin-left: 6px;
+        font-size: 11px;
+    }
+    /* 标题栏上的按钮不参与拖动 */
+    .titlebar .tbtn { -webkit-app-region: no-drag; }
+
+    .tbtn {
+        width: 26px; height: 26px;
+        display: flex; align-items: center; justify-content: center;
+        background: transparent;
+        border: none;
+        border-radius: 4px;
+        color: var(--text-dim);
+        cursor: pointer;
+        font-size: 15px;
+        line-height: 1;
+        transition: background .15s, color .15s;
+    }
+    .tbtn:hover { background: var(--bg-3); color: var(--text); }
+    .tbtn.danger:hover { background: #5a2a2a; color: #ff8a8a; }
+
+    /* ====================== 2. 基础工具区 ====================== */
+    .toolbar {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 6px 8px;
+        background: var(--bg);
+        border-bottom: 1px solid var(--border);
+        flex: 0 0 auto;
+    }
+    .iconbtn {
+        flex: 1;
+        height: 38px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 1px;
+        background: var(--bg-2);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        color: var(--text);
+        cursor: pointer;
+        transition: background .15s, border-color .15s;
+    }
+    .iconbtn:hover { background: var(--bg-3); border-color: #4a4a4a; }
+    .iconbtn:active { background: #222; }
+    .iconbtn .ico { font-size: 16px; line-height: 1; }
+    .iconbtn .lbl { font-size: 9px; color: var(--text-dim); }
+
+    /* ====================== 滚动主体 ====================== */
+    .scroll {
+        flex: 1 1 auto;
+        overflow-y: auto;
+        overflow-x: hidden;
+    }
+    .scroll::-webkit-scrollbar { width: 8px; }
+    .scroll::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 4px; }
+    .scroll::-webkit-scrollbar-thumb:hover { background: #4a4a4a; }
+
+    /* ====================== 折叠面板（section） ====================== */
+    .section { border-bottom: 1px solid var(--border); }
+    .section-head {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 10px;
+        cursor: pointer;
+        background: var(--bg);
+        transition: background .15s;
+    }
+    .section-head:hover { background: var(--bg-2); }
+    .section-head .chev {
+        color: var(--text-dim);
+        font-size: 10px;
+        transition: transform .2s;
+        width: 12px;
+        text-align: center;
+    }
+    .section.collapsed .chev { transform: rotate(-90deg); }
+    .section-head .name { flex: 1; font-size: 12px; font-weight: 600; }
+    .section-body { padding: 4px 10px 12px; }
+    .section.collapsed .section-body { display: none; }
+
+    /* ====================== 3. 裁剪与旋转 ====================== */
+    .field { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+    .field label { width: 56px; color: var(--text-dim); font-size: 11px; }
+    select {
+        flex: 1;
+        height: 28px;
+        background: var(--bg-2);
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        padding: 0 6px;
+        cursor: pointer;
+        -webkit-app-region: no-drag;
+    }
+    .btn-row { display: flex; gap: 6px; margin: 6px 0; }
+    .minibtn {
+        flex: 1;
+        height: 30px;
+        display: flex; align-items: center; justify-content: center; gap: 4px;
+        background: var(--bg-2);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        color: var(--text);
+        cursor: pointer;
+        font-size: 12px;
+        transition: background .15s;
+    }
+    .minibtn:hover { background: var(--bg-3); }
+
+    /* ====================== 4. 调节滑条 ====================== */
+    .adjust-row {
+        display: grid;
+        grid-template-columns: 48px 1fr 44px 22px;
+        align-items: center;
+        gap: 6px;
+        margin: 9px 0;
+    }
+    .adjust-row .arlabel { color: var(--text-dim); font-size: 11px; }
+    .adjust-row input[type="range"] {
+        -webkit-appearance: none;
+        appearance: none;
+        height: 4px;
+        background: #3a3a3a;
+        border-radius: 2px;
+        outline: none;
+        cursor: pointer;
+    }
+    .adjust-row input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        width: 14px; height: 14px;
+        border-radius: 50%;
+        background: var(--accent);
+        cursor: pointer;
+        border: 2px solid #1e1e1e;
+    }
+    .adjust-row input[type="number"] {
+        width: 100%;
+        height: 24px;
+        background: var(--bg-2);
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        text-align: center;
+        font-size: 11px;
+        -moz-appearance: textfield;
+    }
+    .adjust-row input[type="number"]::-webkit-inner-spin-button { display: none; }
+    .adjust-row .reset-one {
+        width: 22px; height: 22px;
+        display: flex; align-items: center; justify-content: center;
+        background: transparent;
+        border: none;
+        border-radius: 4px;
+        color: var(--text-dim);
+        cursor: pointer;
+        font-size: 13px;
+    }
+    .adjust-row .reset-one:hover { background: var(--bg-3); color: var(--text); }
+
+    /* ====================== 5. 滤镜缩略图 ====================== */
+    .filter-strip {
+        display: flex;
+        gap: 8px;
+        overflow-x: auto;
+        overflow-y: hidden;
+        padding: 4px 2px 8px;
+    }
+    .filter-strip::-webkit-scrollbar { height: 6px; }
+    .filter-strip::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 3px; }
+    .filter-item {
+        flex: 0 0 auto;
+        width: 58px;
+        cursor: pointer;
+        text-align: center;
+    }
+    .filter-item .thumb {
+        width: 58px; height: 58px;
+        border-radius: var(--radius);
+        border: 2px solid transparent;
+        background-size: cover;
+        background-position: center;
+        transition: border-color .15s;
+    }
+    .filter-item.active .thumb { border-color: var(--accent); }
+    .filter-item .fname { font-size: 10px; color: var(--text-dim); margin-top: 3px; }
+    .filter-item.active .fname { color: var(--text); }
+
+    /* ====================== 保存方式开关 ====================== */
+    .savemode {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 7px 10px;
+        background: var(--bg);
+        border-top: 1px solid var(--border);
+        flex: 0 0 auto;
+        font-size: 11px;
+    }
+    .savemode .sm-label { color: var(--text-dim); }
+    .savemode .sm-opt {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        color: var(--text);
+        cursor: pointer;
+    }
+    .savemode input[type="radio"] { accent-color: var(--accent); cursor: pointer; }
+
+    /* ====================== 6. 底部操作区 ====================== */
+    .footer {
+        display: flex;
+        gap: 8px;
+        padding: 8px 10px;
+        background: var(--bg-2);
+        border-top: 1px solid var(--border);
+        flex: 0 0 auto;
+    }
+    .footer button {
+        flex: 1;
+        height: 34px;
+        border-radius: var(--radius);
+        border: 1px solid var(--border);
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 600;
+    }
+    .footer .cancel { background: var(--bg-3); color: var(--text); }
+    .footer .cancel:hover { background: #383838; }
+    .footer .apply { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .footer .apply:hover { background: #3b8ef0; }
+
+    /* ====================== 折叠态（仅显示一行图标） ====================== */
+    body.collapsed .scroll,
+    body.collapsed .savemode,
+    body.collapsed .footer { display: none; }
+</style>
+</head>
+<body>
+    <!-- ============ 1. 顶部栏 ============ -->
+    <div class="titlebar">
+        <span class="title">Photo Editing<span class="sub" id="title-sub"></span></span>
+        <button class="tbtn" id="btn-toggle-collapse" title="折叠/展开">▾</button>
+        <button class="tbtn danger" id="btn-close" title="关闭编辑">✕</button>
+    </div>
+
+    <!-- ============ 2. 基础工具区 ============ -->
+    <div class="toolbar">
+        <button class="iconbtn" id="btn-undo"   title="撤销"><span class="ico">↶</span><span class="lbl">撤销</span></button>
+        <button class="iconbtn" id="btn-redo"   title="重做"><span class="ico">↷</span><span class="lbl">重做</span></button>
+        <button class="iconbtn" id="btn-auto"   title="自动增强"><span class="ico">✨</span><span class="lbl">增强</span></button>
+        <button class="iconbtn" id="btn-reset"  title="重置所有编辑"><span class="ico">⟲</span><span class="lbl">重置</span></button>
+    </div>
+
+    <!-- ============ 可滚动主体 ============ -->
+    <div class="scroll">
+        <!-- 3. 裁剪与旋转 -->
+        <div class="section" data-section="crop">
+            <div class="section-head"><span class="chev">▾</span><span class="name">裁剪与旋转</span></div>
+            <div class="section-body">
+                <div class="field">
+                    <label>比例</label>
+                    <select id="crop-ratio">
+                        <option value="original">原始</option>
+                        <option value="1:1">1:1</option>
+                        <option value="4:3">4:3</option>
+                        <option value="16:9">16:9</option>
+                        <option value="custom">自定义</option>
+                    </select>
+                </div>
+                <div class="btn-row">
+                    <button class="minibtn" id="btn-rotate-ccw"><span>⟲</span>逆时针</button>
+                    <button class="minibtn" id="btn-rotate-cw"><span>⟳</span>顺时针</button>
+                </div>
+                <div class="btn-row">
+                    <button class="minibtn" id="btn-flip-h"><span>↔</span>水平翻转</button>
+                    <button class="minibtn" id="btn-flip-v"><span>↕</span>垂直翻转</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 4. 调节参数 -->
+        <div class="section" data-section="adjust">
+            <div class="section-head"><span class="chev">▾</span><span class="name">调节</span></div>
+            <div class="section-body" id="adjust-body">
+                <!-- 由 JS 按 ADJUST_DEFS 渲染 -->
+            </div>
+        </div>
+
+        <!-- 5. 滤镜 -->
+        <div class="section" data-section="filter">
+            <div class="section-head"><span class="chev">▾</span><span class="name">滤镜</span></div>
+            <div class="section-body">
+                <div class="filter-strip" id="filter-strip">
+                    <!-- 由 JS 按 FILTER_DEFS 渲染 -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ 保存方式开关 ============ -->
+    <div class="savemode" id="savemode">
+        <span class="sm-label">保存方式</span>
+        <label class="sm-opt"><input type="radio" name="savemode" value="copy" checked> 另存副本</label>
+        <label class="sm-opt"><input type="radio" name="savemode" value="overwrite"> 覆盖原图</label>
+    </div>
+
+    <!-- ============ 6. 底部操作区 ============ -->
+    <div class="footer">
+        <button class="cancel" id="btn-cancel">取消</button>
+        <button class="apply"  id="btn-apply">应用</button>
+    </div>
+
+<script>
+    const { ipcRenderer } = require('electron');
+
+    // ====================================================================
+    //  数据定义
+    // ====================================================================
+    /** 调节项定义：key / 标签 / 取值范围 / 默认值 */
+    const ADJUST_DEFS = [
+        { key: 'brightness', label: '亮度',   min: -100, max: 100, def: 0 },
+        { key: 'contrast',   label: '对比度', min: -100, max: 100, def: 0 },
+        { key: 'saturation', label: '饱和度', min: -100, max: 100, def: 0 },
+        { key: 'exposure',   label: '曝光',   min: -100, max: 100, def: 0 },
+        { key: 'sharpen',    label: '锐化',   min: 0,    max: 100, def: 0 },
+        { key: 'shadow',     label: '阴影',   min: -100, max: 100, def: 0 },
+        { key: 'highlight',  label: '高光',   min: -100, max: 100, def: 0 },
+    ];
+
+    /** 滤镜定义：key / 名称 / 缩略图 CSS filter（占位预览） */
+    const FILTER_DEFS = [
+        { key: 'none',     name: '原图',   css: 'none' },
+        { key: 'mono',     name: '黑白',   css: 'grayscale(1)' },
+        { key: 'warm',     name: '暖色',   css: 'sepia(.4) saturate(1.4) hue-rotate(-15deg)' },
+        { key: 'cool',     name: '冷色',   css: 'saturate(1.2) hue-rotate(180deg)' },
+        { key: 'vintage',  name: '复古',   css: 'sepia(.6) contrast(.9) brightness(1.05)' },
+        { key: 'hdr',      name: 'HDR',    css: 'contrast(1.4) saturate(1.3)' },
+        { key: 'film',     name: '胶片',   css: 'contrast(1.1) sepia(.25) saturate(1.1)' },
+    ];
+
+    /** 当前编辑状态（单一数据源，apply 时序列化回传） */
+    const state = {
+        photo: null,
+        crop: 'original',
+        rotation: 0,          // 90° 的累加角度
+        flipH: false,
+        flipV: false,
+        adjust: {},           // {brightness:0, ...}
+        filter: 'none',
+    };
+    ADJUST_DEFS.forEach(d => { state.adjust[d.key] = d.def; });
+
+    /** 撤销/重做栈（保存 state 快照） */
+    const history = { stack: [], index: -1 };
+
+    // ====================================================================
+    //  DOM 构建
+    // ====================================================================
+    function buildAdjustRows() {
+        const body = document.getElementById('adjust-body');
+        body.innerHTML = '';
+        ADJUST_DEFS.forEach(def => {
+            const row = document.createElement('div');
+            row.className = 'adjust-row';
+            row.innerHTML = `
+                <span class="arlabel">${def.label}</span>
+                <input type="range"  data-key="${def.key}" min="${def.min}" max="${def.max}" value="${def.def}">
+                <input type="number" data-key="${def.key}" min="${def.min}" max="${def.max}" value="${def.def}">
+                <button class="reset-one" data-key="${def.key}" title="重置">⟲</button>`;
+            body.appendChild(row);
+        });
+    }
+
+    function buildFilterStrip() {
+        const strip = document.getElementById('filter-strip');
+        strip.innerHTML = '';
+        FILTER_DEFS.forEach(def => {
+            const item = document.createElement('div');
+            item.className = 'filter-item' + (def.key === state.filter ? ' active' : '');
+            item.dataset.key = def.key;
+            item.innerHTML = `
+                <div class="thumb" style="filter:${def.css}"></div>
+                <div class="fname">${def.name}</div>`;
+            strip.appendChild(item);
+        });
+    }
+
+    /** 把滤镜缩略图背景设为当前照片（有则用，无则灰底占位）。 */
+    function paintFilterThumbs() {
+        const src = state.photo && state.photo.previewUrl;
+        document.querySelectorAll('.filter-item .thumb').forEach(t => {
+            t.style.background = src
+                ? `center/cover url("${src.replace(/"/g, '%22')}")`
+                : 'linear-gradient(135deg,#3a3a3a,#555)';
+        });
+    }
+
+    // ====================================================================
+    //  事件处理函数框架（业务逻辑留空，标 TODO）
+    // ====================================================================
+
+    // ---- 1. 顶部栏 ----
+    function onToggleCollapse() {
+        const collapsed = document.body.classList.toggle('collapsed');
+        // 折叠：仅留标题栏+工具栏一行；展开：主进程恢复记忆的展开高度
+        document.getElementById('btn-toggle-collapse').textContent = collapsed ? '▸' : '▾';
+        ipcRenderer.send('photo-edit-set-collapsed', { collapsed });
+    }
+    function onCloseEditing() {
+        // 退出编辑模式（不应用）
+        ipcRenderer.send('photo-edit-close');
+    }
+
+    // ---- 2. 基础工具区 ----
+    function onUndo()  { historyUndo(); }     // restoreFromSnapshot 内部会触发预览
+    function onRedo()  { historyRedo(); }
+    function onAutoEnhance() {
+        // 简单的自动增强：温和提升亮度/对比度/饱和度
+        state.adjust.brightness = 10;
+        state.adjust.contrast   = 15;
+        state.adjust.saturation = 12;
+        applyStateToUI();
+        pushHistory();
+        sendPreview();
+    }
+    function onResetAll() {
+        ADJUST_DEFS.forEach(d => { state.adjust[d.key] = d.def; });
+        state.crop = 'original'; state.rotation = 0; state.flipH = state.flipV = false; state.filter = 'none';
+        applyStateToUI();
+        pushHistory();
+        sendPreview();
+    }
+
+    // ---- 3. 裁剪与旋转 ----
+    function onCropChange(value) { state.crop = value; pushHistory(); sendPreview(); }
+    function onRotate(dir)      { state.rotation = (state.rotation + (dir === 'cw' ? 90 : -90) + 360) % 360; pushHistory(); sendPreview(); }
+    function onFlip(axis)       { if (axis === 'h') state.flipH = !state.flipH; else state.flipV = !state.flipV; pushHistory(); sendPreview(); }
+
+    // ---- 4. 调节参数 ----
+    function onAdjustInput(key, value) {
+        const def = ADJUST_DEFS.find(d => d.key === key);
+        let v = Number(value);
+        if (Number.isNaN(v)) v = def.def;
+        v = Math.max(def.min, Math.min(def.max, v));
+        state.adjust[key] = v;
+        syncAdjustRow(key, v);
+        sendPreview();
+    }
+    function onAdjustReset(key) {
+        const def = ADJUST_DEFS.find(d => d.key === key);
+        state.adjust[key] = def.def;
+        syncAdjustRow(key, def.def);
+        pushHistory();
+        sendPreview();
+    }
+
+    // ---- 5. 滤镜 ----
+    function onFilterPick(key) {
+        state.filter = key;
+        document.querySelectorAll('.filter-item').forEach(el =>
+            el.classList.toggle('active', el.dataset.key === key));
+        pushHistory();
+        sendPreview();
+    }
+
+    // ---- 6. 底部操作区 ----
+    function onCancel() {
+        // 撤销所有编辑并退出
+        ipcRenderer.send('photo-edit-cancel');
+    }
+    function onApply() { doApply(); }
+
+    // ====================================================================
+    //  辅助函数
+    // ====================================================================
+    function collectEdits() {
+        return {
+            crop: state.crop,
+            rotation: state.rotation,
+            flipH: state.flipH,
+            flipV: state.flipV,
+            adjust: { ...state.adjust },
+            filter: state.filter,
+        };
+    }
+    function getSaveMode() {
+        const sel = document.querySelector('input[name="savemode"]:checked');
+        return sel ? sel.value : 'copy';   // 'copy' | 'overwrite'
+    }
+    /** 把当前编辑实时下发给照片窗做无损 CSS 预览（不落盘）。 */
+    function sendPreview() {
+        ipcRenderer.send('photo-edit-preview', collectEdits());
+    }
+    function doApply() {
+        const edits = collectEdits();
+        edits.saveMode = getSaveMode();
+        // 像素级渲染与落盘在 opener(photo-window) 收到转发后完成；主进程随后关闭本窗
+        ipcRenderer.send('photo-edit-apply', edits);
+    }
+
+    /** 把单个调节项的 range 与 number 两个控件同步为同一值。 */
+    function syncAdjustRow(key, value) {
+        document.querySelectorAll(`[data-key="${key}"]`).forEach(el => {
+            if (el.tagName === 'INPUT') el.value = value;
+        });
+    }
+
+    /** 把整个 state 回写到所有 UI 控件（用于重置/撤销/加载）。 */
+    function applyStateToUI() {
+        document.getElementById('crop-ratio').value = state.crop;
+        ADJUST_DEFS.forEach(d => syncAdjustRow(d.key, state.adjust[d.key]));
+        document.querySelectorAll('.filter-item').forEach(el =>
+            el.classList.toggle('active', el.dataset.key === state.filter));
+    }
+
+    // ---- 历史栈（撤销/重做的最小可用实现） ----
+    function pushHistory() {
+        // 丢弃 index 之后的分支，压入当前快照
+        history.stack = history.stack.slice(0, history.index + 1);
+        history.stack.push(JSON.stringify(collectEdits()));
+        history.index = history.stack.length - 1;
+    }
+    function restoreFromSnapshot(json) {
+        const e = JSON.parse(json);
+        state.crop = e.crop; state.rotation = e.rotation;
+        state.flipH = e.flipH; state.flipV = e.flipV;
+        state.adjust = { ...e.adjust }; state.filter = e.filter;
+        applyStateToUI();
+        sendPreview();   // 撤销/重做也即时反映到照片
+    }
+    function historyUndo() {
+        if (history.index > 0) { history.index--; restoreFromSnapshot(history.stack[history.index]); }
+    }
+    function historyRedo() {
+        if (history.index < history.stack.length - 1) { history.index++; restoreFromSnapshot(history.stack[history.index]); }
+    }
+
+    // ====================================================================
+    //  绑定
+    // ====================================================================
+    function bindEvents() {
+        // 1. 顶部栏
+        document.getElementById('btn-toggle-collapse').addEventListener('click', onToggleCollapse);
+        document.getElementById('btn-close').addEventListener('click', onCloseEditing);
+
+        // 2. 基础工具区
+        document.getElementById('btn-undo').addEventListener('click', onUndo);
+        document.getElementById('btn-redo').addEventListener('click', onRedo);
+        document.getElementById('btn-auto').addEventListener('click', onAutoEnhance);
+        document.getElementById('btn-reset').addEventListener('click', onResetAll);
+
+        // 3. 裁剪与旋转
+        document.getElementById('crop-ratio').addEventListener('change', e => onCropChange(e.target.value));
+        document.getElementById('btn-rotate-ccw').addEventListener('click', () => onRotate('ccw'));
+        document.getElementById('btn-rotate-cw').addEventListener('click', () => onRotate('cw'));
+        document.getElementById('btn-flip-h').addEventListener('click', () => onFlip('h'));
+        document.getElementById('btn-flip-v').addEventListener('click', () => onFlip('v'));
+
+        // 4. 调节参数（事件委托）
+        const adjBody = document.getElementById('adjust-body');
+        adjBody.addEventListener('input', e => {
+            const key = e.target.dataset.key;
+            if (key && (e.target.type === 'range' || e.target.type === 'number')) onAdjustInput(key, e.target.value);
+        });
+        adjBody.addEventListener('change', e => {
+            // 滑条松开 / 数值框确认 时记录一次历史
+            const key = e.target.dataset.key;
+            if (key && (e.target.type === 'range' || e.target.type === 'number')) pushHistory();
+        });
+        adjBody.addEventListener('click', e => {
+            const btn = e.target.closest('.reset-one');
+            if (btn) onAdjustReset(btn.dataset.key);
+        });
+
+        // 5. 滤镜（事件委托）
+        document.getElementById('filter-strip').addEventListener('click', e => {
+            const item = e.target.closest('.filter-item');
+            if (item) onFilterPick(item.dataset.key);
+        });
+
+        // 6. 底部操作区
+        document.getElementById('btn-cancel').addEventListener('click', onCancel);
+        document.getElementById('btn-apply').addEventListener('click', onApply);
+
+        // 折叠面板展开/收起
+        document.querySelectorAll('.section-head').forEach(head => {
+            head.addEventListener('click', () => head.parentElement.classList.toggle('collapsed'));
+        });
+
+        // Esc 关闭
+        window.addEventListener('keydown', e => { if (e.key === 'Escape') onCloseEditing(); });
+    }
+
+    // ====================================================================
+    //  接收主进程下发的照片
+    // ====================================================================
+    ipcRenderer.on('photo-edit-load', (_event, photoData) => {
+        state.photo = photoData || null;
+        const sub = document.getElementById('title-sub');
+        sub.textContent = photoData && photoData.filename ? `· ${photoData.filename}` : '';
+        paintFilterThumbs();
+        // 重置编辑状态到加载时的基线
+        ADJUST_DEFS.forEach(d => { state.adjust[d.key] = d.def; });
+        state.crop = 'original'; state.rotation = 0; state.flipH = state.flipV = false; state.filter = 'none';
+        applyStateToUI();
+        history.stack = []; history.index = -1;
+        pushHistory();
+        sendPreview();   // 基线（无编辑），清除照片窗可能残留的旧预览
+    });
+
+    // ====================================================================
+    //  初始化
+    // ====================================================================
+    function init() {
+        buildAdjustRows();
+        buildFilterStrip();
+        bindEvents();
+        applyStateToUI();
+        pushHistory();
+    }
+    init();
+</script>
+</body>
+</html>

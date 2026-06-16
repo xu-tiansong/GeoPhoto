@@ -1354,6 +1354,39 @@ class DatabaseManager {
     }
 
     /**
+     * 为「编辑副本」插入一条新照片记录，继承原图的 time/lat/lng/type，
+     * 并复制原图的全部标签关联。
+     * @param {number} originalId - 原图 ID（用于继承字段与标签）
+     * @param {string} directory  - 新文件所在目录（与原图同目录，沿用其 directory 值）
+     * @param {string} filename   - 新文件名（调用方已确保磁盘上唯一）
+     * @returns {number} 新照片的 ID
+     */
+    addEditedCopy(originalId, directory, filename) {
+        const src = this.getPhotoById(originalId);
+        const info = this.db.prepare(`
+            INSERT INTO photos (directory, filename, time, lat, lng, type)
+            VALUES (?, ?, ?, ?, ?, ?)
+        `).run(
+            directory,
+            filename,
+            src ? src.time : null,
+            src ? src.lat  : null,
+            src ? src.lng  : null,
+            (src && src.type) || 'photo'
+        );
+        const newId = info.lastInsertRowid;
+
+        // 复制标签关联
+        if (src) {
+            const tags = this.getPhotoTags(originalId);
+            const link = this.db.prepare('INSERT OR IGNORE INTO photo_tags (photo_id, tag_id) VALUES (?, ?)');
+            for (const t of tags) link.run(newId, t.id);
+        }
+        this.pathExistsCache.clear();
+        return newId;
+    }
+
+    /**
      * 读取重复照片扫描状态
      * @returns {{ doneCount: number, total: number }}
      *   doneCount = -1 表示无任务

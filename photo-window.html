@@ -1024,6 +1024,7 @@
             <span class="zoom-level" id="zoomLevel">100%</span>
             <button class="zoom-btn" id="zoomIn" data-i18n-title="photo.zoomIn" title="Zoom In">+</button>
             <button class="zoom-btn" id="zoomReset" data-i18n-title="photo.reset" title="Reset">⟲</button>
+            <button class="zoom-btn" id="editPhotoBtn" data-i18n-title="photo.edit" title="Edit">✎</button>
         </div>
     </div>
 
@@ -1498,6 +1499,168 @@
             resetZoom();
         });
 
+        // 打开始终置顶的照片编辑工具窗
+        document.getElementById('editPhotoBtn').addEventListener('click', () => {
+            if (!currentPhoto) return;
+            ipcRenderer.invoke('open-photo-edit-window', currentPhoto);
+        });
+
+        // ---- 编辑结果落地：canvas 渲染 → 保存非破坏性副本 → 当前视图刷新 ----
+
+        // 7 个滤镜预设（与编辑窗 FILTER_DEFS 一致），作为 canvas filter 片段
+        const EDIT_FILTER_PRESETS = {
+            none:    '',
+            mono:    'grayscale(1)',
+            warm:    'sepia(.4) saturate(1.4) hue-rotate(-15deg)',
+            cool:    'saturate(1.2) hue-rotate(180deg)',
+            vintage: 'sepia(.6) contrast(.9) brightness(1.05)',
+            hdr:     'contrast(1.4) saturate(1.3)',
+            film:    'contrast(1.1) sepia(.25) saturate(1.1)',
+        };
+
+        // 把调节参数 + 滤镜合成为一个 canvas ctx.filter 字符串。
+        // 说明：canvas 滤镜原生支持 brightness/contrast/saturate 等；
+        //   - 曝光(exposure) 并入亮度；
+        //   - 阴影/高光(shadow/highlight) 用亮度+对比度做温和近似（无逐区域控制）；
+        //   - 锐化(sharpen) 需卷积核，canvas filter 不支持，暂忽略。
+        function buildEditFilter(adjust, filterKey) {
+            const a = adjust || {};
+            const pos = (x) => Math.max(0, x);
+            const brightness = 1 + (a.brightness || 0) / 100 + (a.exposure || 0) / 150
+                                 + (a.shadow || 0) / 500 - (a.highlight || 0) / 500;
+            const contrast   = 1 + (a.contrast || 0) / 100
+                                 - (a.shadow || 0) / 600 + (a.highlight || 0) / 600;
+            const saturate   = 1 + (a.saturation || 0) / 100;
+            const parts = [
+                `brightness(${pos(brightness).toFixed(3)})`,
+                `contrast(${pos(contrast).toFixed(3)})`,
+                `saturate(${pos(saturate).toFixed(3)})`,
+            ];
+            const preset = EDIT_FILTER_PRESETS[filterKey] || '';
+            if (preset) parts.push(preset);
+            return parts.join(' ');
+        }
+
+        // 按裁剪比例计算源图上的居中裁剪矩形（original/custom = 不裁剪）。
+        function computeCropRect(sw, sh, ratio) {
+            const map = { '1:1': 1, '4:3': 4 / 3, '16:9': 16 / 9 };
+            const r = map[ratio];
+            if (!r) return { sx: 0, sy: 0, cw: sw, ch: sh };
+            let cw = sw, ch = sw / r;
+            if (ch > sh) { ch = sh; cw = sh * r; }
+            return { sx: (sw - cw) / 2, sy: (sh - ch) / 2, cw, ch };
+        }
+
+        // ---- 实时预览（无损 CSS，不落盘）：编辑窗每次变化即时反映到照片 ----
+        let previewEdits = null;   // 当前预览中的编辑；null = 无预览
+
+        // 把裁剪比例转成 clip-path inset（在图片自身坐标系内，缩放/平移之前生效）。
+        function computeClipPath(crop) {
+            const sw = photoImage.naturalWidth, sh = photoImage.naturalHeight;
+            if (!sw || !sh) return 'none';
+            const { sx, sy, cw, ch } = computeCropRect(sw, sh, crop);
+            if (sx === 0 && sy === 0 && cw === sw && ch === sh) return 'none';
+            const top = (sy / sh) * 100, bottom = ((sh - sy - ch) / sh) * 100;
+            const left = (sx / sw) * 100, right = ((sw - sx - cw) / sw) * 100;
+            return `inset(${top.toFixed(3)}% ${right.toFixed(3)}% ${bottom.toFixed(3)}% ${left.toFixed(3)}%)`;
+        }
+
+        function applyPreview(edits) {
+            previewEdits = edits || null;
+            if (!previewEdits) { clearPreview(); return; }
+            photoImage.style.filter = buildEditFilter(edits.adjust, edits.filter);
+            photoImage.style.clipPath = computeClipPath(edits.crop);
+            updateTransform();   // 把 rotate/flip 合成进缩放/平移
+        }
+
+        function clearPreview() {
+            previewEdits = null;
+            photoImage.style.filter = '';
+            photoImage.style.clipPath = '';
+            updateTransform();
+        }
+
+        // 把当前 photoImage 按 edits 渲染到离屏 canvas，返回 dataURL。
+        function renderEditedImage(edits) {
+            const sw = photoImage.naturalWidth, sh = photoImage.naturalHeight;
+            if (!sw || !sh) return null;
+            const { sx, sy, cw, ch } = computeCropRect(sw, sh, edits.crop);
+            const rot = (((edits.rotation || 0) % 360) + 360) % 360;
+            const swap = rot === 90 || rot === 270;
+            const outW = Math.round(swap ? ch : cw);
+            const outH = Math.round(swap ? cw : ch);
+
+            const canvas = document.createElement('canvas');
+            canvas.width = outW; canvas.height = outH;
+            const ctx = canvas.getContext('2d');
+            ctx.save();
+            ctx.translate(outW / 2, outH / 2);
+            ctx.rotate(rot * Math.PI / 180);
+            ctx.scale(edits.flipH ? -1 : 1, edits.flipV ? -1 : 1);
+            ctx.filter = buildEditFilter(edits.adjust, edits.filter);
+            ctx.drawImage(photoImage, sx, sy, cw, ch, -cw / 2, -ch / 2, cw, ch);
+            ctx.restore();
+
+            const isPng = /\.png$/i.test(currentPhoto.filename || '');
+            return canvas.toDataURL(isPng ? 'image/png' : 'image/jpeg', 0.95);
+        }
+
+        ipcRenderer.on('photo-edit-applied', async (_event, { photo, edits }) => {
+            try {
+                if (!currentPhoto || currentPhoto.type === 'video') return;
+                // 先把无损 CSS 预览清掉，避免在“已编辑”的落盘结果上二次叠加
+                // （renderEditedImage 用的是 photoImage 原始位图 + canvas 滤镜，不受影响）
+                const dataUrl = renderEditedImage(edits);
+                clearPreview();
+                if (!dataUrl) { console.warn('[photo-edit] 渲染失败：图片尚未就绪'); return; }
+                const res = await ipcRenderer.invoke('save-edited-photo', {
+                    mode:            edits.saveMode || 'copy',
+                    originalPhotoId: currentPhoto.id,
+                    directory:       currentPhoto.directory,
+                    filename:        currentPhoto.filename,
+                    fullPath:        currentPhoto.fullPath,
+                    dataUrl,
+                });
+                if (!res || !res.success) {
+                    console.error('[photo-edit] 保存失败:', res && res.error);
+                    return;
+                }
+                if (res.mode === 'copy' && res.photo) {
+                    // 另存副本：作为独立照片跳转显示，并插入导航列表当前项之后
+                    currentPhoto = res.photo;
+                    await loadPhoto(res.photo);
+                    await ipcRenderer.invoke('insert-edited-copy-into-nav', res.photo);
+                    console.log('[photo-edit] 已另存为新照片并跳转:', res.path);
+                } else if (res.mode === 'overwrite' && res.renamed) {
+                    // 覆盖原图但格式改变（如 HEIC→JPG）：文件名已更新，同步导航项后重载
+                    currentPhoto.filename = res.filename;
+                    currentPhoto.fullPath = res.path;
+                    await ipcRenderer.invoke('update-current-nav-entry', currentPhoto);
+                    await loadPhoto(currentPhoto);
+                    console.log('[photo-edit] 已覆盖原图（改名）:', res.path);
+                } else {
+                    // 覆盖原图（原地写回）：刷新当前视图，加时间戳绕过缓存
+                    photoImage.onload = () => { resetZoom(); };
+                    photoImage.src = pathToFileURL(res.path).href + '?t=' + Date.now();
+                    console.log('[photo-edit] 已覆盖原图:', res.path);
+                }
+            } catch (err) {
+                console.error('[photo-edit] 应用编辑出错:', err);
+            }
+        });
+
+        // 实时预览：编辑窗每次变化即时反映到照片（无损 CSS，不落盘）
+        ipcRenderer.on('photo-edit-preview', (_event, { edits }) => {
+            if (!currentPhoto || currentPhoto.type === 'video') return;
+            applyPreview(edits);
+        });
+
+        // 取消/退出编辑：清除预览，恢复原图
+        ipcRenderer.on('photo-edit-cancelled', (_event, { photo }) => {
+            clearPreview();
+            console.log('[photo-edit] 已取消编辑，恢复原图', photo && photo.filename);
+        });
+
         // 鼠标滚轮缩放 - 在body上捕获所有wheel事件
         document.body.addEventListener('wheel', function(e) {
             // 检查鼠标是否在照片容器区域
@@ -1619,12 +1782,22 @@
         // 更新变换
         function updateTransform() {
             constrainTranslation();
-            const transformValue = `scale(${scale}) translate(${translateX / scale}px, ${translateY / scale}px)`;
-            
+            let transformValue = `scale(${scale}) translate(${translateX / scale}px, ${translateY / scale}px)`;
+
+            // 实时预览的旋转/翻转：作为最内层变换附加（先转再缩放平移）
+            if (typeof previewEdits !== 'undefined' && previewEdits &&
+                !videoPlayer.classList.contains('active')) {
+                const rot = (((previewEdits.rotation || 0) % 360) + 360) % 360;
+                const sx = previewEdits.flipH ? -1 : 1;
+                const sy = previewEdits.flipV ? -1 : 1;
+                if (rot) transformValue += ` rotate(${rot}deg)`;
+                if (sx !== 1 || sy !== 1) transformValue += ` scale(${sx}, ${sy})`;
+            }
+
             // 确保正确的元素被应用transform
             const activeElement = videoPlayer.classList.contains('active') ? videoPlayer : photoImage;
             activeElement.style.transform = transformValue;
-            
+
             zoomLevel.textContent = `${Math.round(scale * 100)}%`;
         }
 

@@ -23,6 +23,7 @@ const AutoFaceScan     = require('./modules/AutoFaceScan');
 const AutoDupScan      = require('./modules/AutoDupScan');
 const DupConfirmWindow = require('./modules/DupConfirmWindow');
 const SlideshowWindow  = require('./modules/SlideshowWindow');
+const PhotoEditWindow  = require('./modules/PhotoEditWindow');
 
 // ==================== 全局变量 ====================
 let mainWindow;
@@ -835,6 +836,7 @@ function restorePhotoFromBin(photoId, fullPath, remarkJson) {
 // ==================== IPC 处理器 ====================
 function registerIpcHandlers() {
     SlideshowWindow.registerIPC();
+    PhotoEditWindow.registerIPC(db);
     // 启动诊断：返回 DB 照片基本统计，方便在渲染器 DevTools 中检查
     ipcMain.handle('get-startup-diagnostics', () => {
         try {
@@ -1073,6 +1075,47 @@ function registerIpcHandlers() {
         const latestPhotoData = db.getPhotoByPath(navPhoto.directory, navPhoto.filename);
         if (!latestPhotoData) return { success: false };
         photoWindow.navigateTo(latestPhotoData, newIndex);
+        return { success: true };
+    });
+
+    // 「另存副本」后：把新照片插入导航列表的当前项之后并跳转到它，
+    // 使翻页箭头能在原图与副本之间正常切换。
+    ipcMain.handle('insert-edited-copy-into-nav', (_event, newPhoto) => {
+        if (!photoWindow || !photoWindow.isOpen() || !newPhoto) return { success: false };
+        const entry = { directory: newPhoto.directory, filename: newPhoto.filename };
+
+        if (Array.isArray(photoWindow.navPhotos) && photoWindow.navPhotos.length > 0) {
+            const insertAt = Math.min(photoWindow.currentIndex + 1, photoWindow.navPhotos.length);
+            photoWindow.navPhotos.splice(insertAt, 0, entry);
+            photoWindow.currentIndex = insertAt;
+        } else {
+            // 之前无导航列表（单张打开）：用原图 + 副本组成两项列表
+            const orig = photoWindow.currentPhoto;
+            const origEntry = orig ? { directory: orig.directory, filename: orig.filename } : null;
+            photoWindow.navPhotos = origEntry ? [origEntry, entry] : [entry];
+            photoWindow.currentIndex = photoWindow.navPhotos.length - 1;
+        }
+        photoWindow.currentPhoto = newPhoto;
+        photoWindow.photoWindow.webContents.send('set-navigation', {
+            currentIndex: photoWindow.currentIndex,
+            total: photoWindow.navPhotos.length
+        });
+        return { success: true, currentIndex: photoWindow.currentIndex, total: photoWindow.navPhotos.length };
+    });
+
+    // 「覆盖原图」且格式改变（HEIC→JPG 改名）后：更新当前导航项的文件名，
+    // 否则翻页离开再回来会因旧文件名找不到记录。
+    ipcMain.handle('update-current-nav-entry', (_event, newPhoto) => {
+        if (!photoWindow || !photoWindow.isOpen() || !newPhoto) return { success: false };
+        photoWindow.currentPhoto = newPhoto;
+        if (Array.isArray(photoWindow.navPhotos) &&
+            photoWindow.currentIndex >= 0 &&
+            photoWindow.currentIndex < photoWindow.navPhotos.length) {
+            photoWindow.navPhotos[photoWindow.currentIndex] = {
+                directory: newPhoto.directory,
+                filename:  newPhoto.filename
+            };
+        }
         return { success: true };
     });
 
