@@ -1018,12 +1018,15 @@ const DICT = {
         'tmw.face.notLeaf': 'Face recognition can only be set on leaf tags (tags without children).',
         'tmw.face.hasDataNoChild': 'This tag has face data. Remove face data before adding child tags.',
         'tmw.face.descriptorCount': '{count} face descriptor(s) stored',
-        'tmw.face.clearData': 'Clear Data',
+        'tmw.face.clearData': 'Clear Recognition Data',
         'tmw.face.clearConfirm': 'Clear all face recognition data for \u201c{name}\u201d? This cannot be undone.',
+        'tmw.face.clearAllTags': 'Clear All Tags',
+        'tmw.face.clearAllTagsConfirm': 'Remove the tag \u201c{name}\u201d from all photos? This cannot be undone.',
         'tmw.face.pickFace': 'Multiple faces detected in image {n}. Click the face you want to recognize:',
         'tmw.face.pickCancel': 'Cancel',
         'tmw.face.globalScan': 'Global Scan',
         'tmw.face.globalScanBusy': 'Only one face scan can run at a time',
+        'tmw.face.globalScanRescanConfirm': 'This person has already been scanned before. Do you want to start over and rescan all photos from the beginning?',
         'tmw.face.scanMode.loose': 'Loose',
         'tmw.face.scanMode.balanced': 'Balanced',
         'tmw.face.scanMode.strict': 'Strict',
@@ -1112,12 +1115,15 @@ const DICT = {
         'tmw.face.notLeaf': '\u4eba\u8138\u8bc6\u522b\u53ea\u80fd\u8bbe\u7f6e\u5728\u53f6\u5b50\u6807\u7b7e\uff08\u65e0\u5b50\u6807\u7b7e\u7684\u6807\u7b7e\uff09\u4e0a\u3002',
         'tmw.face.hasDataNoChild': '\u8be5\u6807\u7b7e\u5df2\u6709\u4eba\u8138\u6570\u636e\uff0c\u79fb\u9664\u4eba\u8138\u6570\u636e\u540e\u624d\u80fd\u6dfb\u52a0\u5b50\u6807\u7b7e\u3002',
         'tmw.face.descriptorCount': '\u5df2\u5b58\u50a8 {count} \u6761\u7279\u5f81\u6570\u636e',
-        'tmw.face.clearData': '\u6e05\u9664\u6570\u636e',
+        'tmw.face.clearData': '\u6e05\u9664\u8bc6\u522b\u6570\u636e',
         'tmw.face.clearConfirm': '\u6e05\u9664\u300c{name}\u300d\u7684\u6240\u6709\u4eba\u8138\u8bc6\u522b\u6570\u636e\uff1f\u6b64\u64cd\u4f5c\u4e0d\u53ef\u64a4\u9500\u3002',
+        'tmw.face.clearAllTags': '\u6e05\u9664\u6240\u6709\u6807\u7b7e',
+        'tmw.face.clearAllTagsConfirm': '\u5c06\u300c{name}\u300d\u4ece\u6240\u6709\u7167\u7247\u4e0a\u79fb\u9664\uff1f\u6b64\u64cd\u4f5c\u4e0d\u53ef\u64a4\u9500\u3002',
         'tmw.face.pickFace': '\u56fe\u7247 {n} \u4e2d\u68c0\u6d4b\u5230\u591a\u5f20\u4eba\u8138\uff0c\u8bf7\u70b9\u51fb\u8981\u8bc6\u522b\u7684\u4eba\u8138\uff1a',
         'tmw.face.pickCancel': '\u53d6\u6d88',
         'tmw.face.globalScan': '\u5168\u5c40\u626b\u63cf',
         'tmw.face.globalScanBusy': '\u6bcf\u6b21\u53ea\u80fd\u626b\u63cf\u4e00\u4e2a\u4eba\u7269',
+        'tmw.face.globalScanRescanConfirm': '\u8be5\u4eba\u7269\u4e4b\u524d\u5df2\u7ecf\u626b\u63cf\u8fc7\u4e00\u6b21\uff0c\u662f\u5426\u8981\u4ece\u5934\u5f00\u59cb\u91cd\u65b0\u626b\u63cf\u6240\u6709\u7167\u7247\uff1f',
         'tmw.face.scanMode.loose': '\u5bbd\u6cdb',
         'tmw.face.scanMode.balanced': '\u5e73\u8861',
         'tmw.face.scanMode.strict': '\u4e25\u683c',
@@ -2060,6 +2066,9 @@ async function renderFaceSection(container) {
                             <button class="face-re-recognize-btn danger" id="btn-clear-face">
                                 ${t('tmw.face.clearData')}
                             </button>
+                            <button class="face-re-recognize-btn danger" id="btn-clear-all-tags">
+                                ${t('tmw.face.clearAllTags')}
+                            </button>
                         </div>
                         <div class="face-btn-row" style="margin-top:8px;">
                             <select class="face-mode-select" id="scan-mode-select">
@@ -2087,10 +2096,27 @@ async function renderFaceSection(container) {
                 selectTag(selId);
             }
         });
+        document.getElementById('btn-clear-all-tags').addEventListener('click', async () => {
+            const confirmed = await showDeleteConfirm(t('tmw.face.clearAllTagsConfirm', { name: selTag.name }));
+            if (!confirmed) return;
+            const res = await api.invoke('tag-manage-clear-photo-tags', { tagId: selTag.id });
+            if (res.success) {
+                showStatus(t('tmw.status.saved'), true);
+                await loadTags();
+                selectTag(selId);
+            }
+        });
         document.getElementById('btn-global-scan').addEventListener('click', async () => {
             const mode = document.getElementById('scan-mode-select').value;
             try {
-                const res = await api.invoke('start-global-face-scan', { tagId: selTag.id, mode });
+                // 检查是否已有历史扫描记录
+                let fromScratch = false;
+                const cursor = await api.invoke('get-tag-auto-scan-cursor', selTag.id);
+                if (cursor > 0) {
+                    fromScratch = confirm(t('tmw.face.globalScanRescanConfirm'));
+                }
+
+                const res = await api.invoke('start-global-face-scan', { tagId: selTag.id, mode, fromScratch });
                 if (!res.success) {
                     showStatus(res.error || t('tmw.face.globalScanBusy'));
                 }

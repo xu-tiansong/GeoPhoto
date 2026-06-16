@@ -103,9 +103,9 @@ ipcRenderer.on('photo-location-updated', (_event, { photoId, lat, lng }) => {
     }
 });
 
-// 监听照片删除，从地图上移除对应标记
-ipcRenderer.on('photo-deleted', (_event, { photoId }) => {
-    if (mapManager) {
+// 监听照片删除，从地图上移除对应标记（仅当移动到 Bin 时）
+ipcRenderer.on('photo-deleted', (_event, { photoId, toDir }) => {
+    if (mapManager && toDir === 'Bin') {
         mapManager.removePhotoMarker(photoId);
     }
 });
@@ -118,6 +118,16 @@ ipcRenderer.on('photo-like-changed', async (event, { directory, filename, like }
         if (currentRange) {
             await mapManager.loadMarkersByTimeRange(currentRange.start, currentRange.end);
         }
+    }
+});
+
+// 监听默认坐标设置完成，刷新地图
+ipcRenderer.on('default-location-set', () => {
+    if (timeline) {
+        const range = timeline.getSelectedRange();
+        mapManager.loadMarkersByTimeRange(range.start, range.end);
+    } else {
+        mapManager.loadAllMarkers();
     }
 });
 
@@ -141,7 +151,6 @@ function handleMenuAction(action) {
         'tagManagementScenes':      'feature.tagManagement',
         'tagManagementEvents':      'feature.tagManagement',
         'backupPhotos':             'feature.backup',
-        'slideshow':                'feature.slideshow',
         'burstPhotoSelection':      'feature.burst',
         'photoRecognition':         'feature.recognition',
         'landmarkManagement':       'feature.landmarks',
@@ -156,6 +165,9 @@ function handleMenuAction(action) {
     }
 
     switch (action) {
+        case 'slideshow':
+            startSlideshow();
+            break;
         case 'about':
             alert(i18n.t('about.text'));
             break;
@@ -191,7 +203,13 @@ window.onload = async () => {
 
         // 5. 初始加载：根据时间轴的当前选择范围加载照片
         const range = timeline.getSelectedRange();
+        console.log('[诊断] 时间轴选择范围:', range.start, '~', range.end);
         mapManager.loadMarkersByTimeRange(range.start, range.end);
+
+        // 启动诊断：把 DB 基础信息打印到 DevTools Console
+        ipcRenderer.invoke('get-startup-diagnostics').then(info => {
+            console.log('[诊断] DB信息:', JSON.stringify(info, null, 2));
+        }).catch(e => console.error('[诊断] 获取DB信息失败:', e));
 
         // 6. 异步加载事件标签日期，用于时间轴高亮
         loadEventTagDates();
@@ -220,6 +238,7 @@ ipcRenderer.on('refresh-event-tag-dates', () => {
 async function loadEventTagDates() {
     try {
         const events = await ipcRenderer.invoke('get-event-tag-dates');
+        console.log('[诊断] 事件标签数量:', events ? events.length : 0, events && events.length > 0 ? events[0] : '');
         if (timeline && events && events.length > 0) {
             timeline.setEventMarkers(events);
         }
@@ -255,7 +274,7 @@ ipcRenderer.on('get-timeline-state', () => {
 /**
  * 更新扫描进度扇形图
  */
-ipcRenderer.on('face-scan-progress', (_event, { scanned, total }) => {
+ipcRenderer.on('face-scan-progress', (_event, { scanned, total, matched = 0 }) => {
     const overlay = document.getElementById('face-scan-overlay');
     const canvas  = document.getElementById('face-scan-canvas');
     const text    = document.getElementById('face-scan-text');
@@ -298,7 +317,7 @@ ipcRenderer.on('face-scan-progress', (_event, { scanned, total }) => {
     ctx.textBaseline = 'middle';
     ctx.fillText(Math.round(ratio * 100) + '%', cx, cy);
 
-    text.textContent = `${scanned} / ${total}`;
+    text.textContent = `${scanned} / ${total}（${matched}）`;
 });
 
 /**
@@ -319,6 +338,82 @@ document.getElementById('face-scan-cancel').addEventListener('click', () => {
     ipcRenderer.invoke('cancel-face-scan');
 });
 
+// ==================== 重复照片移除进度指示器 ====================
+
+/**
+ * 绘制重复照片移除进度扇形图
+ */
+ipcRenderer.on('dup-scan-progress', (_event, { done, total }) => {
+    const overlay = document.getElementById('dup-scan-overlay');
+    const canvas  = document.getElementById('dup-scan-canvas');
+    const text    = document.getElementById('dup-scan-text');
+    if (!overlay || !canvas || !text) return;
+
+    overlay.classList.add('visible');
+
+    const ctx   = canvas.getContext('2d');
+    const cx    = 64, cy = 64, r = 60;
+    const ratio = total > 0 ? done / total : 0;
+
+    ctx.clearRect(0, 0, 128, 128);
+
+    // 背景圆
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    ctx.fill();
+
+    // 进度扇形（从顶部 -π/2 顺时针，橙黄色）
+    if (ratio > 0) {
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + ratio * Math.PI * 2);
+        ctx.closePath();
+        ctx.fillStyle = '#ffb340';
+        ctx.fill();
+    }
+
+    // 中心圆（镂空效果）
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * 0.46, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(0,0,0,0.72)';
+    ctx.fill();
+
+    // 中心百分比文字
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 16px "Segoe UI", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(Math.round(ratio * 100) + '%', cx, cy);
+
+    text.textContent = `${done} / ${total}`;
+});
+
+/**
+ * 扫描完成：隐藏指示器并提示用户
+ */
+ipcRenderer.on('dup-scan-complete', (_event, { removed, total }) => {
+    const overlay = document.getElementById('dup-scan-overlay');
+    if (overlay) overlay.classList.remove('visible');
+    alert(i18n.t('dup.scan.complete', { removed, total }));
+});
+
+/**
+ * 扫描被终止：隐藏指示器
+ */
+ipcRenderer.on('dup-scan-stopped', (_event, data) => {
+    const overlay = document.getElementById('dup-scan-overlay');
+    if (overlay) overlay.classList.remove('visible');
+    const msg = (data && data.removed !== undefined)
+        ? i18n.t('dup.scan.stoppedWithStats', { removed: data.removed, processed: data.processed })
+        : i18n.t('dup.scan.stopped');
+    alert(msg);
+});
+
+document.getElementById('dup-scan-stop').addEventListener('click', () => {
+    ipcRenderer.invoke('cancel-dup-scan');
+});
+
 ipcRenderer.on('update-timeline', (event, data) => {
     if (!timeline) {
         console.warn('Timeline not initialized yet, cannot update');
@@ -332,3 +427,26 @@ ipcRenderer.on('update-timeline', (event, data) => {
         timeline.onResize();
     }
 });
+
+// ==================== 幻灯片 ====================
+function startSlideshow() {
+    if (!mapManager) return;
+
+    const bounds   = mapManager.getMapBounds();
+    const all      = mapManager.getCachedPhotos();
+    const inBounds = all.filter(p =>
+        p.lat != null && p.lng != null &&
+        bounds.contains([p.lat, p.lng])
+    );
+    if (inBounds.length === 0) {
+        alert(i18n.t('slideshow.noPhotos'));
+        return;
+    }
+    inBounds.sort((a, b) => {
+        if (!a.time) return 1;
+        if (!b.time) return -1;
+        return new Date(a.time) - new Date(b.time);
+    });
+
+    ipcRenderer.invoke('open-slideshow-window', inBounds);
+}

@@ -177,12 +177,34 @@
             background: #2a2a2a;
             display: flex;
             flex-direction: column;
-            transition: width 0.3s ease;
             flex-shrink: 0;
+            min-width: 240px;
         }
 
         .sidebar.editing {
-            width: 50%;
+            width: 50% !important;
+        }
+
+        /* 左右分隔拖拽条 */
+        .split-divider {
+            width: 5px;
+            flex-shrink: 0;
+            background: #222;
+            cursor: col-resize;
+            position: relative;
+            transition: background 0.15s;
+            z-index: 5;
+        }
+        .split-divider:hover,
+        .split-divider.dragging {
+            background: #4a9eff;
+        }
+        /* 扩大命中区域 */
+        .split-divider::after {
+            content: '';
+            position: absolute;
+            top: 0; bottom: 0;
+            left: -4px; right: -4px;
         }
 
         /* Tab导航 */
@@ -221,6 +243,12 @@
             flex: 1;
             overflow-y: auto;
             padding: 20px;
+            min-height: 0;
+        }
+        /* Similar tab: no padding, no scroll — manages its own layout */
+        .tab-content:has(#tab-similar.active) {
+            padding: 0;
+            overflow: hidden;
         }
 
         .tab-pane {
@@ -229,6 +257,11 @@
 
         .tab-pane.active {
             display: block;
+        }
+
+        /* Similar tab overrides block→flex when active */
+        #tab-similar.active {
+            display: flex;
         }
 
         /* Info面板样式 */
@@ -248,31 +281,31 @@
             word-break: break-all;
         }
 
-        /* ── 坐标复制弹出菜单 ─────────────────────────── */
+        /* ── 坐标行 ────────────────────────────────────── */
+        .coord-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
         #info-coordinates {
-            cursor: pointer;
+            flex: 1;
+            min-width: 0;
         }
-        #info-coordinates:hover {
-            text-decoration: underline dotted #888;
-        }
-        #coord-copy-menu {
-            position: fixed;
-            background: #252525;
+        .coord-action-btn {
+            flex-shrink: 0;
+            background: none;
             border: 1px solid #444;
-            border-radius: 5px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.6);
-            z-index: 9999;
-            overflow: hidden;
-            min-width: 130px;
-        }
-        .coord-copy-item {
-            padding: 8px 14px;
+            border-radius: 4px;
+            color: #aaa;
             cursor: pointer;
             font-size: 13px;
-            color: #e0e0e0;
-            white-space: nowrap;
+            padding: 1px 5px;
+            line-height: 1.4;
+            transition: background 0.15s, color 0.15s, border-color 0.15s;
         }
-        .coord-copy-item:hover { background: #383838; }
+        .coord-action-btn:hover { background: #333; color: #e0e0e0; border-color: #666; }
+        .coord-action-btn:disabled { opacity: 0.3; cursor: default; }
+        .coord-action-btn:disabled:hover { background: none; color: #aaa; border-color: #444; }
 
         /* ── 目录复制 ──────────────────────────────────── */
         #info-directory {
@@ -394,31 +427,239 @@
             color: #e57373;
         }
 
-        /* Similar Photos面板 */
-        .similar-photos-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 10px;
-        }
-
-        .similar-photo-item {
-            aspect-ratio: 1;
-            background: #1a1a1a;
-            border-radius: 4px;
-            cursor: pointer;
+        /* ── Similar tab ────────────────────────────────── */
+        #tab-similar {
+            display: none;
+            flex-direction: column;
+            height: 100%;
+            padding: 0;
             overflow: hidden;
-            transition: transform 0.2s;
+        }
+        #tab-similar.active {
+            display: flex;
         }
 
-        .similar-photo-item:hover {
-            transform: scale(1.05);
+        .sim-controls {
+            padding: 12px 14px 8px 14px;
+            flex-shrink: 0;
+        }
+        .sim-control-row {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            flex-wrap: wrap;
+        }
+        .sim-control-label {
+            font-size: 12px;
+            color: #999;
+            white-space: nowrap;
+        }
+        .sim-number-input {
+            width: 52px;
+            background: #222;
+            border: 1px solid #444;
+            border-radius: 3px;
+            color: #e0e0e0;
+            padding: 3px 6px;
+            font-size: 12px;
+            font-family: inherit;
+            outline: none;
+            text-align: center;
+        }
+        .sim-number-input:focus { border-color: #4a9eff; }
+        .sim-refresh-btn {
+            margin-left: 4px;
+            padding: 4px 12px;
+            background: #333;
+            border: 1px solid #555;
+            border-radius: 3px;
+            color: #ccc;
+            cursor: pointer;
+            font-size: 12px;
+            font-family: inherit;
+            white-space: nowrap;
+            transition: background 0.15s;
+        }
+        .sim-refresh-btn:hover { background: #444; }
+        .sim-refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .sim-hint {
+            padding: 0 14px 8px 14px;
+            font-size: 11px;
+            color: #666;
+            line-height: 1.5;
+            flex-shrink: 0;
         }
 
-        .similar-photo-item img {
+        /* thumbnail strip */
+        .sim-strip-wrap {
+            position: relative;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            padding: 0 4px;
+            background: #1e1e1e;
+            border-top: 1px solid #2a2a2a;
+            border-bottom: 1px solid #2a2a2a;
+        }
+        .sim-strip-viewport {
+            flex: 1;
+            overflow: hidden;
+            position: relative;
+        }
+        .sim-strip {
+            display: flex;
+            gap: 6px;
+            padding: 8px 4px;
+            transition: transform 0.2s ease;
+            will-change: transform;
+        }
+        .sim-strip-empty {
+            padding: 14px 10px;
+            font-size: 12px;
+            color: #555;
+            white-space: nowrap;
+        }
+        .sim-nav-btn {
+            flex-shrink: 0;
+            width: 22px;
+            height: 90px;
+            background: transparent;
+            border: none;
+            color: rgba(255,255,255,0.35);
+            font-size: 22px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            transition: color 0.15s;
+            border-radius: 3px;
+            z-index: 1;
+        }
+        .sim-nav-btn:hover { color: rgba(255,255,255,0.8); background: rgba(255,255,255,0.06); }
+        .sim-nav-btn:disabled { opacity: 0; cursor: default; }
+
+        /* individual thumbnail */
+        .sim-thumb {
+            flex-shrink: 0;
+            width: 90px;
+            height: 90px;
+            border-radius: 4px;
+            overflow: hidden;
+            position: relative;
+            border: 2px solid #383838;
+            cursor: pointer;
+            transition: border-color 0.15s;
+            background: #111;
+        }
+        .sim-thumb:hover { border-color: #4a9eff; }
+        .sim-thumb.focused { border-color: #4a9eff; }
+        .sim-thumb.checked { border-color: #ff6b6b; }
+
+        .sim-thumb img {
             width: 100%;
             height: 100%;
             object-fit: cover;
+            display: block;
         }
+        .sim-thumb-check {
+            position: absolute;
+            top: 4px;
+            left: 4px;
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+            z-index: 3;
+            accent-color: #ff6b6b;
+        }
+        .sim-thumb-overlay {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 50%;
+            background: rgba(0,0,0,0.55);
+            padding: 3px 4px 3px 4px;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            gap: 1px;
+            pointer-events: none;
+        }
+        .sim-thumb-time {
+            font-size: 9px;
+            color: rgba(255,255,255,0.8);
+            line-height: 1.3;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+        }
+        .sim-thumb-remark {
+            font-size: 9px;
+            color: rgba(255,255,255,0.55);
+            line-height: 1.3;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+        }
+
+        /* preview area */
+        .sim-preview-wrap {
+            flex: 1;
+            min-height: 0;
+            position: relative;
+            background: #0a0a0a;
+            overflow: hidden;
+            cursor: grab;
+        }
+        .sim-preview-wrap.dragging { cursor: grabbing; }
+        .sim-preview-wrap .sim-preview-inner {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .sim-preview-wrap img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            user-select: none;
+            -webkit-user-drag: none;
+        }
+        .sim-preview-empty {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            color: #444;
+        }
+
+        /* footer remove button */
+        .sim-footer {
+            flex-shrink: 0;
+            padding: 8px 14px;
+            border-top: 1px solid #2a2a2a;
+            display: flex;
+            justify-content: center;
+        }
+        .sim-remove-btn {
+            padding: 7px 36px;
+            background: #c62828;
+            border: none;
+            border-radius: 4px;
+            color: #fff;
+            cursor: pointer;
+            font-size: 13px;
+            font-family: inherit;
+            transition: background 0.15s;
+        }
+        .sim-remove-btn:hover:not(:disabled) { background: #b71c1c; }
+        .sim-remove-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
         /* Tags面板 */
         .tags-container {
@@ -786,6 +1027,9 @@
         </div>
     </div>
 
+    <!-- 左右分隔拖拽条 -->
+    <div class="split-divider" id="splitDivider"></div>
+
     <!-- 右侧容器 -->
     <div class="sidebar">
         <!-- Tab导航 -->
@@ -821,7 +1065,11 @@
                 </div>
                 <div class="info-row">
                     <div class="info-label" data-i18n="photo.coordinates">Coordinates</div>
-                    <div class="info-value" id="info-coordinates">-</div>
+                    <div class="coord-row">
+                        <div class="info-value" id="info-coordinates">-</div>
+                        <button class="coord-action-btn" id="coordCopyBtn" title="" disabled>⎘</button>
+                        <button class="coord-action-btn" id="coordLocateBtn" title="" disabled>◎</button>
+                    </div>
                 </div>
                 <div class="mini-map-container" id="miniMapContainer" style="display: none;">
                     <div class="mini-map-header">
@@ -877,7 +1125,41 @@
 
             <!-- Similar面板 -->
             <div class="tab-pane" id="tab-similar">
-                <div class="placeholder" data-i18n="photo.comingSoon">Coming soon...</div>
+                <!-- 参数控制行 -->
+                <div class="sim-controls">
+                    <div class="sim-control-row">
+                        <span class="sim-control-label">前后</span>
+                        <input type="number" id="simMinutes" class="sim-number-input" value="5" min="1" max="120">
+                        <span class="sim-control-label">分钟</span>
+                        <span class="sim-control-label" style="margin-left:6px">相似度</span>
+                        <input type="number" id="simThreshold" class="sim-number-input" value="50" min="1" max="100">
+                        <span class="sim-control-label">%</span>
+                        <button id="simRefreshBtn" class="sim-refresh-btn">刷新</button>
+                    </div>
+                </div>
+                <!-- 提示文字 -->
+                <div class="sim-hint">以下是拍摄当前照片的同时在同一地点拍摄的其他类似照片，勾选你不想保留的照片，按"移除"按钮之后，这些照片将被移入回收站。</div>
+                <!-- 缩略图条 -->
+                <div class="sim-strip-wrap">
+                    <button class="sim-nav-btn" id="simNavLeft">&#8249;</button>
+                    <div class="sim-strip-viewport">
+                        <div class="sim-strip" id="simStrip">
+                            <div class="sim-strip-empty">点击"刷新"加载相似照片</div>
+                        </div>
+                    </div>
+                    <button class="sim-nav-btn" id="simNavRight">&#8250;</button>
+                </div>
+                <!-- 预览区 -->
+                <div class="sim-preview-wrap" id="simPreviewWrap">
+                    <div class="sim-preview-inner" id="simPreviewInner">
+                        <img id="simPreviewImg" src="" style="display:none;">
+                    </div>
+                    <div class="sim-preview-empty" id="simPreviewEmpty">选择缩略图预览</div>
+                </div>
+                <!-- 移除按钮 -->
+                <div class="sim-footer">
+                    <button id="simRemoveBtn" class="sim-remove-btn" disabled>移除</button>
+                </div>
             </div>
 
             <!-- Tags面板 -->
@@ -968,6 +1250,16 @@
         ipcRenderer.on('load-photo', (event, photoData) => {
             currentPhoto = photoData;
             loadPhoto(photoData);
+            // 重置Similar tab状态，下次切换时重新加载
+            simTabLoaded = false;
+            simPhotos = [];
+            simFocusedIndex = -1;
+            simCurrentPhotoHash = null;
+            if (document.getElementById('tab-similar').classList.contains('active')) {
+                document.getElementById('simStrip').innerHTML = '<div class="sim-strip-empty">点击"刷新"加载相似照片</div>';
+                clearSimPreview();
+                updateSimRemoveBtn();
+            }
         });
 
         // 右键菜单（在照片画面上）
@@ -1016,12 +1308,15 @@
             await ipcRenderer.invoke('navigate-photo', 'next');
         });
 
-        // 键盘左右键翻页
+        // 键盘左右键翻页（Similar tab激活时改为滚动缩略图条）
         document.addEventListener('keydown', async (e) => {
+            const similarActive = document.getElementById('tab-similar').classList.contains('active');
             if (e.key === 'ArrowLeft') {
-                await ipcRenderer.invoke('navigate-photo', 'prev');
+                if (similarActive) { scrollSimStrip(-1); }
+                else { await ipcRenderer.invoke('navigate-photo', 'prev'); }
             } else if (e.key === 'ArrowRight') {
-                await ipcRenderer.invoke('navigate-photo', 'next');
+                if (similarActive) { scrollSimStrip(1); }
+                else { await ipcRenderer.invoke('navigate-photo', 'next'); }
             }
         });
 
@@ -1111,9 +1406,16 @@
             }
             
             // 更新Info信息
-            document.getElementById('info-filename').textContent = photo.filename || '-';
+            document.getElementById('info-filename').textContent = (photo.filename || '-') +
+                ((photo.id != null) ? ` (${photo.id})` : '');
             document.getElementById('info-directory').textContent = photo.directory || '-';
-            document.getElementById('info-datetime').textContent = photo.time ? new Date(photo.time).toLocaleString() : '-';
+            document.getElementById('info-datetime').textContent = photo.time ? (() => {
+                const d = new Date(photo.time);
+                if (isNaN(d.getTime())) return photo.time;
+                const p = (n, len = 2) => String(n).padStart(len, '0');
+                return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ` +
+                       `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${p(d.getMilliseconds(), 3)}`;
+            })() : '-';
             try {
                 const stat = fs.statSync(filePath);
                 document.getElementById('info-filesize').textContent = formatFileSize(stat.size);
@@ -1146,6 +1448,9 @@
                 initMiniMap(null, null);
             }
 
+            // 更新坐标按钮可用状态
+            if (window._updateCoordBtns) window._updateCoordBtns();
+
             // 加载remark
             const remarkTextarea = document.getElementById('remark-textarea');
             remarkTextarea.value = photo.remark || '';
@@ -1165,6 +1470,16 @@
 
             // 加载标签
             if (photo.id) loadPhotoTags(photo.id);
+
+            // Bin 目录：只读模式（不可编辑备注/定位，隐藏喜欢和移到回收站按钮）
+            const inBin = photo.directory === 'Bin';
+            remarkTextarea.readOnly = inBin;
+            remarkTextarea.style.opacity = inBin ? '0.5' : '';
+            remarkTextarea.style.cursor = inBin ? 'default' : '';
+            document.getElementById('editLocationBtn').style.display = inBin ? 'none' : '';
+            document.getElementById('likeBtn').style.display          = inBin ? 'none' : '';
+            document.getElementById('deleteBtn').style.display        = inBin ? 'none' : '';
+            document.querySelector('.tag-btn-row').style.display      = inBin ? 'none' : '';
         }
 
         // 缩放控制
@@ -1618,6 +1933,7 @@
             currentPhoto.lat = lat;
             currentPhoto.lng = lng;
             document.getElementById('info-coordinates').textContent = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+            if (window._updateCoordBtns) window._updateCoordBtns();
             document.getElementById('info-location').textContent = i18n.t('photo.loading');
             try {
                 const cityName = await ipcRenderer.invoke('get-city-name', { lat, lng });
@@ -1629,7 +1945,7 @@
             if (miniMap) {
                 if (miniMapMarker) miniMap.removeLayer(miniMapMarker);
                 miniMapMarker = L.marker([lat, lng]).addTo(miniMap);
-                miniMap.setView([lat, lng]);
+                miniMap.setView([lat, lng], Math.max(miniMap.getZoom(), 14));
                 miniMap.off('zoomend');
                 miniMap.on('zoomend', function() {
                     if (!isEditingLocation) miniMap.setView([lat, lng]);
@@ -1860,6 +2176,7 @@
             currentPhoto.lng = lng;
 
             document.getElementById('info-coordinates').textContent = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+            if (window._updateCoordBtns) window._updateCoordBtns();
             document.getElementById('info-location').textContent = i18n.t('photo.loading');
             try {
                 const cityName = await ipcRenderer.invoke('get-city-name', { lat, lng });
@@ -1896,6 +2213,7 @@
 
             // 刷新坐标显示
             document.getElementById('info-coordinates').textContent = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+            if (window._updateCoordBtns) window._updateCoordBtns();
             document.getElementById('info-location').textContent = i18n.t('photo.loading');
             try {
                 const cityName = await ipcRenderer.invoke('get-city-name', { lat, lng });
@@ -1908,7 +2226,7 @@
             if (miniMap) {
                 if (miniMapMarker) miniMap.removeLayer(miniMapMarker);
                 miniMapMarker = L.marker([lat, lng]).addTo(miniMap);
-                miniMap.setView([lat, lng]);
+                miniMap.setView([lat, lng], Math.max(miniMap.getZoom(), 14));
                 miniMap.off('zoomend');
                 miniMap.on('zoomend', function() {
                     if (!isEditingLocation) {
@@ -1927,15 +2245,37 @@
             }
         });
 
-        // 点击坐标文本 → 有坐标时弹复制菜单，无坐标时尝试从剪贴板粘贴
+        // 坐标区按钮
         (function () {
             const { clipboard } = require('electron');
-            const coordEl = document.getElementById('info-coordinates');
-            let copyMenu = null;
+            const coordEl    = document.getElementById('info-coordinates');
+            const copyBtn    = document.getElementById('coordCopyBtn');
+            const locateBtn  = document.getElementById('coordLocateBtn');
+            copyBtn.title   = i18n.t('photo.coordCopyTitle');
+            locateBtn.title = i18n.t('photo.coordLocateTitle');
 
-            function removeCopyMenu() {
-                if (copyMenu) { copyMenu.remove(); copyMenu = null; }
+            // 更新按钮可用状态（loadPhoto 后调用）
+            function updateCoordBtns() {
+                const hasCoord = !!(currentPhoto && currentPhoto.lat != null && currentPhoto.lng != null);
+                copyBtn.disabled   = !hasCoord;
+                locateBtn.disabled = !hasCoord;
             }
+            window._updateCoordBtns = updateCoordBtns;
+
+            // 复制坐标按钮
+            copyBtn.addEventListener('click', () => {
+                const text = coordEl.textContent.trim();
+                if (text && text !== '-') clipboard.writeText(text);
+            });
+
+            // 定位到地图按钮：发 IPC，主进程负责关窗 + 定位
+            locateBtn.addEventListener('click', () => {
+                if (!currentPhoto || currentPhoto.lat == null) return;
+                ipcRenderer.send('locate-photo-on-main-map', {
+                    lat: currentPhoto.lat,
+                    lng: currentPhoto.lng
+                });
+            });
 
             /**
              * 解析剪贴板文字中的地理坐标，返回 { lat, lng } 或 null。
@@ -1975,46 +2315,17 @@
                 return null;
             }
 
-            coordEl.addEventListener('click', async (e) => {
-                const text = coordEl.textContent.trim();
-
-                // ── 有坐标：弹出复制菜单 ─────────────────────────
-                if (text && text !== '-') {
-                    removeCopyMenu();
-                    copyMenu = document.createElement('div');
-                    copyMenu.id = 'coord-copy-menu';
-                    const item = document.createElement('div');
-                    item.className = 'coord-copy-item';
-                    item.textContent = i18n.t('photo.copyCoords');
-                    item.addEventListener('click', (ev) => {
-                        ev.stopPropagation();
-                        clipboard.writeText(text);
-                        removeCopyMenu();
-                    });
-                    copyMenu.appendChild(item);
-                    document.body.appendChild(copyMenu);
-                    const rect = coordEl.getBoundingClientRect();
-                    copyMenu.style.left = `${rect.left}px`;
-                    copyMenu.style.top  = `${rect.bottom + 4}px`;
-                    e.stopPropagation();
-                    return;
-                }
-
-                // ── 无坐标：尝试从剪贴板粘贴 ─────────────────────
-                if (!currentPhoto) return;
+            // 点击无坐标文本 → 尝试从剪贴板粘贴
+            coordEl.addEventListener('click', async () => {
+                if (!currentPhoto || (currentPhoto.lat != null)) return;
                 const coord = parseGeoCoord(clipboard.readText());
                 if (!coord) return;
 
                 const { lat, lng } = coord;
-
-                // 保存到数据库和照片文件
                 await ipcRenderer.invoke('update-photo-location', { photoId: currentPhoto.id, lat, lng });
-
-                // 更新当前照片对象
                 currentPhoto.lat = lat;
                 currentPhoto.lng = lng;
 
-                // 刷新坐标和地址显示
                 coordEl.textContent = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
                 document.getElementById('info-location').textContent = i18n.t('photo.loading');
                 try {
@@ -2024,7 +2335,6 @@
                     document.getElementById('info-location').textContent = i18n.t('photo.failedLoad');
                 }
 
-                // 更新小地图（从世界视图聚焦到该坐标）
                 if (miniMap) {
                     if (miniMapMarker) miniMap.removeLayer(miniMapMarker);
                     miniMapMarker = L.marker([lat, lng]).addTo(miniMap);
@@ -2034,9 +2344,8 @@
                         if (!isEditingLocation) miniMap.setView([lat, lng]);
                     });
                 }
+                updateCoordBtns();
             });
-
-            document.addEventListener('click', () => removeCopyMenu());
         })();
 
         // 点击目录文本 → 弹出复制路径菜单
@@ -2106,20 +2415,24 @@
         document.querySelectorAll('.tab-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 const tabName = btn.dataset.tab;
-                
+
                 // 更新按钮状态
                 document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
-                
+
                 // 更新内容显示
                 document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
                 document.getElementById(`tab-${tabName}`).classList.add('active');
-                
+
                 // 切换到Info tab时刷新地图
                 if (tabName === 'info' && miniMap) {
-                    setTimeout(() => {
-                        miniMap.invalidateSize();
-                    }, 50);
+                    setTimeout(() => miniMap.invalidateSize(), 50);
+                }
+
+                // 切换到Similar tab时自动加载（首次）
+                if (tabName === 'similar' && !simTabLoaded && currentPhoto) {
+                    simTabLoaded = true;
+                    loadSimilarPhotos();
                 }
             });
         });
@@ -2227,6 +2540,52 @@
                 window.close();
             }
         });
+
+        // ── 左右面板分隔条拖拽 ────────────────────────────────────
+        (function () {
+            const divider = document.getElementById('splitDivider');
+            const sidebar = document.querySelector('.sidebar');
+            const SIDEBAR_MIN = 240;
+            const SIDEBAR_MAX = 800;
+            const STORAGE_KEY = 'photoWindow.sidebarWidth';
+
+            // 恢复上次宽度
+            const saved = localStorage.getItem(STORAGE_KEY);
+            if (saved) sidebar.style.width = saved + 'px';
+
+            let dragging = false;
+            let startX = 0;
+            let startWidth = 0;
+
+            divider.addEventListener('mousedown', (e) => {
+                dragging = true;
+                startX = e.clientX;
+                startWidth = sidebar.offsetWidth;
+                divider.classList.add('dragging');
+                document.body.style.cursor = 'col-resize';
+                document.body.style.userSelect = 'none';
+                e.preventDefault();
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (!dragging) return;
+                // 拖条在sidebar左侧，向左拖 → sidebar变宽
+                const delta = startX - e.clientX;
+                const newWidth = Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, startWidth + delta));
+                sidebar.style.width = newWidth + 'px';
+            });
+
+            document.addEventListener('mouseup', () => {
+                if (!dragging) return;
+                dragging = false;
+                divider.classList.remove('dragging');
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+                localStorage.setItem(STORAGE_KEY, sidebar.offsetWidth);
+                // 刷新地图（若可见）
+                if (miniMap) setTimeout(() => miniMap.invalidateSize(), 50);
+            });
+        })();
 
         // ── Tag Management ───────────────────────────────────
         async function loadPhotoTags(photoId) {
@@ -2337,6 +2696,365 @@
             }
             return Math.sqrt(sum);
         }
+
+        // ── Similar Tab ──────────────────────────────────────────
+
+        // State
+        let simPhotos = [];            // currently displayed candidate photos
+        let simFocusedIndex = -1;      // which thumb is shown in preview
+        let simStripOffset = 0;        // current scroll offset (px)
+        let simThumbWidth = 96;        // thumb width + gap
+        let simPreviewScale = 1;
+        let simPreviewTX = 0;
+        let simPreviewTY = 0;
+        let simPreviewDragging = false;
+        let simPreviewDragStartX = 0;
+        let simPreviewDragStartY = 0;
+        let simCurrentPhotoHash = null; // perceptual hash of current photo
+
+        // ── Perceptual hash (8×8 average hash) ──────────────────
+        function computeHash(imgEl) {
+            const SIZE = 8;
+            const canvas = document.createElement('canvas');
+            canvas.width = SIZE; canvas.height = SIZE;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(imgEl, 0, 0, SIZE, SIZE);
+            const data = ctx.getImageData(0, 0, SIZE, SIZE).data;
+            const gray = [];
+            for (let i = 0; i < SIZE * SIZE; i++) {
+                gray.push((data[i*4]*77 + data[i*4+1]*150 + data[i*4+2]*29) >> 8);
+            }
+            const avg = gray.reduce((a,b) => a+b, 0) / gray.length;
+            return gray.map(v => v >= avg ? 1 : 0);
+        }
+
+        function hashSimilarity(h1, h2) {
+            if (!h1 || !h2 || h1.length !== h2.length) return 0;
+            let same = 0;
+            for (let i = 0; i < h1.length; i++) if (h1[i] === h2[i]) same++;
+            return same / h1.length;
+        }
+
+        async function getHashFromUrl(url) {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+                img.onload = () => resolve(computeHash(img));
+                img.onerror = () => resolve(null);
+                img.src = url;
+            });
+        }
+
+        // Compute hash of the main photo currently displayed
+        async function computeCurrentPhotoHash() {
+            if (!currentPhoto || currentPhoto.type === 'video') { simCurrentPhotoHash = null; return; }
+            try {
+                const img = document.getElementById('photoImage');
+                if (img.complete && img.naturalWidth > 0) {
+                    simCurrentPhotoHash = computeHash(img);
+                } else {
+                    simCurrentPhotoHash = null;
+                }
+            } catch (e) {
+                simCurrentPhotoHash = null;
+            }
+        }
+
+        // ── Load and display similar photos ──────────────────────
+        async function loadSimilarPhotos() {
+            if (!currentPhoto || !currentPhoto.id) return;
+
+            const minutes   = parseInt(document.getElementById('simMinutes').value) || 5;
+            const threshold = parseInt(document.getElementById('simThreshold').value) || 50;
+
+            const btn = document.getElementById('simRefreshBtn');
+            btn.disabled = true;
+            btn.textContent = '加载中...';
+
+            const strip = document.getElementById('simStrip');
+            strip.innerHTML = '<div class="sim-strip-empty">加载中...</div>';
+            simPhotos = [];
+            simFocusedIndex = -1;
+            simStripOffset = 0;
+            updateSimRemoveBtn();
+            clearSimPreview();
+
+            try {
+                const res = await ipcRenderer.invoke('get-similar-photos', {
+                    photoId: currentPhoto.id,
+                    minuteRange: minutes
+                });
+                if (!res.success || res.photos.length === 0) {
+                    strip.innerHTML = '<div class="sim-strip-empty">未找到符合条件的相似照片</div>';
+                    return;
+                }
+
+                await computeCurrentPhotoHash();
+
+                // Filter by visual similarity
+                const filtered = [];
+                for (const photo of res.photos) {
+                    if (!photo.fullPath) continue;
+                    const url = pathToFileURL(photo.fullPath).href;
+                    const hash = await getHashFromUrl(url);
+                    const sim = hashSimilarity(simCurrentPhotoHash, hash);
+                    if (sim * 100 >= threshold) {
+                        filtered.push({ ...photo, _hash: hash, _sim: sim });
+                    }
+                }
+
+                if (filtered.length === 0) {
+                    strip.innerHTML = '<div class="sim-strip-empty">未找到视觉相似度满足要求的照片</div>';
+                    return;
+                }
+
+                simPhotos = filtered;
+                renderSimStrip();
+            } catch (e) {
+                console.error('load similar photos error:', e);
+                strip.innerHTML = '<div class="sim-strip-empty">加载失败</div>';
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '刷新';
+            }
+        }
+
+        // ── Render thumbnail strip ────────────────────────────────
+        function renderSimStrip() {
+            const strip = document.getElementById('simStrip');
+            strip.innerHTML = '';
+            simStripOffset = 0;
+            strip.style.transform = 'translateX(0)';
+
+            simPhotos.forEach((photo, idx) => {
+                const item = document.createElement('div');
+                item.className = 'sim-thumb';
+                item.dataset.idx = idx;
+
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.className = 'sim-thumb-check';
+                cb.checked = false;
+                cb.addEventListener('change', () => {
+                    item.classList.toggle('checked', cb.checked);
+                    updateSimRemoveBtn();
+                });
+                cb.addEventListener('click', e => e.stopPropagation());
+                item.appendChild(cb);
+
+                const img = document.createElement('img');
+                img.src = pathToFileURL(photo.fullPath).href;
+                img.onerror = () => { img.style.display='none'; };
+                item.appendChild(img);
+
+                const overlay = document.createElement('div');
+                overlay.className = 'sim-thumb-overlay';
+
+                const timeEl = document.createElement('div');
+                timeEl.className = 'sim-thumb-time';
+                if (photo.time) {
+                    const d = new Date(photo.time);
+                    if (!isNaN(d)) {
+                        const p = n => String(n).padStart(2,'0');
+                        timeEl.textContent = `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+                    }
+                }
+                overlay.appendChild(timeEl);
+
+                const remEl = document.createElement('div');
+                remEl.className = 'sim-thumb-remark';
+                remEl.textContent = photo.remark || '';
+                overlay.appendChild(remEl);
+
+                item.appendChild(overlay);
+
+                item.addEventListener('click', () => focusSimThumb(idx));
+                strip.appendChild(item);
+            });
+
+            simThumbWidth = 90 + 6; // thumb width + gap
+            updateSimNavBtns();
+            if (simPhotos.length > 0) focusSimThumb(0);
+        }
+
+        function focusSimThumb(idx) {
+            simFocusedIndex = idx;
+            document.querySelectorAll('.sim-thumb').forEach((el, i) => {
+                el.classList.toggle('focused', i === idx);
+            });
+            showSimPreview(simPhotos[idx]);
+            scrollStripToShowThumb(idx);
+        }
+
+        function scrollStripToShowThumb(idx) {
+            const viewport = document.querySelector('.sim-strip-viewport');
+            if (!viewport) return;
+            const viewW = viewport.clientWidth;
+            const thumbStart = idx * simThumbWidth;
+            const thumbEnd   = thumbStart + 90;
+            const visStart   = -simStripOffset;
+            const visEnd     = visStart + viewW;
+            if (thumbStart < visStart) {
+                simStripOffset = -thumbStart;
+            } else if (thumbEnd > visEnd) {
+                simStripOffset = -(thumbEnd - viewW);
+            }
+            applySimStripOffset();
+        }
+
+        function applySimStripOffset() {
+            const strip = document.getElementById('simStrip');
+            const viewport = document.querySelector('.sim-strip-viewport');
+            if (!strip || !viewport) return;
+            const maxOffset = 0;
+            const totalW = simPhotos.length * simThumbWidth - 6; // minus last gap
+            const minOffset = Math.min(0, viewport.clientWidth - totalW - 8);
+            simStripOffset = Math.max(minOffset, Math.min(maxOffset, simStripOffset));
+            strip.style.transform = `translateX(${simStripOffset}px)`;
+            updateSimNavBtns();
+        }
+
+        function updateSimNavBtns() {
+            const viewport = document.querySelector('.sim-strip-viewport');
+            const totalW = simPhotos.length * simThumbWidth - 6;
+            const viewW  = viewport ? viewport.clientWidth : 0;
+            document.getElementById('simNavLeft').disabled  = simStripOffset >= 0;
+            document.getElementById('simNavRight').disabled = totalW <= viewW || simStripOffset <= viewW - totalW - 8;
+        }
+
+        function scrollSimStrip(dir) {
+            // dir: -1 = left, 1 = right
+            simStripOffset -= dir * (simThumbWidth * 2);
+            applySimStripOffset();
+        }
+
+        document.getElementById('simNavLeft').addEventListener('click', () => scrollSimStrip(-1));
+        document.getElementById('simNavRight').addEventListener('click', () => scrollSimStrip(1));
+
+        // ── Preview area ─────────────────────────────────────────
+        function showSimPreview(photo) {
+            const img = document.getElementById('simPreviewImg');
+            const empty = document.getElementById('simPreviewEmpty');
+            if (!photo || !photo.fullPath) { clearSimPreview(); return; }
+            img.style.display = 'block';
+            empty.style.display = 'none';
+            img.src = pathToFileURL(photo.fullPath).href;
+            simPreviewScale = 1;
+            simPreviewTX = 0;
+            simPreviewTY = 0;
+            applySimPreviewTransform();
+        }
+
+        function clearSimPreview() {
+            const img = document.getElementById('simPreviewImg');
+            const empty = document.getElementById('simPreviewEmpty');
+            img.src = '';
+            img.style.display = 'none';
+            empty.style.display = 'flex';
+        }
+
+        function applySimPreviewTransform() {
+            const img = document.getElementById('simPreviewImg');
+            img.style.transform = `scale(${simPreviewScale}) translate(${simPreviewTX / simPreviewScale}px, ${simPreviewTY / simPreviewScale}px)`;
+        }
+
+        const simPreviewWrap = document.getElementById('simPreviewWrap');
+
+        simPreviewWrap.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const delta = e.deltaY > 0 ? -0.15 : 0.15;
+            simPreviewScale = Math.max(0.5, Math.min(8, simPreviewScale + delta));
+            applySimPreviewTransform();
+        }, { passive: false, capture: true });
+
+        simPreviewWrap.addEventListener('mousedown', (e) => {
+            simPreviewDragging = true;
+            simPreviewDragStartX = e.clientX - simPreviewTX;
+            simPreviewDragStartY = e.clientY - simPreviewTY;
+            simPreviewWrap.classList.add('dragging');
+        });
+        document.addEventListener('mousemove', (e) => {
+            if (!simPreviewDragging) return;
+            simPreviewTX = e.clientX - simPreviewDragStartX;
+            simPreviewTY = e.clientY - simPreviewDragStartY;
+            applySimPreviewTransform();
+        });
+        document.addEventListener('mouseup', () => {
+            if (!simPreviewDragging) return;
+            simPreviewDragging = false;
+            simPreviewWrap.classList.remove('dragging');
+        });
+
+        // ── Remove button ─────────────────────────────────────────
+        function updateSimRemoveBtn() {
+            const checkedCount = document.querySelectorAll('.sim-thumb-check:checked').length;
+            const btn = document.getElementById('simRemoveBtn');
+            btn.disabled = checkedCount === 0;
+            btn.textContent = checkedCount > 0 ? `移除 (${checkedCount})` : '移除';
+        }
+
+        document.getElementById('simRemoveBtn').addEventListener('click', async () => {
+            const checked = [...document.querySelectorAll('.sim-thumb')].filter(el =>
+                el.querySelector('.sim-thumb-check').checked
+            );
+            if (checked.length === 0) return;
+
+            const photoIds = checked.map(el => simPhotos[parseInt(el.dataset.idx)].id);
+
+            try {
+                const res = await ipcRenderer.invoke('remove-similar-photos', { photoIds });
+                if (!res || res.cancelled) return;
+                if (!res.success) { alert('移除失败：' + res.error); return; }
+
+                // Remove from strip
+                const removedSet = new Set(res.removedIds);
+                simPhotos = simPhotos.filter(p => !removedSet.has(p.id));
+
+                // Re-render strip
+                if (simPhotos.length === 0) {
+                    document.getElementById('simStrip').innerHTML = '<div class="sim-strip-empty">已全部移除</div>';
+                    clearSimPreview();
+                    simFocusedIndex = -1;
+                } else {
+                    renderSimStrip();
+                    const newIdx = Math.min(simFocusedIndex, simPhotos.length - 1);
+                    focusSimThumb(Math.max(0, newIdx));
+                }
+                updateSimRemoveBtn();
+            } catch (e) {
+                console.error('remove-similar-photos error:', e);
+                alert('移除失败：' + e.message);
+            }
+        });
+
+        // ── Load/save sim settings ────────────────────────────────
+        (async () => {
+            try {
+                const s = await ipcRenderer.invoke('get-sim-settings');
+                document.getElementById('simMinutes').value   = s.minutes;
+                document.getElementById('simThreshold').value = s.threshold;
+            } catch (_) {}
+        })();
+
+        function saveSimSettings() {
+            const minutes   = parseInt(document.getElementById('simMinutes').value)   || 5;
+            const threshold = parseInt(document.getElementById('simThreshold').value) || 50;
+            ipcRenderer.invoke('save-sim-settings', { minutes, threshold }).catch(() => {});
+        }
+
+        document.getElementById('simMinutes').addEventListener('change', saveSimSettings);
+        document.getElementById('simThreshold').addEventListener('change', saveSimSettings);
+
+        // ── Refresh button ────────────────────────────────────────
+        document.getElementById('simRefreshBtn').addEventListener('click', loadSimilarPhotos);
+
+        // ── Tab switch: load on first activation ─────────────────
+        // (hooked into the existing tab-switching logic below)
+        let simTabLoaded = false;
+
+        // ── Keyboard left/right in similar tab ───────────────────
+        // Overrides the default photo-navigation arrow keys when similar tab is active
 
         document.querySelector('.match-tag-btn').addEventListener('click', async () => {
             if (!currentPhoto || !currentPhoto.id) return;

@@ -58,9 +58,13 @@ class TagManageWindow {
         }
         this._initialTab = initialTab;
 
+        const savedSize = this.db.getSetting('tagManageWindowSize');
+        const initWidth  = (savedSize && savedSize.width)  || 1024;
+        const initHeight = (savedSize && savedSize.height) || 600;
+
         this.window = new BrowserWindow({
-            width:  1024,
-            height: 600,
+            width:  initWidth,
+            height: initHeight,
             modal:  true,
             parent: this.parentWindow,
             webPreferences: {
@@ -70,12 +74,20 @@ class TagManageWindow {
             },
             frame:          false,
             center:         true,
-            resizable:      false,
+            resizable:      true,
+            minWidth:       700,
+            minHeight:      480,
             backgroundColor: '#1a1a1a'
         });
 
         this.window.loadFile(path.join(__dirname, '..', 'tag-manage-window.html'));
         this._registerHandlers();
+
+        this.window.on('resize', () => {
+            if (!this.window || this.window.isDestroyed()) return;
+            const [width, height] = this.window.getSize();
+            this.db.saveSetting('tagManageWindowSize', { width, height });
+        });
 
         this.window.on('closed', () => {
             this._removeHandlers();
@@ -195,6 +207,16 @@ class TagManageWindow {
             }
         };
 
+        // 清除所有照片上的该人物标签
+        this._handleClearAllPhotoTags = async (_event, { tagId }) => {
+            try {
+                const info = this.db.removeTagFromAllPhotos(tagId);
+                return { success: true, removed: info.changes };
+            } catch (e) {
+                return { success: false, error: e.message };
+            }
+        };
+
         // 保存事件日期
         this._handleSaveEvent = async (_event, { tagId, startTime, endTime }) => {
             try {
@@ -252,7 +274,8 @@ class TagManageWindow {
         ipcMain.handle('tag-manage-delete-tag',  this._handleDeleteTag);
         ipcMain.handle('tag-manage-move-tag',    this._handleMoveTag);
         ipcMain.handle('tag-manage-save-face',   this._handleSaveFace);
-        ipcMain.handle('tag-manage-clear-face',  this._handleClearFace);
+        ipcMain.handle('tag-manage-clear-face',       this._handleClearFace);
+        ipcMain.handle('tag-manage-clear-photo-tags', this._handleClearAllPhotoTags);
         ipcMain.handle('tag-manage-pick-image',  this._handlePickImage);
         ipcMain.handle('tag-manage-save-event',  this._handleSaveEvent);
 
@@ -420,6 +443,7 @@ class TagManageWindow {
         ipcMain.removeHandler('tag-manage-move-tag');
         ipcMain.removeHandler('tag-manage-save-face');
         ipcMain.removeHandler('tag-manage-clear-face');
+        ipcMain.removeHandler('tag-manage-clear-photo-tags');
         ipcMain.removeHandler('tag-manage-pick-image');
         ipcMain.removeHandler('tag-manage-save-event');
         ipcMain.removeHandler('tag-manage-count-photos');

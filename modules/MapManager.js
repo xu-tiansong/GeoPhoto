@@ -29,7 +29,10 @@ class MapManager {
         
         // 防抖定时器
         this.saveMapStateTimeout = null;
-        
+
+        // photoId → marker 映射，用于快速移除单个标记
+        this.photoMarkerMap = new Map();
+
         // 初始化地图
         this.initMap();
         this.initTileLayers();
@@ -95,9 +98,7 @@ class MapManager {
      */
     initMarkerCluster() {
         this.markersLayer = L.markerClusterGroup({
-            chunkedLoading: true,
-            chunkInterval: 100,
-            chunkDelay: 50,
+            chunkedLoading: false,
             spiderfyOnMaxZoom: true,
             showCoverageOnHover: false,
             zoomToBoundsOnClick: true,
@@ -124,6 +125,14 @@ class MapManager {
 
         // 矩形选框事件
         this.map.on(L.Draw.Event.CREATED, (e) => this.onRectangleCreated(e));
+
+        // 绘制矩形时改变鼠标样式为十字（设置在 body 上，确保拖拽期间也生效）
+        this.map.on('draw:drawstart', () => {
+            document.body.style.cursor = 'crosshair';
+        });
+        this.map.on('draw:drawstop', () => {
+            document.body.style.cursor = '';
+        });
     }
 
     /**
@@ -406,8 +415,12 @@ class MapManager {
      * 根据时间范围加载照片标记
      */
     async loadMarkersByTimeRange(startTime, endTime) {
-        if (this.isLoadingMarkers) return;
+        if (this.isLoadingMarkers) {
+            this._pendingTimeRange = { startTime, endTime };
+            return;
+        }
         this.isLoadingMarkers = true;
+        this._pendingTimeRange = null;
         
         try {
             // 确保是有效的Date对象
@@ -430,16 +443,17 @@ class MapManager {
             });
             
             console.log(`加载照片: ${photos.length} 张 (${start.toISOString()} - ${end.toISOString()})`);
-            
+
             this.currentPhotosCache = photos;
             this.markersLayer.clearLayers();
+            this.photoMarkerMap.clear();
             
             const locationCount = new Map();
             const markers = [];
             
-            // 默认坐标：54°24′25″S 3°17′16″E
-            const DEFAULT_LAT = -54.406944;
-            const DEFAULT_LNG = 3.287778;
+            // 默认坐标（无定位信息时使用）
+            const DEFAULT_LAT = 7.027442337002744;
+            const DEFAULT_LNG = 141.29636113745886;
             
             photos.forEach((photo, index) => {
                 // 如果没有有效的经纬度，使用默认坐标
@@ -485,16 +499,22 @@ class MapManager {
                     });
                     
                     marker._mapManager = this;
+                    if (photo.id) this.photoMarkerMap.set(photo.id, marker);
                     markers.push(marker);
                 });
-            
+
             this.markersLayer.addLayers(markers);
-            
+
             console.log(`已加载 ${photos.length} 个标记 (${startTime.toLocaleDateString()} - ${endTime.toLocaleDateString()})`);
         } catch (error) {
             console.error('加载标记出错:', error);
         } finally {
             this.isLoadingMarkers = false;
+            const pending = this._pendingTimeRange;
+            if (pending) {
+                this._pendingTimeRange = null;
+                this.loadMarkersByTimeRange(pending.startTime, pending.endTime);
+            }
         }
     }
 
@@ -506,13 +526,14 @@ class MapManager {
             const photos = await this.ipcRenderer.invoke('get-all-photos');
             this.currentPhotosCache = photos;
             this.markersLayer.clearLayers();
-            
+            this.photoMarkerMap.clear();
+
             const locationCount = new Map();
             const markers = [];
             
-            // 默认坐标：54°24′25″S 3°17′16″E
-            const DEFAULT_LAT = -54.406944;
-            const DEFAULT_LNG = 3.287778;
+            // 默认坐标（无定位信息时使用）
+            const DEFAULT_LAT = 7.027442337002744;
+            const DEFAULT_LNG = 141.29636113745886;
             
             photos.forEach((photo, index) => {
                 // 如果没有有效的经纬度，使用默认坐标
@@ -558,9 +579,10 @@ class MapManager {
                     });
                     
                     marker._mapManager = this;
+                    if (photo.id) this.photoMarkerMap.set(photo.id, marker);
                     markers.push(marker);
             });
-            
+
             this.markersLayer.addLayers(markers);
         } catch (error) {
             console.error('加载标记出错:', error);
@@ -608,6 +630,13 @@ class MapManager {
     }
 
     /**
+     * 获取当前地图可见范围
+     */
+    getMapBounds() {
+        return this.map.getBounds();
+    }
+
+    /**
      * 设置地图视图
      */
     setView(lat, lng, zoom) {
@@ -633,6 +662,7 @@ class MapManager {
      */
     clearMarkers() {
         this.markersLayer.clearLayers();
+        this.photoMarkerMap.clear();
     }
 
     /**
@@ -701,11 +731,10 @@ class MapManager {
      * 从地图上移除指定照片的标记
      */
     removePhotoMarker(photoId) {
-        for (const layer of this.markersLayer.getLayers()) {
-            if (layer.photoData && layer.photoData.id === photoId) {
-                this.markersLayer.removeLayer(layer);
-                break;
-            }
+        const marker = this.photoMarkerMap.get(photoId);
+        if (marker) {
+            this.markersLayer.removeLayer(marker);
+            this.photoMarkerMap.delete(photoId);
         }
         this.currentPhotosCache = this.currentPhotosCache.filter(p => p.id !== photoId);
     }

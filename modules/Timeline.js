@@ -908,8 +908,7 @@ class Timeline {
                     }
 
                     if (snappedEnd > this.timelineEnd) {
-                        snappedEnd = this.snapToTick(this.timelineEnd, true);
-                        snappedStart = this.addTicks(snappedEnd, -spanTicks);
+                        this.timelineEnd = this.addTicks(snappedEnd, 1);
                     }
 
                     this.selectionStart = snappedStart;
@@ -1034,8 +1033,12 @@ class Timeline {
         } else if (this.dragType === 'right') {
             const endPixel = this.timeToPixel(this.dragStartSelectionEnd);
             const newEnd = this.pixelToTime(endPixel + deltaX);
-            if (newEnd > this.selectionStart && newEnd <= this.timelineEnd) {
+            if (newEnd > this.selectionStart) {
                 this.selectionEnd = newEnd;
+                if (newEnd > this.timelineEnd) {
+                    this.timelineEnd = newEnd;
+                    this.render();
+                }
             }
             this.updateThumb(false);
         } else if (this.dragType === 'move') {
@@ -1043,16 +1046,16 @@ class Timeline {
             const startPixel = this.timeToPixel(this.dragStartSelectionStart);
             let newStart = this.pixelToTime(startPixel + deltaX);
             let newEnd = this.addTicks(newStart, spanTicks);
-            
+
             if (newStart < this.timelineStart) {
                 newStart = new Date(this.timelineStart);
                 newEnd = this.addTicks(newStart, spanTicks);
             }
             if (newEnd > this.timelineEnd) {
-                newEnd = new Date(this.timelineEnd);
-                newStart = this.addTicks(newEnd, -spanTicks);
+                this.timelineEnd = newEnd;
+                this.render();
             }
-            
+
             this.selectionStart = newStart;
             this.selectionEnd = newEnd;
             this.updateThumb(false);

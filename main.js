@@ -6,6 +6,8 @@
 const { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { execFile } = require('child_process');
+const archiver = require('archiver');
 const piexif = require('piexifjs');
 const DatabaseManager = require('./modules/Database');
 const PhotoFilesManager = require('./modules/PhotoFilesManager');
@@ -17,7 +19,10 @@ const TagManageWindow = require('./modules/TagManageWindow');
 const TagSelectWindow = require('./modules/TagSelectWindow');
 const { EventTag, LandmarkTag } = require('./modules/Tag');
 const i18n = require('./modules/i18n');
-const AutoFaceScan = require('./modules/AutoFaceScan');
+const AutoFaceScan     = require('./modules/AutoFaceScan');
+const AutoDupScan      = require('./modules/AutoDupScan');
+const DupConfirmWindow = require('./modules/DupConfirmWindow');
+const SlideshowWindow  = require('./modules/SlideshowWindow');
 
 // ==================== 全局变量 ====================
 let mainWindow;
@@ -30,7 +35,9 @@ let timelineSettingWindow;
 let tagManageWindow;
 let tagSelectWindow;
 let currentPhotoDirectory = null;
-let autoFaceScanner = null;
+let autoFaceScanner  = null;
+let autoDupScanner   = null;
+let dupConfirmWindow = null;
 
 // 待打开的 TimeLineSettingWindow 初始 Tab
 let pendingInitialTab = null;
@@ -76,6 +83,12 @@ function initializeModules() {
     // 读取已保存的照片目录
     currentPhotoDirectory = db.getPhotoDirectory();
     console.log('当前照片目录:', currentPhotoDirectory);
+
+    // 修复历史数据：将 directory 字段中的绝对路径转换为相对路径
+    if (currentPhotoDirectory) {
+        const fixed = db.normalizeDirectoryPaths(currentPhotoDirectory);
+        if (fixed > 0) console.log(`[迁移] 修复了 ${fixed} 条照片的目录路径（绝对→相对）`);
+    }
 }
 
 /**
@@ -211,6 +224,111 @@ function createWindow() {
     menuManager.registerHandler('languageEnglish', () => applyLanguage('en'));
     menuManager.registerHandler('languageChinese', () => applyLanguage('zh'));
 
+    // 为无定位照片设置默认坐标
+    menuManager.registerHandler('setDefaultLocation', () => {
+        setImmediate(async () => {
+            const count = db.db.prepare(
+                "SELECT COUNT(*) AS cnt FROM photos WHERE (lat IS NULL OR lng IS NULL) AND directory != 'Bin'"
+            ).get().cnt;
+            if (count === 0) {
+                await dialog.showMessageBox(mainWindow, {
+                    type: 'info',
+                    title: i18n.t('menu.map.setDefaultLocation'),
+                    message: i18n.getLanguage() === 'zh'
+                        ? '没有需要设置的照片（所有照片均已有定位信息）。'
+                        : 'No photos need updating (all photos already have location info).',
+                    buttons: ['OK']
+                });
+                return;
+            }
+            const { response } = await dialog.showMessageBox(mainWindow, {
+                type: 'question',
+                title: i18n.t('menu.map.setDefaultLocation'),
+                message: i18n.getLanguage() === 'zh'
+                    ? `共有 ${count} 张照片没有定位信息，将统一设置坐标为 (7.027442, 141.296361)，是否继续？`
+                    : `${count} photo(s) have no location. Set default coordinates (7.027442, 141.296361) for all of them?`,
+                buttons: i18n.getLanguage() === 'zh' ? ['确定', '取消'] : ['OK', 'Cancel'],
+                defaultId: 0,
+                cancelId: 1
+            });
+            if (response !== 0) return;
+            const changed = db.setDefaultLocationForUnlocatedPhotos(7.027442337002744, 141.29636113745886);
+            await dialog.showMessageBox(mainWindow, {
+                type: 'info',
+                title: i18n.t('menu.map.setDefaultLocation'),
+                message: i18n.getLanguage() === 'zh'
+                    ? `已为 ${changed} 张照片设置默认坐标。`
+                    : `Default location set for ${changed} photo(s).`,
+                buttons: ['OK']
+            });
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('default-location-set');
+            }
+        });
+    });
+
+    // 移除重复照片
+    menuManager.registerHandler('removeDuplicatePhotos', () => {
+        // 用 setImmediate 延迟执行，避免 Electron 原生菜单点击事件中弹窗失败
+        setImmediate(async () => {
+            try {
+                if (autoDupScanner && autoDupScanner.isRunning) {
+                    await dialog.showMessageBox(mainWindow, {
+                        type: 'info',
+                        title: i18n.t('dup.scan.confirmTitle'),
+                        message: i18n.t('dup.scan.alreadyRunning'),
+                        buttons: ['OK']
+                    });
+                    return;
+                }
+
+                // 单步确认：同时选择处理方式
+                // 按钮: 0=逐组确认  1=自动移除  2=取消
+                const { response } = await dialog.showMessageBox(mainWindow, {
+                    type: 'question',
+                    title: i18n.t('dup.scan.confirmTitle'),
+                    message: i18n.t('dup.scan.confirmMsg'),
+                    buttons: [
+                        i18n.t('dup.scan.confirmEachMode'),
+                        i18n.t('dup.scan.confirmAutoMode'),
+                        i18n.t('dup.scan.confirmCancel')
+                    ],
+                    defaultId: 1,
+                    cancelId: 2
+                });
+                if (response === 2) return; // 取消
+
+                const confirmEach = response === 0;
+
+                let confirmCallback = null;
+                if (confirmEach) {
+                    if (!dupConfirmWindow) {
+                        dupConfirmWindow = new DupConfirmWindow(mainWindow, db);
+                    }
+                    confirmCallback = (photoData, stats) => dupConfirmWindow.show(photoData, stats);
+                }
+
+                const onStop = () => {
+                    if (dupConfirmWindow) {
+                        dupConfirmWindow.destroy();
+                        dupConfirmWindow = null;
+                    }
+                };
+
+                autoDupScanner = new AutoDupScan(db, mainWindow, moveFileToBin, confirmCallback, onStop);
+                autoDupScanner.start();
+            } catch (err) {
+                console.error('[removeDuplicatePhotos] 错误:', err);
+                dialog.showMessageBox(mainWindow, {
+                    type: 'error',
+                    title: 'Error',
+                    message: err.message,
+                    buttons: ['OK']
+                }).catch(() => {});
+            }
+        });
+    });
+
     // 设置初始全屏状态
     if (windowState.isFullScreen) {
         menuManager.isFullScreen = true;
@@ -254,12 +372,482 @@ function createWindow() {
     // （隐藏的 BrowserWindow 会阻止 window-all-closed 触发，导致进程无法退出）
     mainWindow.on('close', () => {
         saveWindowState();
-        if (autoFaceScanner) autoFaceScanner.destroy();
+        if (autoFaceScanner)  autoFaceScanner.destroy();
+        if (autoDupScanner)   autoDupScanner.destroy();
+        if (dupConfirmWindow) dupConfirmWindow.destroy();
     });
+}
+
+// ==================== 容器内重复照片扫描 ====================
+
+/**
+ * 从 JPEG 文件的 SOF 段同步读取图像尺寸（不依赖 EXIF，始终可靠）
+ * @returns {{ width: number, height: number } | null}
+ */
+function _readJpegSofDimensions(filePath) {
+    const fs = require('fs');
+    let fd;
+    try {
+        fd = fs.openSync(filePath, 'r');
+        const buf = Buffer.alloc(2);
+        fs.readSync(fd, buf, 0, 2, 0);
+        if (buf[0] !== 0xFF || buf[1] !== 0xD8) return null; // 非 JPEG
+        let pos = 2;
+        while (pos < 0xA00000) {
+            fs.readSync(fd, buf, 0, 2, pos); pos += 2;
+            if (buf[0] !== 0xFF) break;
+            const m = buf[1];
+            // SOF0-SOF3 / SOF5-SOF7 / SOF9-SOF11 / SOF13-SOF15 含图像尺寸
+            if ((m >= 0xC0 && m <= 0xC3) || (m >= 0xC5 && m <= 0xC7) ||
+                (m >= 0xC9 && m <= 0xCB) || (m >= 0xCD && m <= 0xCF)) {
+                const s = Buffer.alloc(7);
+                fs.readSync(fd, s, 0, 7, pos); // len(2)+precision(1)+height(2)+width(2)
+                return { height: s.readUInt16BE(3), width: s.readUInt16BE(5) };
+            }
+            if (m === 0xD9 || m === 0xDA) break; // EOI / SOS
+            fs.readSync(fd, buf, 0, 2, pos);
+            const segLen = buf.readUInt16BE(0);
+            if (segLen < 2) break;
+            pos += segLen;
+        }
+        return null;
+    } catch (_) { return null; }
+    finally { if (fd !== undefined) try { require('fs').closeSync(fd); } catch (_) {} }
+}
+
+/**
+ * 把容器内所有照片打包为 zip 文件，弹出保存对话框让用户选择路径。
+ * @param {{ directory: string, filename: string }[]} photoPaths
+ * @param {BrowserWindow} senderWin
+ */
+async function _packContainerPhotos(photoPaths, senderWin) {
+    const { filePath, canceled } = await dialog.showSaveDialog(senderWin, {
+        title: i18n.t('photo.contextMenu.packZip'),
+        defaultPath: 'photos.zip',
+        filters: [{ name: 'ZIP Archive', extensions: ['zip'] }]
+    });
+    if (canceled || !filePath) return;
+
+    const photoDir = db.getPhotoDirectory();
+    // 收集实际存在的文件
+    const files = [];
+    for (const { directory, filename } of photoPaths) {
+        const full = path.join(photoDir, directory, filename);
+        if (fs.existsSync(full)) files.push({ full, filename });
+    }
+    if (files.length === 0) {
+        await dialog.showMessageBox(senderWin, {
+            type: 'warning',
+            title: i18n.t('photo.contextMenu.packZip'),
+            message: i18n.getLanguage() === 'zh' ? '没有找到可打包的照片文件。' : 'No photo files found to pack.',
+            buttons: ['OK']
+        });
+        return;
+    }
+
+    await new Promise((resolve, reject) => {
+        const output = fs.createWriteStream(filePath);
+        const archive = archiver('zip', { zlib: { level: 0 } }); // level 0 = store only（照片已压缩）
+        output.on('close', resolve);
+        archive.on('error', reject);
+        archive.pipe(output);
+        // 文件名重复时加序号前缀
+        const seen = new Map();
+        for (const { full, filename } of files) {
+            const count = seen.get(filename) || 0;
+            seen.set(filename, count + 1);
+            const entryName = count === 0 ? filename : `${count}_${filename}`;
+            archive.file(full, { name: entryName });
+        }
+        archive.finalize();
+    }).catch(async (err) => {
+        await dialog.showMessageBox(senderWin, {
+            type: 'error',
+            title: i18n.t('photo.contextMenu.packZip'),
+            message: err.message,
+            buttons: ['OK']
+        });
+        return;
+    });
+
+    await dialog.showMessageBox(senderWin, {
+        type: 'info',
+        title: i18n.t('photo.contextMenu.packZip'),
+        message: i18n.getLanguage() === 'zh'
+            ? `已将 ${files.length} 张照片打包到：\n${filePath}`
+            : `${files.length} photo(s) packed to:\n${filePath}`,
+        buttons: ['OK']
+    });
+}
+
+/**
+ * 对当前容器中的照片子集执行重复照片检测，无进度显示，完成后弹对话框。
+ */
+async function _runDupScanForContainer(photoIds, senderWin) {
+    // 确认框：三按钮 0=逐组确认  1=自动移除  2=取消
+    const win = senderWin && !senderWin.isDestroyed() ? senderWin : mainWindow;
+    const { response } = await dialog.showMessageBox(win, {
+        type: 'question',
+        title: i18n.t('dup.scan.confirmTitle'),
+        message: i18n.t('dup.container.confirmMsg', { count: photoIds.length }),
+        buttons: [
+            i18n.t('dup.scan.confirmEachMode'),
+            i18n.t('dup.scan.confirmOk'),
+            i18n.t('dup.scan.confirmCancel')
+        ],
+        defaultId: 1,
+        cancelId: 2
+    });
+    if (response === 2) return;
+
+    const confirmEach = response === 0;
+    let localConfirmWindow = null;
+    if (confirmEach) {
+        localConfirmWindow = new DupConfirmWindow(mainWindow, db);
+    }
+
+    let exifrModule = null;
+    const loadExifr = async () => {
+        if (exifrModule !== undefined) return exifrModule;
+        try { const m = await import('exifr'); exifrModule = m.default || m; }
+        catch (_) { exifrModule = null; }
+        return exifrModule;
+    };
+
+    const getImageDimensions = async (fp) => {
+        const ext = require('path').extname(fp).toLowerCase();
+        if (ext === '.jpg' || ext === '.jpeg') {
+            const dims = _readJpegSofDimensions(fp);
+            if (dims) return dims;
+        }
+        // 非 JPEG 或 SOF 读取失败时回退到 exifr
+        try {
+            const exifr = await loadExifr();
+            if (!exifr) return { width: null, height: null };
+            const tags = await exifr.parse(fp, {
+                pick: ['PixelXDimension', 'PixelYDimension', 'ImageWidth', 'ImageHeight',
+                       'ExifImageWidth', 'ExifImageHeight']
+            });
+            if (!tags) return { width: null, height: null };
+            return {
+                width:  tags.PixelXDimension  || tags.ExifImageWidth  || tags.ImageWidth  || null,
+                height: tags.PixelYDimension  || tags.ExifImageHeight || tags.ImageHeight || null
+            };
+        } catch (_) { return { width: null, height: null }; }
+    };
+
+    // 1. 从 DB 拉取照片数据
+    const photos = photoIds.map(id => db.getPhotoById(id)).filter(Boolean);
+    console.log(`[容器去重] 选中 ${photos.length} 张照片`);
+
+    // 2. 按 time+lat+lng 分组（经纬度四舍五入到6位小数处理精度问题）
+    const groupMap = new Map();
+    for (const p of photos) {
+        console.log(`[容器去重] 照片 ${p.id}: time=${p.time}, lat=${p.lat}, lng=${p.lng}, dir=${p.directory}`);
+        if (!p.lat || !p.lng) { console.log(`  → 跳过：无位置信息`); continue; }
+        if (!p.time || p.directory === 'Bin') { console.log(`  → 跳过：无时间或在Bin`); continue; }
+        const key = `${p.time}|${p.lat.toFixed(6)}|${p.lng.toFixed(6)}`;
+        console.log(`  → key: ${key}`);
+        if (!groupMap.has(key)) groupMap.set(key, []);
+        groupMap.get(key).push(p);
+    }
+
+    console.log(`[容器去重] 分组数: ${groupMap.size}`);
+    for (const [key, arr] of groupMap.entries()) {
+        console.log(`  组 "${key}": ${arr.length} 张`);
+    }
+
+    // 3. 阶段一：在每个候选组（时间+位置相同）内筛出真正的重复集合。
+    //    判据（满足其一）：文件大小完全相同（字节副本），或基础文件名相同（去扩展名、
+    //    忽略大小写，如 IMG_7976.HEIC 与 IMG_7976.JPG 同源不同格式）。用并查集合并。
+    //    同一秒连拍的不同照片（文件名与大小都不同）会被正确排除。只读文件大小、不解码图片。
+    let removed = 0;
+    let interrupted = false;
+    let processedGroups = 0;
+    const candidateGroups = [...groupMap.values()].filter(g => g.length >= 2);
+
+    const validatedGroups = []; // 每项为一组真重复的 normalizedData（DupConfirmWindow 所需格式）
+    for (const group of candidateGroups) {
+        // 收集路径、大小、基础文件名
+        const items = [];
+        for (const p of group) {
+            const enriched = db.addFullPathToPhoto({ ...p });
+            if (!enriched || enriched.isMissing) { console.log(`  照片 ${p.id}: 路径缺失`); continue; }
+            const fp = enriched.fullPath;
+            if (!require('fs').existsSync(fp)) { console.log(`  照片 ${p.id}: 文件不存在 ${fp}`); continue; }
+            let size = 0;
+            try { size = require('fs').statSync(fp).size; } catch (_) { console.log(`  照片 ${p.id}: 无法获取文件大小`); continue; }
+            const name = p.filename || '';
+            const base = path.basename(name, path.extname(name)).toLowerCase();
+            items.push({ photo: p, fullPath: fp, size, width: null, height: null, _base: base });
+        }
+        if (items.length < 2) continue;
+
+        // 并查集：同大小 或 同基础文件名 → 合并为一簇
+        const parent = items.map((_, i) => i);
+        const find = (x) => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
+        const union = (a, b) => { const ra = find(a), rb = find(b); if (ra !== rb) parent[ra] = rb; };
+        for (let i = 0; i < items.length; i++) {
+            for (let j = i + 1; j < items.length; j++) {
+                if (items[i].size === items[j].size ||
+                    (items[i]._base && items[i]._base === items[j]._base)) {
+                    union(i, j);
+                }
+            }
+        }
+        const clusters = new Map();
+        for (let i = 0; i < items.length; i++) {
+            const r = find(i);
+            if (!clusters.has(r)) clusters.set(r, []);
+            clusters.get(r).push(items[i]);
+        }
+        for (const arr of clusters.values()) {
+            if (arr.length >= 2) {
+                arr.sort((a, b) => b.size - a.size); // 最大文件在前（建议保留）
+                arr.forEach(it => delete it._base);
+                validatedGroups.push(arr);
+            }
+        }
+    }
+
+    const totalGroups = validatedGroups.length;
+
+    // 阶段二：逐组处理（确认模式弹窗，自动模式直接保留第一张）
+    for (let gi = 0; gi < totalGroups; gi++) {
+        const normalizedData = validatedGroups[gi];
+        let toRemove;
+
+        if (confirmEach) {
+            // 展示前才读取像素尺寸（仅当前组）
+            for (const item of normalizedData) {
+                try { const d = await getImageDimensions(item.fullPath); item.width = d.width; item.height = d.height; } catch (_) {}
+            }
+            const stats = { groupIndex: gi + 1, totalGroups, removedSoFar: removed };
+            const result = await localConfirmWindow.show(normalizedData, stats);
+
+            // 用户中断：当前组未处理完，不计入已处理数，直接退出
+            if (result.action === 'interrupt') { interrupted = true; break; }
+            processedGroups = gi + 1; // 确认或跳过均算已处理
+            if (result.action === 'skip') continue;
+
+            // 'confirm'：按索引保留用户选中的照片，移除其余
+            const keepIndexSet = new Set(result.keepIndices);
+            toRemove = normalizedData.filter((_, i) => !keepIndexSet.has(i));
+        } else {
+            // 自动移除：同大小重复保留第一张，移除其余
+            toRemove = normalizedData.slice(1);
+            processedGroups = gi + 1;
+        }
+
+        for (const { photo, fullPath } of toRemove) {
+            try {
+                moveFileToBin(photo.id, fullPath, photo.directory, photo.filename, photo.remark);
+                removed++;
+                const payload = { photoId: photo.id, fromDir: photo.directory, toDir: 'Bin' };
+                if (senderWin && !senderWin.isDestroyed()) senderWin.webContents.send('photo-deleted', payload);
+                if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('photo-deleted', payload);
+            } catch (err) { console.error('容器去重移入Bin失败:', err.message); }
+        }
+    }
+
+    if (localConfirmWindow) { localConfirmWindow.destroy(); localConfirmWindow = null; }
+
+    // 4. 结果对话框
+    await dialog.showMessageBox(win, {
+        type: 'info',
+        title: i18n.t('dup.scan.confirmTitle'),
+        message: interrupted
+            ? i18n.t('dup.scan.stoppedWithStats', { removed, processed: processedGroups })
+            : i18n.t('dup.container.result', { total: photos.length, removed }),
+        buttons: ['OK']
+    });
+}
+
+// ==================== Bin 相关操作 ====================
+/**
+ * 将照片文件（及 sidecar）移动到指定目录，更新 DB 路径。
+ * @param {number} photoId
+ * @param {string} fullPath        照片当前完整路径
+ * @param {string} targetRelDir    目标目录的相对路径
+ * @returns {string} 目标目录相对路径
+ */
+function movePhotoToDirectory(photoId, fullPath, targetRelDir) {
+    const photoDirectory = db.getPhotoDirectory();
+    if (!photoDirectory) throw new Error('未设置照片目录');
+
+    const targetAbsDir = path.join(photoDirectory, targetRelDir);
+    if (!fs.existsSync(targetAbsDir)) fs.mkdirSync(targetAbsDir, { recursive: true });
+
+    const origFilename = path.basename(fullPath);
+    const ext = path.extname(origFilename);
+    const baseName = path.basename(origFilename, ext);
+    
+    // 处理同名冲突
+    let destFilename = origFilename;
+    let destPath = path.join(targetAbsDir, destFilename);
+    let i = 1;
+    while (fs.existsSync(destPath)) {
+        destFilename = `${baseName}_${i}${ext}`;
+        destPath = path.join(targetAbsDir, destFilename);
+        i++;
+    }
+
+    // 移动主文件
+    fs.renameSync(fullPath, destPath);
+
+    // 移动 sidecar（.gpt 缩略图、.gpj HEIC缓存）
+    const srcBase  = path.join(path.dirname(fullPath), baseName);
+    const destBase = path.join(targetAbsDir, path.basename(destFilename, ext));
+    try { fs.renameSync(srcBase + '.gpt', destBase + '.gpt'); } catch (_) {}
+    try { fs.renameSync(srcBase + '.gpj', destBase + '.gpj'); } catch (_) {}
+
+    // 更新DB路径（保留原始remark）
+    db.movePhoto(photoId, targetRelDir, destFilename, undefined);
+    return targetRelDir;
+}
+
+/**
+ * 将照片文件（及 sidecar）移动到 <photoDirectory>/Bin，更新 DB 路径和 remark。
+ * remark 写入 JSON：{ orgrmk, orgnm, orgdir }，便于日后恢复。
+ * 文件名冲突时自动加序号（原始文件名保存在 orgnm，不受影响）。
+ * @param {number} photoId
+ * @param {string} fullPath        照片当前完整路径
+ * @param {string} originalDir     DB 中原始 directory 字段值
+ * @param {string} originalFilename DB 中原始 filename 字段值
+ * @param {string|null} originalRemark DB 中原始 remark 字段值
+ */
+function moveFileToBin(photoId, fullPath, originalDir, originalFilename, originalRemark) {
+    const photoDirectory = db.getPhotoDirectory();
+    if (!photoDirectory) throw new Error('未设置照片目录');
+
+    const binDir = path.join(photoDirectory, 'Bin');
+    if (!fs.existsSync(binDir)) fs.mkdirSync(binDir, { recursive: true });
+
+    // 处理同名冲突：在文件名后附加序号（原始文件名记录在 orgnm，不受影响）
+    const origFilename = path.basename(fullPath);
+    const ext = path.extname(origFilename);
+    const baseName = path.basename(origFilename, ext);
+    let destFilename = origFilename;
+    let destPath = path.join(binDir, destFilename);
+    let i = 1;
+    while (fs.existsSync(destPath)) {
+        destFilename = `${baseName}_${i}${ext}`;
+        destPath = path.join(binDir, destFilename);
+        i++;
+    }
+
+    // 移动主文件
+    fs.renameSync(fullPath, destPath);
+
+    // 移动 sidecar（.gpt 缩略图、.gpj HEIC缓存）
+    const srcBase  = path.join(path.dirname(fullPath), baseName);
+    const destBase = path.join(binDir, path.basename(destFilename, ext));
+    try { fs.renameSync(srcBase + '.gpt', destBase + '.gpt'); } catch (_) {}
+    try { fs.renameSync(srcBase + '.gpj', destBase + '.gpj'); } catch (_) {}
+
+    // 将原始信息写入 remark（DB 中 directory 用相对路径 'Bin'）
+    const remarkJson = JSON.stringify({
+        orgrmk: originalRemark !== undefined ? originalRemark : null,
+        orgnm:  originalFilename,
+        orgdir: originalDir
+    });
+    db.movePhoto(photoId, 'Bin', destFilename, remarkJson);
+}
+
+/**
+ * 将目录（relPath）及其子目录下的所有照片移到 Bin，然后物理删除该目录。
+ * @param {string} relPath  DB 中的相对路径（根目录为 ''）
+ * @param {string} absPath  该目录的绝对路径
+ * @returns {number[]} 被移动到 Bin 的照片 ID 列表
+ */
+function deleteDirectoryWithBin(relPath, absPath) {
+    const photos = db.getPhotosByDirectoryTree(relPath);
+    const movedIds = [];
+    for (const photo of photos) {
+        const enriched = db.addFullPathToPhoto({ ...photo });
+        if (enriched && enriched.fullPath && fs.existsSync(enriched.fullPath)) {
+            try {
+                moveFileToBin(photo.id, enriched.fullPath, photo.directory, photo.filename, photo.remark);
+                movedIds.push(photo.id);
+            } catch (e) {
+                console.error(`移动到Bin失败 [${enriched.fullPath}]:`, e.message);
+            }
+        }
+    }
+    // 删除物理目录（照片文件已移走，目录应为空或仅剩子目录）
+    if (fs.existsSync(absPath)) {
+        try { fs.rmSync(absPath, { recursive: true, force: true }); } catch (e) {
+            console.error(`删除目录失败 [${absPath}]:`, e.message);
+        }
+    }
+    return movedIds;
+}
+
+/**
+ * 将照片从 Bin 恢复到原始目录，并还原 remark。
+ * @param {number} photoId
+ * @param {string} fullPath   照片当前完整路径（在 Bin 内）
+ * @param {string} remarkJson DB 中当前 remark（含 orgrmk/orgnm/orgdir）
+ */
+function restorePhotoFromBin(photoId, fullPath, remarkJson) {
+    const photoDirectory = db.getPhotoDirectory();
+    if (!photoDirectory) throw new Error('未设置照片目录');
+
+    console.log('[restore] remarkJson =', JSON.stringify(remarkJson));
+
+    // 尝试解析 JSON remark，失败时降级使用 Bin 文件名 + 根目录
+    let orgrmk = remarkJson;   // 默认保留当前 remark（非 JSON 时即用户原始备注）
+    let orgnm  = path.basename(fullPath);
+    let orgdir = '';
+
+    try {
+        const parsed = JSON.parse(remarkJson);
+        console.log('[restore] parsed =', parsed);
+        if (parsed && typeof parsed === 'object') {
+            orgrmk = parsed.orgrmk !== undefined ? parsed.orgrmk : null;
+            if (parsed.orgnm) orgnm = parsed.orgnm;
+            orgdir = parsed.orgdir != null ? String(parsed.orgdir) : '';
+        }
+    } catch (e) {
+        console.log('[restore] JSON.parse 失败:', e.message);
+        // remark 不是 JSON（旧版本记录或用户手写备注），使用 Bin 文件名恢复到根目录
+    }
+    console.log('[restore] orgdir =', JSON.stringify(orgdir), '| orgnm =', orgnm);
+
+    // 计算原始目录绝对路径（orgdir 可能是相对路径也可能是绝对路径）
+    const orgDirAbs = path.isAbsolute(orgdir) ? orgdir : path.join(photoDirectory, orgdir);
+    if (!fs.existsSync(orgDirAbs)) fs.mkdirSync(orgDirAbs, { recursive: true });
+
+    const destPath = path.join(orgDirAbs, orgnm);
+    fs.renameSync(fullPath, destPath);
+
+    // 移动 sidecar
+    const srcBase  = path.join(path.dirname(fullPath), path.basename(fullPath, path.extname(fullPath)));
+    const destBase = path.join(orgDirAbs, path.basename(orgnm, path.extname(orgnm)));
+    try { fs.renameSync(srcBase + '.gpt', destBase + '.gpt'); } catch (_) {}
+    try { fs.renameSync(srcBase + '.gpj', destBase + '.gpj'); } catch (_) {}
+
+    // 恢复 DB 路径和 remark
+    db.movePhoto(photoId, orgdir, orgnm, orgrmk);
+    return orgdir;
 }
 
 // ==================== IPC 处理器 ====================
 function registerIpcHandlers() {
+    SlideshowWindow.registerIPC();
+    // 启动诊断：返回 DB 照片基本统计，方便在渲染器 DevTools 中检查
+    ipcMain.handle('get-startup-diagnostics', () => {
+        try {
+            const photoDir = db.getPhotoDirectory();
+            const total = db.db.prepare('SELECT COUNT(*) as cnt FROM photos WHERE directory != "Bin"').get();
+            const samples = db.db.prepare('SELECT directory, filename, time FROM photos WHERE directory != "Bin" LIMIT 5').all();
+            const minMax = db.db.prepare('SELECT MIN(time) as minT, MAX(time) as maxT FROM photos WHERE directory != "Bin"').get();
+            return { photoDir, totalPhotos: total.cnt, samples, minTime: minMax.minT, maxTime: minMax.maxT };
+        } catch (e) {
+            return { error: e.message };
+        }
+    });
+
     // 获取当前语言
     ipcMain.handle('get-language', () => i18n.getLanguage());
 
@@ -355,11 +943,27 @@ function registerIpcHandlers() {
         const photoDir = db.getPhotoDirectory();
         if (!photoDir) return [];
 
-        const uniqueDirs = db.getUniquePhotoDirs(); // [{directory, count}]
+        const uniqueDirs = db.getAllDirectoriesWithCounts(); // [{directory, count}] 包括空目录
         if (uniqueDirs.length === 0) return [];
 
-        const dirCountMap = new Map(uniqueDirs.map(r => [r.directory, r.count]));
-        const allRelDirs = uniqueDirs.map(r => r.directory);
+        // 将绝对路径（在 photoDir 范围内）转为相对路径，其余绝对路径忽略
+        const normPhotoDir = path.normalize(photoDir);
+        const photoDirPrefix = normPhotoDir + path.sep;
+        function toRel(d) {
+            if (!path.isAbsolute(d)) return d;
+            const nd = path.normalize(d);
+            if (nd === normPhotoDir) return '';
+            if (nd.startsWith(photoDirPrefix)) return nd.slice(photoDirPrefix.length);
+            return null;
+        }
+
+        const dirCountMap = new Map();
+        for (const r of uniqueDirs) {
+            const rel = toRel(r.directory);
+            if (rel === null) continue;
+            dirCountMap.set(rel, (dirCountMap.get(rel) || 0) + r.count);
+        }
+        const allRelDirs = [...dirCountMap.keys()];
 
         function buildNode(relPath) {
             const children = [];
@@ -520,6 +1124,7 @@ function registerIpcHandlers() {
         }
         return true;
     });
+
 
     // 获取城市名称（逆地理编码）
     ipcMain.handle('get-city-name', async (event, { lat, lng }) => {
@@ -755,6 +1360,68 @@ function registerIpcHandlers() {
         return db.getPhotosNearTime(photoId, count);
     });
 
+    // 获取/保存相似照片参数设置（minuteRange + threshold）
+    ipcMain.handle('get-sim-settings', () => {
+        const minutes   = parseInt(db.getSetting('sim_minutes'),   10);
+        const threshold = parseInt(db.getSetting('sim_threshold'), 10);
+        return {
+            minutes:   isNaN(minutes)   ? 5  : minutes,
+            threshold: isNaN(threshold) ? 50 : threshold,
+        };
+    });
+
+    ipcMain.handle('save-sim-settings', (_event, { minutes, threshold }) => {
+        if (minutes   !== undefined) db.saveSetting('sim_minutes',   minutes);
+        if (threshold !== undefined) db.saveSetting('sim_threshold', threshold);
+    });
+
+    // 获取相似候选照片列表（Similar tab 用）
+    ipcMain.handle('get-similar-photos', (_event, { photoId, minuteRange = 5 }) => {
+        try {
+            const photos = db.getSimilarPhotosByTime(photoId, minuteRange);
+            return { success: true, photos };
+        } catch (e) {
+            return { success: false, error: e.message, photos: [] };
+        }
+    });
+
+    // 批量移除相似照片到 Bin（Similar tab 用，含确认对话框）
+    ipcMain.handle('remove-similar-photos', async (event, { photoIds }) => {
+        try {
+            const senderWin = BrowserWindow.fromWebContents(event.sender);
+            const { response } = await dialog.showMessageBox(senderWin, {
+                type: 'warning',
+                title: '移到回收站',
+                message: `确认将 ${photoIds.length} 张照片移入回收站？`,
+                buttons: ['移除', '取消'],
+                defaultId: 1,
+                cancelId: 1
+            });
+            if (response !== 0) return { cancelled: true, removedIds: [] };
+
+            const removedIds = [];
+            for (const photoId of photoIds) {
+                const photoData = db.addFullPathToPhoto(db.getPhotoById(photoId));
+                if (!photoData) continue;
+                const fullPath = photoData.fullPath;
+                if (fullPath && fs.existsSync(fullPath)) {
+                    moveFileToBin(photoId, fullPath, photoData.directory, photoData.filename, photoData.remark);
+                    removedIds.push(photoId);
+                }
+            }
+            for (const photoId of removedIds) {
+                const payload = { photoId, fromDir: null, toDir: 'Bin' };
+                if (photosManageWindow && photosManageWindow.isOpen())
+                    photosManageWindow.manageWindow.webContents.send('photo-deleted', payload);
+                if (mainWindow && !mainWindow.isDestroyed())
+                    mainWindow.webContents.send('photo-deleted', payload);
+            }
+            return { success: true, removedIds };
+        } catch (e) {
+            return { success: false, error: e.message };
+        }
+    });
+
     // 更新照片坐标（照片窗口地图编辑）
     ipcMain.handle('update-photo-location', async (_event, { photoId, lat, lng }) => {
         try {
@@ -777,12 +1444,16 @@ function registerIpcHandlers() {
     });
 
     // ── 全局人脸扫描 ────────────────────────────────────────
-    ipcMain.handle('start-global-face-scan', async (_event, { tagId, mode = 'balanced' }) => {
+    ipcMain.handle('get-tag-auto-scan-cursor', (_event, tagId) => {
+        return db.getTagAutoScanCursor(tagId);
+    });
+
+    ipcMain.handle('start-global-face-scan', async (_event, { tagId, mode = 'balanced', fromScratch = false }) => {
         try {
             if (!autoFaceScanner) {
                 autoFaceScanner = new AutoFaceScan(db, mainWindow);
             }
-            const result = await autoFaceScanner.start(tagId, mode);
+            const result = await autoFaceScanner.start(tagId, mode, fromScratch);
             // 启动成功则关闭标签管理窗口
             if (result.success && tagManageWindow && tagManageWindow.isOpen()) {
                 tagManageWindow.close();
@@ -801,6 +1472,13 @@ function registerIpcHandlers() {
         return { success: false };
     });
 
+    ipcMain.handle('cancel-dup-scan', async () => {
+        if (autoDupScanner && autoDupScanner.cancel()) {
+            return { success: true };
+        }
+        return { success: false };
+    });
+
     // 双击时间bar/时间轴触发设置窗口
     ipcMain.on('open-timeline-settings', () => {
         pendingInitialTab = null;
@@ -811,8 +1489,31 @@ function registerIpcHandlers() {
         mainWindow.webContents.send('get-timeline-state');
     });
 
+    // ── 容器背景右键菜单 ────────────────────────────────────────
+    ipcMain.on('show-container-context-menu', (event, { photoIds, photoPaths }) => {
+        const senderWin = BrowserWindow.fromWebContents(event.sender);
+        const template = [];
+
+        // "移除重复照片"（超过1张才启用）
+        template.push({
+            label: i18n.t('photo.contextMenu.removeDupsInContainer'),
+            enabled: photoIds.length > 1,
+            click: () => _runDupScanForContainer(photoIds, senderWin)
+        });
+
+        template.push({ type: 'separator' });
+
+        // "生成打包文件"
+        template.push({
+            label: i18n.t('photo.contextMenu.packZip'),
+            click: () => _packContainerPhotos(photoPaths, senderWin)
+        });
+
+        Menu.buildFromTemplate(template).popup({ window: senderWin });
+    });
+
     // ── 照片右键菜单 ─────────────────────────────────────────
-    ipcMain.on('show-photo-context-menu', (event, { photoId, directory, filename, isVideo }) => {
+    ipcMain.on('show-photo-context-menu', (event, { photoId, directory, filename, isVideo, navPhotos, currentIndex }) => {
         const photoData = db.getPhotoByPath(directory, filename);
         const fullPath  = photoData ? photoData.fullPath : null;
         const senderWin = BrowserWindow.fromWebContents(event.sender);
@@ -876,7 +1577,53 @@ function registerIpcHandlers() {
             }
         }
 
+        // 判断照片是否在 Bin 目录（用于切换菜单项）
+        const photoDirectory = db.getPhotoDirectory();
+        const binDirAbs = photoDirectory ? path.join(photoDirectory, 'Bin') : null;
+        const isInBin = !!(fullPath && binDirAbs &&
+            path.normalize(path.dirname(fullPath)) === path.normalize(binDirAbs));
+
+        // 广播辅助
+        const notifyAllWindows = (channel, data) => {
+            if (photosManageWindow && photosManageWindow.isOpen())
+                photosManageWindow.manageWindow.webContents.send(channel, data);
+            if (photoWindow && photoWindow.isOpen())
+                photoWindow.photoWindow.webContents.send(channel, data);
+            if (mainWindow && !mainWindow.isDestroyed())
+                mainWindow.webContents.send(channel, data);
+        };
+
         const template = [
+            {
+                label:   i18n.t('photo.contextMenu.open'),
+                enabled: !!fullPath,
+                click: () => {
+                    if (photoWindow && photoData) {
+                        photoWindow.show(photoData, navPhotos || null, currentIndex ?? -1, senderWin !== mainWindow ? senderWin : null);
+                    }
+                }
+            },
+            { type: 'separator' },
+            {
+                label:   i18n.t('photo.contextMenu.setWallpaper'),
+                enabled: !isVideo && !!fullPath,
+                click: () => {
+                    if (!fullPath) return;
+                    // 设置注册表：WallpaperStyle=10(Fill/Cover), TileWallpaper=0
+                    const escapedPath = fullPath.replace(/'/g, "''");
+                    const ps = `
+$regPath = 'HKCU:\\Control Panel\\Desktop';
+Set-ItemProperty -Path $regPath -Name WallpaperStyle -Value 10;
+Set-ItemProperty -Path $regPath -Name TileWallpaper -Value 0;
+Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class W { [DllImport("user32.dll")] public static extern bool SystemParametersInfo(int a, int b, string c, int d); }';
+[W]::SystemParametersInfo(20, 0, '${escapedPath}', 3);
+`.trim();
+                    execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], (err) => {
+                        if (err) console.error('设置桌面壁纸失败:', err);
+                    });
+                }
+            },
+            { type: 'separator' },
             {
                 label:   i18n.t('photo.contextMenu.copy'),
                 enabled: !isVideo && !!fullPath,
@@ -908,7 +1655,128 @@ function registerIpcHandlers() {
                 submenu: tagsSubmenu
             },
             { type: 'separator' },
-            {
+            // "移动到"子菜单（仅非Bin照片显示）
+            ...(!isInBin ? [(() => {
+                // 构建目录子菜单
+                const photoDir = db.getPhotoDirectory();
+                if (!photoDir) return { label: i18n.t('photo.contextMenu.moveTo'), enabled: false };
+                
+                const uniqueDirs = db.getAllDirectoriesWithCounts();
+                const normPhotoDir = path.normalize(photoDir);
+                const photoDirPrefix = normPhotoDir + path.sep;
+                
+                function toRel(d) {
+                    if (!path.isAbsolute(d)) return d;
+                    const nd = path.normalize(d);
+                    if (nd === normPhotoDir) return '';
+                    if (nd.startsWith(photoDirPrefix)) return nd.slice(photoDirPrefix.length);
+                    return null;
+                }
+                
+                const allRelDirs = new Set();
+                for (const r of uniqueDirs) {
+                    const rel = toRel(r.directory);
+                    if (rel !== null && rel !== 'Bin') allRelDirs.add(rel);
+                }
+                
+                // 递归构建子菜单
+                function buildSubmenu(relPath) {
+                    const children = [];
+                    const visited = new Set();
+                    
+                    for (const d of allRelDirs) {
+                        if (d === relPath) continue;
+                        let rest;
+                        if (relPath === '') {
+                            if (d === '') continue;
+                            rest = d;
+                        } else {
+                            if (d.startsWith(relPath + '\\')) {
+                                rest = d.slice(relPath.length + 1);
+                            } else if (d.startsWith(relPath + '/')) {
+                                rest = d.slice(relPath.length + 1);
+                            } else {
+                                continue;
+                            }
+                        }
+                        const firstSeg = rest.split(/[/\\]/)[0];
+                        if (!firstSeg || visited.has(firstSeg)) continue;
+                        visited.add(firstSeg);
+                        const childRel = relPath === '' ? firstSeg : relPath + path.sep + firstSeg;
+                        children.push({ relPath: childRel, name: firstSeg });
+                    }
+                    
+                    children.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+                    
+                    return children.map(child => {
+                        const subChildren = buildSubmenu(child.relPath);
+                        const isCurrent = (directory === child.relPath);
+                        const menuItem = {
+                            label: child.name,
+                            // 有子目录时始终启用（禁用会导致 Windows 原生菜单不打开子菜单）
+                            enabled: subChildren.length > 0 || !isCurrent,
+                            click: () => {
+                                if (isCurrent || !fullPath || !photoData) return;
+                                try {
+                                    const fromDir = photoData.directory;
+                                    movePhotoToDirectory(photoId, fullPath, child.relPath);
+                                    notifyAllWindows('photo-deleted', { photoId, fromDir, toDir: child.relPath });
+                                } catch (e) {
+                                    console.error('移动照片失败:', e);
+                                    dialog.showMessageBox(senderWin, { type: 'error', message: e.message });
+                                }
+                            }
+                        };
+                        if (subChildren.length > 0) {
+                            menuItem.submenu = subChildren;
+                        }
+                        return menuItem;
+                    });
+                }
+                
+                const rootSubmenu = buildSubmenu('');
+                // 添加根目录选项
+                const isAtRoot = (directory === '');
+                rootSubmenu.unshift({
+                    label: path.basename(photoDir) + ' (根目录)',
+                    enabled: !isAtRoot,
+                    click: () => {
+                        if (!fullPath || !photoData) return;
+                        try {
+                            const fromDir = photoData.directory;
+                            movePhotoToDirectory(photoId, fullPath, '');
+                            notifyAllWindows('photo-deleted', { photoId, fromDir, toDir: '' });
+                        } catch (e) {
+                            console.error('移动照片失败:', e);
+                            dialog.showMessageBox(senderWin, { type: 'error', message: e.message });
+                        }
+                    }
+                });
+                if (rootSubmenu.length > 1) {
+                    rootSubmenu.splice(1, 0, { type: 'separator' });
+                }
+                
+                return {
+                    label:   i18n.t('photo.contextMenu.moveTo'),
+                    enabled: !!fullPath,
+                    submenu: rootSubmenu
+                };
+            })()] : []),
+            // Bin 内照片显示"恢复"，否则显示"移到回收站"
+            isInBin ? {
+                label:   i18n.t('photo.contextMenu.restore'),
+                enabled: !!fullPath,
+                click: async () => {
+                    if (!fullPath || !photoData) return;
+                    try {
+                        const toDir = restorePhotoFromBin(photoId, fullPath, photoData.remark);
+                        notifyAllWindows('photo-deleted', { photoId, fromDir: 'Bin', toDir });
+                    } catch (e) {
+                        console.error('恢复失败:', e);
+                        dialog.showMessageBox(senderWin, { type: 'error', message: e.message });
+                    }
+                }
+            } : {
                 label:   i18n.t('photo.contextMenu.delete'),
                 enabled: true,
                 click: async () => {
@@ -922,33 +1790,34 @@ function registerIpcHandlers() {
                     });
                     if (response !== 0) return;
 
-                    // 删除原文件
-                    if (fullPath) {
-                        try { fs.unlinkSync(fullPath); } catch (_) {}
-                        const base = path.join(path.dirname(fullPath), path.basename(fullPath, path.extname(fullPath)));
-                        try { fs.unlinkSync(base + '.gpt'); } catch (_) {}  // 缩略图 sidecar
-                        try { fs.unlinkSync(base + '.gpj'); } catch (_) {}  // HEIC 转换缓存
+                    if (fullPath && photoData) {
+                        try {
+                            moveFileToBin(photoId, fullPath, photoData.directory, photoData.filename, photoData.remark);
+                        } catch (e) {
+                            console.error('移动到回收站失败:', e);
+                        }
                     }
-
-                    // 从数据库删除（ON DELETE CASCADE 自动清理 photo_tags）
-                    db.deletePhoto(photoId);
-
-                    // 通知各窗口移除该照片
-                    if (photosManageWindow && photosManageWindow.isOpen()) {
-                        photosManageWindow.manageWindow.webContents.send('photo-deleted', { photoId });
-                    }
-                    if (photoWindow && photoWindow.isOpen()) {
-                        photoWindow.photoWindow.webContents.send('photo-deleted', { photoId });
-                    }
-                    if (mainWindow && !mainWindow.isDestroyed()) {
-                        mainWindow.webContents.send('photo-deleted', { photoId });
-                    }
+                    notifyAllWindows('photo-deleted', { photoId, fromDir: photoData ? photoData.directory : null, toDir: 'Bin' });
                 }
             }
         ];
 
         const menu = Menu.buildFromTemplate(template);
         menu.popup({ window: senderWin });
+    });
+
+    // ── 定位到主地图（关闭照片窗和管理窗，主窗口飞到该位置）────────
+    ipcMain.on('locate-photo-on-main-map', (_event, { lat, lng }) => {
+        if (photosManageWindow && photosManageWindow.isOpen()) {
+            photosManageWindow.manageWindow.close();
+        }
+        if (photoWindow && photoWindow.isOpen()) {
+            photoWindow.photoWindow.close();
+        }
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('locate-on-map', { lat, lng });
+            mainWindow.focus();
+        }
     });
 
     // ── 删除照片（按钮直接触发，与右键菜单删除逻辑相同）─────────
@@ -967,23 +1836,23 @@ function registerIpcHandlers() {
         const photoData = db.getPhotoByPath(directory, filename);
         const fullPath  = photoData ? photoData.fullPath : null;
 
-        if (fullPath) {
-            try { fs.unlinkSync(fullPath); } catch (_) {}
-            const base = path.join(path.dirname(fullPath), path.basename(fullPath, path.extname(fullPath)));
-            try { fs.unlinkSync(base + '.gpt'); } catch (_) {}  // 缩略图 sidecar
-            try { fs.unlinkSync(base + '.gpj'); } catch (_) {}  // HEIC 转换缓存
+        if (fullPath && photoData) {
+            try {
+                moveFileToBin(photoId, fullPath, photoData.directory, photoData.filename, photoData.remark);
+            } catch (e) {
+                console.error('移动到回收站失败:', e);
+            }
         }
 
-        db.deletePhoto(photoId);
-
+        const payload = { photoId, fromDir: photoData ? photoData.directory : null, toDir: 'Bin' };
         if (photosManageWindow && photosManageWindow.isOpen()) {
-            photosManageWindow.manageWindow.webContents.send('photo-deleted', { photoId });
+            photosManageWindow.manageWindow.webContents.send('photo-deleted', payload);
         }
         if (photoWindow && photoWindow.isOpen()) {
-            photoWindow.photoWindow.webContents.send('photo-deleted', { photoId });
+            photoWindow.photoWindow.webContents.send('photo-deleted', payload);
         }
         if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('photo-deleted', { photoId });
+            mainWindow.webContents.send('photo-deleted', payload);
         }
         return { deleted: true };
     });
@@ -998,6 +1867,228 @@ function registerIpcHandlers() {
             timelineSettingWindow.window.focus();
         }
     });
+
+    // ── 目录右键菜单 ─────────────────────────────────────────
+    ipcMain.on('show-directory-context-menu', (event, { relPath, absPath, name }) => {
+        const senderWin = BrowserWindow.fromWebContents(event.sender);
+        
+        // Bin 目录特殊处理：显示「恢复全部照片」菜单
+        if (relPath === 'Bin') {
+            const binPhotos = db.getPhotosByDirectoryTree('Bin');
+            const template = [
+                {
+                    label:   i18n.t('dir.contextMenu.restoreAll'),
+                    enabled: binPhotos.length > 0,
+                    click: async () => {
+                        const { response } = await dialog.showMessageBox(senderWin, {
+                            type:      'question',
+                            title:     i18n.t('dir.restoreAllConfirmTitle'),
+                            message:   i18n.t('dir.restoreAllConfirmMsg', { count: binPhotos.length }),
+                            buttons:   [i18n.t('dir.restoreAllConfirmOk'), i18n.t('dir.restoreAllConfirmCancel')],
+                            defaultId: 1,
+                            cancelId:  1
+                        });
+                        if (response !== 0) return;
+
+                        let successCount = 0;
+                        let failCount = 0;
+                        for (const photo of binPhotos) {
+                            const enriched = db.addFullPathToPhoto({ ...photo });
+                            if (enriched && enriched.fullPath && fs.existsSync(enriched.fullPath)) {
+                                try {
+                                    restorePhotoFromBin(photo.id, enriched.fullPath, photo.remark);
+                                    successCount++;
+                                } catch (e) {
+                                    console.error(`恢复照片失败 [${enriched.fullPath}]:`, e.message);
+                                    failCount++;
+                                }
+                            } else {
+                                failCount++;
+                            }
+                        }
+
+                        // 通知渲染进程刷新
+                        senderWin.webContents.send('bin-photos-restored');
+
+                        dialog.showMessageBox(senderWin, {
+                            type:    'info',
+                            title:   i18n.t('dir.restoreAllCompleteTitle'),
+                            message: i18n.t('dir.restoreAllCompleteMsg', { success: successCount, fail: failCount })
+                        });
+                    }
+                },
+                {
+                    label:   i18n.t('dir.contextMenu.emptyBin'),
+                    enabled: binPhotos.length > 0,
+                    click: async () => {
+                        const { response } = await dialog.showMessageBox(senderWin, {
+                            type:      'warning',
+                            title:     i18n.t('dir.emptyBinConfirmTitle'),
+                            message:   i18n.t('dir.emptyBinConfirmMsg', { count: binPhotos.length }),
+                            buttons:   [i18n.t('dir.emptyBinConfirmOk'), i18n.t('dir.emptyBinConfirmCancel')],
+                            defaultId: 1,
+                            cancelId:  1
+                        });
+                        if (response !== 0) return;
+
+                        let deleted = 0;
+                        let fail    = 0;
+                        const deletedIds = [];
+
+                        for (const photo of binPhotos) {
+                            const enriched = db.addFullPathToPhoto({ ...photo });
+                            if (!enriched || !enriched.fullPath) { fail++; continue; }
+
+                            const fullPath = enriched.fullPath;
+                            const ext      = path.extname(fullPath);
+                            const base     = path.join(path.dirname(fullPath), path.basename(fullPath, ext));
+
+                            // 删除主文件
+                            try {
+                                if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
+                            } catch (e) {
+                                console.error(`清空Bin: 删除文件失败 [${fullPath}]:`, e.message);
+                                fail++;
+                                continue;
+                            }
+
+                            // 删除 sidecar（.gpt 缩略图、.gpj HEIC缓存），失败不影响计数
+                            try { fs.unlinkSync(base + '.gpt'); } catch (_) {}
+                            try { fs.unlinkSync(base + '.gpj'); } catch (_) {}
+
+                            deletedIds.push(photo.id);
+                            deleted++;
+                        }
+
+                        // 批量删除 DB 记录（含 photo_tags）
+                        if (deletedIds.length > 0) {
+                            db.deletePhotosByIds(deletedIds);
+                        }
+
+                        // 通知渲染进程刷新
+                        senderWin.webContents.send('bin-photos-restored');
+
+                        dialog.showMessageBox(senderWin, {
+                            type:    'info',
+                            title:   i18n.t('dir.emptyBinCompleteTitle'),
+                            message: i18n.t('dir.emptyBinCompleteMsg', { deleted, fail })
+                        });
+                    }
+                }
+            ];
+            Menu.buildFromTemplate(template).popup({ window: senderWin });
+            return;
+        }
+        
+        const isRoot = relPath === '';
+
+        const template = [
+            {
+                label:   i18n.t('dir.contextMenu.createSubdir'),
+                click: () => {
+                    // 通知渲染进程开启内联输入创建子目录
+                    senderWin.webContents.send('dir-create-subdir-prompt', { relPath, absPath });
+                }
+            },
+            {
+                label:   i18n.t('dir.contextMenu.rename'),
+                enabled: !isRoot,
+                click: () => {
+                    // 通知渲染进程启动内联重命名
+                    senderWin.webContents.send('dir-rename-prompt', { relPath, name });
+                }
+            },
+            {
+                label:   i18n.t('dir.contextMenu.delete'),
+                enabled: !isRoot,
+                click: async () => {
+                    const { response } = await dialog.showMessageBox(senderWin, {
+                        type:      'warning',
+                        title:     i18n.t('dir.deleteConfirmTitle'),
+                        message:   i18n.t('dir.deleteConfirmMsg', { name }),
+                        buttons:   [i18n.t('dir.deleteConfirmOk'), i18n.t('dir.deleteConfirmCancel')],
+                        defaultId: 1,
+                        cancelId:  1
+                    });
+                    if (response !== 0) return;
+                    try {
+                        const movedIds = deleteDirectoryWithBin(relPath, absPath);
+                        senderWin.webContents.send('directory-deleted', { relPath });
+                        // 通知主窗口从地图移除照片标记
+                        if (mainWindow && !mainWindow.isDestroyed()) {
+                            for (const photoId of movedIds) {
+                                mainWindow.webContents.send('photo-deleted', { photoId, fromDir: relPath, toDir: 'Bin' });
+                            }
+                        }
+                    } catch (e) {
+                        console.error('删除目录失败:', e);
+                        dialog.showMessageBox(senderWin, { type: 'error', message: e.message });
+                    }
+                }
+            }
+        ];
+        Menu.buildFromTemplate(template).popup({ window: senderWin });
+    });
+
+    // ── 目录重命名 ──────────────────────────────────────────
+    ipcMain.handle('rename-directory', (_event, { oldRelPath, newName }) => {
+        if (!newName || /[\\/:*?"<>|]/.test(newName)) {
+            return { success: false, error: i18n.t('dir.invalidName') || '目录名包含非法字符' };
+        }
+        const photoDirectory = db.getPhotoDirectory();
+        if (!photoDirectory) return { success: false, error: '未设置照片目录' };
+
+        // 计算新相对路径（保留父目录部分）
+        const sep = path.sep;
+        const lastSep = Math.max(oldRelPath.lastIndexOf('\\'), oldRelPath.lastIndexOf('/'));
+        const parentRel = lastSep >= 0 ? oldRelPath.slice(0, lastSep) : '';
+        const newRelPath = parentRel ? parentRel + sep + newName : newName;
+
+        const oldAbsPath = path.join(photoDirectory, oldRelPath);
+        const newAbsPath = path.join(photoDirectory, newRelPath);
+
+        if (!fs.existsSync(oldAbsPath)) return { success: false, error: '目录不存在' };
+        if (fs.existsSync(newAbsPath)) return { success: false, error: '同名目录已存在' };
+
+        try {
+            fs.renameSync(oldAbsPath, newAbsPath);
+        } catch (e) {
+            return { success: false, error: e.message };
+        }
+        db.renamePhotosDirectory(oldRelPath, newRelPath);
+        return { success: true, newRelPath, newName };
+    });
+
+    // ── 创建子目录 ──────────────────────────────────────────
+    ipcMain.handle('create-subdirectory', (_event, { parentRelPath, subDirName }) => {
+        if (!subDirName || /[\\/:*?"<>|]/.test(subDirName)) {
+            return { success: false, error: i18n.t('dir.invalidName') || '目录名包含非法字符' };
+        }
+        if (subDirName.toLowerCase() === 'bin') {
+            return { success: false, error: '"Bin" 是系统保留目录名，请使用其他名称' };
+        }
+        const photoDirectory = db.getPhotoDirectory();
+        if (!photoDirectory) return { success: false, error: '未设置照片目录' };
+
+        // 计算新子目录的相对路径和绝对路径
+        const newRelPath = parentRelPath ? parentRelPath + path.sep + subDirName : subDirName;
+        const newAbsPath = path.join(photoDirectory, newRelPath);
+
+        if (fs.existsSync(newAbsPath)) {
+            return { success: false, error: '同名目录已存在' };
+        }
+
+        try {
+            fs.mkdirSync(newAbsPath, { recursive: true });
+        } catch (e) {
+            return { success: false, error: e.message };
+        }
+
+        // 添加到 directories 表
+        db.addDirectory(newRelPath);
+
+        return { success: true, newRelPath, newAbsPath, name: subDirName };
+    });
 }
 
 // ==================== 应用生命周期 ====================
@@ -1009,6 +2100,10 @@ app.whenReady().then(() => {
     // 检查并自动恢复中断的人脸扫描任务
     const resumed = AutoFaceScan.checkAndResume(db, mainWindow);
     if (resumed) autoFaceScanner = resumed;
+
+    // 检查并自动恢复中断的重复照片移除任务
+    const resumedDup = AutoDupScan.checkAndResume(db, mainWindow, moveFileToBin);
+    if (resumedDup) autoDupScanner = resumedDup;
 });
 
 app.on('window-all-closed', () => {

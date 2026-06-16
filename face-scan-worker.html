@@ -28,39 +28,40 @@ const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1/model';
 const MODE_CONFIG = {
     loose: {
         /** 每张参考照片的欧氏距离阈值 */
-        threshold:    0.52,
+        threshold:    0.60,
         /** 参考照片中需达成共识的最低比例 */
-        matchRatio:   0.20,
+        matchRatio:   0.15,
         /** 人脸面积占图片面积最低比例（过小=模糊/远景，忽略） */
-        faceRatio:    0.02,
+        faceRatio:    0.008,
         /** 人脸检测器：ssd = SSDMobileNetV1 */
         detector:     'ssd',
         /** SSD 最低置信度 */
-        ssdMinConf:   0.45,
+        ssdMinConf:   0.40,
     },
     balanced: {
-        threshold:    0.42,
-        matchRatio:   0.35,
-        faceRatio:    0.03,
+        threshold:    0.55,
+        matchRatio:   0.20,
+        faceRatio:    0.012,
         detector:     'ssd',
-        ssdMinConf:   0.55,
+        ssdMinConf:   0.45,
     },
     strict: {
-        threshold:    0.38,
-        matchRatio:   0.50,
-        faceRatio:    0.04,
+        threshold:    0.45,
+        matchRatio:   0.40,
+        faceRatio:    0.02,
         /** mtcnn = Multi-task Cascaded CNN，精度更高，速度较慢 */
         detector:     'mtcnn',
         /** MTCNN 最小人脸像素尺寸 */
-        mtcnnMinSize: 60,
+        mtcnnMinSize: 50,
     },
 };
 // ─────────────────────────────────────────────────────────────
 
-let refDescriptors = [];   // Float32Array[]
-let currentMode    = 'balanced';
-let faceApiLoaded  = false;
-let mtcnnLoaded    = false;
+let refDescriptors   = [];   // Float32Array[]  目标人物
+let otherDescriptors = [];   // Float32Array[]  其他所有人物（用于交叉排除）
+let currentMode      = 'balanced';
+let faceApiLoaded    = false;
+let mtcnnLoaded      = false;
 
 async function ensureModelsLoaded(needMtcnn) {
     if (!faceApiLoaded) {
@@ -93,20 +94,37 @@ async function ensureModelsLoaded(needMtcnn) {
  * 共识投票匹配
  * @param {Float32Array} queryDescriptor
  * @param {object}       cfg  - 当前 MODE_CONFIG 条目
+ * @returns {boolean}
  */
 function isConsensusMatch(queryDescriptor, cfg) {
     if (refDescriptors.length === 0) return false;
+
+    // 1. 计算与目标人物的最近距离
+    let bestTargetDist = Infinity;
     let matchCount = 0;
     for (const ref of refDescriptors) {
-        if (faceapi.euclideanDistance(queryDescriptor, ref) < cfg.threshold) {
-            matchCount++;
+        const d = faceapi.euclideanDistance(queryDescriptor, ref);
+        if (d < bestTargetDist) bestTargetDist = d;
+        if (d < cfg.threshold) matchCount++;
+    }
+
+    // 未通过共识投票
+    if ((matchCount / refDescriptors.length) < cfg.matchRatio) return false;
+
+    // 2. 交叉排除：若有其他人物的 descriptor 比目标人物更近，则拒绝
+    if (otherDescriptors.length > 0) {
+        for (const ref of otherDescriptors) {
+            if (faceapi.euclideanDistance(queryDescriptor, ref) < bestTargetDist) {
+                return false;
+            }
         }
     }
-    return (matchCount / refDescriptors.length) >= cfg.matchRatio;
+
+    return true;
 }
 
 // 初始化：加载模型 + 存储参考特征向量
-ipcRenderer.on('face-worker-init', async (_event, { tagId, descriptors, mode = 'balanced' }) => {
+ipcRenderer.on('face-worker-init', async (_event, { tagId, descriptors, otherDescriptors: others = [], mode = 'balanced' }) => {
     currentMode = MODE_CONFIG[mode] ? mode : 'balanced';
     const cfg   = MODE_CONFIG[currentMode];
 
@@ -116,7 +134,8 @@ ipcRenderer.on('face-worker-init', async (_event, { tagId, descriptors, mode = '
         return;
     }
     try {
-        refDescriptors = descriptors.map(d => new Float32Array(d));
+        refDescriptors   = descriptors.map(d => new Float32Array(d));
+        otherDescriptors = others.map(d => new Float32Array(d));
         ipcRenderer.send('face-worker-ready', { success: true });
     } catch (err) {
         console.error('FaceScanWorker: 初始化失败', err);
@@ -178,7 +197,7 @@ function loadImage(filePath) {
 }
 
 function resizeForDetection(img) {
-    const MAX   = 800;
+    const MAX   = 1280;
     const w     = img.naturalWidth  || img.width;
     const h     = img.naturalHeight || img.height;
     const scale = Math.min(1, MAX / Math.max(w, h));

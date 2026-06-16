@@ -112,6 +112,11 @@ class DatabaseManager {
             this.db.exec(`ALTER TABLE tag_faces ADD COLUMN auto_scan_cursor INTEGER DEFAULT 0`);
         } catch (_) { /* 列已存在则忽略 */ }
 
+        // 迁移：为 directories 添加 is_active 列（旧版本可能缺失）
+        try {
+            this.db.exec(`ALTER TABLE directories ADD COLUMN is_active INTEGER DEFAULT 1`);
+        } catch (_) { /* 列已存在则忽略 */ }
+
         // 3.4. 扩展：地点属性表 (解决地理位置属性)
         this.db.exec(`
             CREATE TABLE IF NOT EXISTS tag_locations (
@@ -673,6 +678,11 @@ class DatabaseManager {
         return this.db.prepare('DELETE FROM photo_tags WHERE photo_id = ? AND tag_id = ?').run(photoId, tagId);
     }
 
+    /** 清除所有照片上的指定标签关联 */
+    removeTagFromAllPhotos(tagId) {
+        return this.db.prepare('DELETE FROM photo_tags WHERE tag_id = ?').run(tagId);
+    }
+
     /**
      * 查询拥有指定 tag（任一匹配）的所有照片
      * @param {number[]} tagIds
@@ -685,6 +695,7 @@ class DatabaseManager {
             SELECT DISTINCT p.* FROM photos p
             JOIN photo_tags pt ON p.id = pt.photo_id
             WHERE pt.tag_id IN (${placeholders})
+              AND p.directory != 'Bin'
             ORDER BY p.time
         `).all(...tagIds);
         return this.filterExistingPhotos(this.addFullPathToPhotos(photos));
@@ -915,8 +926,15 @@ class DatabaseManager {
      * 获取所有照片
      */
     getAllPhotos() {
-        const photos = this.db.prepare('SELECT * FROM photos').all();
-        return this.filterExistingPhotos(this.addFullPathToPhotos(photos));
+        const photos = this.db.prepare("SELECT * FROM photos WHERE directory != 'Bin'").all();
+        const enriched = this.addFullPathToPhotos(photos);
+        const filtered = this.filterExistingPhotos(enriched);
+        console.log(`[诊断] getAllPhotos: DB总计=${photos.length}张, 路径可用=${filtered.length}张, photoDir="${this.getPhotoDirectory()}"`);
+        if (photos.length > 0 && filtered.length === 0) {
+            const s = photos[0];
+            console.log(`[诊断] 样例: directory="${s.directory}", filename="${s.filename}", fullPath="${enriched[0] && enriched[0].fullPath}"`);
+        }
+        return filtered;
     }
 
     /**
@@ -924,7 +942,7 @@ class DatabaseManager {
      * @returns {string[]} 时间字符串数组
      */
     getAllPhotoTimes() {
-        const rows = this.db.prepare('SELECT time FROM photos WHERE time IS NOT NULL').all();
+        const rows = this.db.prepare("SELECT time FROM photos WHERE time IS NOT NULL AND directory != 'Bin'").all();
         return rows.map(r => r.time);
     }
 
@@ -943,11 +961,24 @@ class DatabaseManager {
      */
     queryPhotosByTimeRange(startTime, endTime) {
         const sql = `
-            SELECT * FROM photos 
+            SELECT * FROM photos
             WHERE time >= ? AND time <= ?
+              AND directory != 'Bin'
         `;
         const photos = this.db.prepare(sql).all(startTime, endTime);
-        return this.filterExistingPhotos(this.addFullPathToPhotos(photos));
+        const enriched = this.addFullPathToPhotos(photos);
+        const filtered = this.filterExistingPhotos(enriched);
+        console.log(`[诊断] queryPhotosByTimeRange(${startTime} ~ ${endTime}): SQL=${photos.length}张, 路径可用=${filtered.length}张`);
+        if (photos.length > 0 && filtered.length === 0) {
+            const s = photos[0];
+            console.log(`[诊断] 样例: directory="${s.directory}", filename="${s.filename}", fullPath="${enriched[0] && enriched[0].fullPath}", isMissing=${enriched[0] && enriched[0].isMissing}`);
+        } else if (photos.length === 0) {
+            // Check total photo count to distinguish time-range vs path issue
+            const total = this.db.prepare("SELECT COUNT(*) as cnt FROM photos WHERE directory != 'Bin'").get();
+            const sample = this.db.prepare("SELECT time FROM photos WHERE directory != 'Bin' LIMIT 3").all();
+            console.log(`[诊断] 无时间范围内照片，DB总照片数=${total.cnt}，样例时间:`, sample.map(r => r.time));
+        }
+        return filtered;
     }
 
     /**
@@ -960,11 +991,92 @@ class DatabaseManager {
     }
 
     /**
+     * 获取所有目录（包括空目录）及其照片数量
+     * 合并 directories 表和 photos 表的目录信息
+     */
+    getAllDirectoriesWithCounts() {
+        // 从 directories 表获取所有注册的目录
+        const registeredDirs = this.db.prepare(
+            'SELECT path FROM directories WHERE is_active = 1'
+        ).all();
+        
+        // 从 photos 表获取有照片的目录及其数量
+        const photoDirs = this.db.prepare(
+            'SELECT directory, COUNT(*) as count FROM photos GROUP BY directory'
+        ).all();
+        
+        // 合并：以注册目录为基础，叠加照片数量
+        const countMap = new Map(photoDirs.map(r => [r.directory, r.count]));
+        const allDirs = new Set(registeredDirs.map(r => r.path));
+        
+        // 也添加 photos 表中的目录（以防万一有未注册的）
+        for (const r of photoDirs) {
+            allDirs.add(r.directory);
+        }
+        
+        return Array.from(allDirs).map(dir => ({
+            directory: dir,
+            count: countMap.get(dir) || 0
+        })).sort((a, b) => a.directory.localeCompare(b.directory));
+    }
+
+    /**
      * 根据目录路径精确查询照片
      */
     queryPhotosByDirectory(dirPath) {
         const photos = this.db.prepare('SELECT * FROM photos WHERE directory = ?').all(dirPath);
         return this.filterExistingPhotos(this.addFullPathToPhotos(photos));
+    }
+
+    /**
+     * 查询某目录及其所有子目录下的照片（不过滤缺失，用于移动到 Bin）
+     * relPath = '' 表示根目录（返回全部）
+     */
+    getPhotosByDirectoryTree(relPath) {
+        if (relPath === '') {
+            return this.db.prepare('SELECT * FROM photos').all();
+        }
+        // SQLite GLOB：'*' 匹配任意字符串，'\\' 在 Windows 路径中不是特殊字符
+        const sep = require('path').sep;
+        return this.db.prepare(
+            'SELECT * FROM photos WHERE directory = ? OR directory GLOB ?'
+        ).all(relPath, relPath + sep + '*');
+    }
+
+    /**
+     * 批量更新目录名（重命名时同步所有照片记录）
+     * 更新精确匹配的记录，以及所有以 oldRelPath + sep 开头的子目录记录
+     */
+    renamePhotosDirectory(oldRelPath, newRelPath) {
+        const sep = require('path').sep;
+        const oldPrefix = oldRelPath + sep;
+        const newPrefix = newRelPath + sep;
+
+        // 精确匹配的照片
+        this.db.prepare('UPDATE photos SET directory = ? WHERE directory = ?')
+            .run(newRelPath, oldRelPath);
+
+        // 子目录照片：逐条替换前缀
+        const subdirPhotos = this.db.prepare(
+            'SELECT id, directory FROM photos WHERE directory GLOB ?'
+        ).all(oldRelPath + sep + '*');
+        const stmt = this.db.prepare('UPDATE photos SET directory = ? WHERE id = ?');
+        for (const photo of subdirPhotos) {
+            stmt.run(newPrefix + photo.directory.slice(oldPrefix.length), photo.id);
+        }
+
+        // 同步更新 directories 表
+        this.db.prepare('UPDATE directories SET path = ? WHERE path = ?')
+            .run(newRelPath, oldRelPath);
+        const subdirDirs = this.db.prepare(
+            'SELECT id, path FROM directories WHERE path GLOB ?'
+        ).all(oldRelPath + sep + '*');
+        const stmtDir = this.db.prepare('UPDATE directories SET path = ? WHERE id = ?');
+        for (const dir of subdirDirs) {
+            stmtDir.run(newPrefix + dir.path.slice(oldPrefix.length), dir.id);
+        }
+
+        this.pathExistsCache.clear();
     }
 
     /**
@@ -975,17 +1087,19 @@ class DatabaseManager {
         let params;
         if (startTime && endTime) {
             sql = `
-                SELECT * FROM photos 
-                WHERE lat <= ? AND lat >= ? 
+                SELECT * FROM photos
+                WHERE lat <= ? AND lat >= ?
                 AND lng <= ? AND lng >= ?
                 AND time >= ? AND time < ?
+                AND directory != 'Bin'
             `;
             params = [north, south, east, west, startTime, endTime];
         } else {
             sql = `
-                SELECT * FROM photos 
-                WHERE lat <= ? AND lat >= ? 
+                SELECT * FROM photos
+                WHERE lat <= ? AND lat >= ?
                 AND lng <= ? AND lng >= ?
+                AND directory != 'Bin'
             `;
             params = [north, south, east, west];
         }
@@ -1003,17 +1117,47 @@ class DatabaseManager {
         if (!current || !current.time) return { before: [], after: [] };
 
         const before = this.db.prepare(
-            'SELECT * FROM photos WHERE id != ? AND time <= ? AND lat IS NOT NULL AND lng IS NOT NULL ORDER BY time DESC, id DESC LIMIT ?'
+            "SELECT * FROM photos WHERE id != ? AND time <= ? AND lat IS NOT NULL AND lng IS NOT NULL AND directory != 'Bin' ORDER BY time DESC, id DESC LIMIT ?"
         ).all(photoId, current.time, count);
 
         const after = this.db.prepare(
-            'SELECT * FROM photos WHERE id != ? AND time >= ? AND lat IS NOT NULL AND lng IS NOT NULL ORDER BY time ASC, id ASC LIMIT ?'
+            "SELECT * FROM photos WHERE id != ? AND time >= ? AND lat IS NOT NULL AND lng IS NOT NULL AND directory != 'Bin' ORDER BY time ASC, id ASC LIMIT ?"
         ).all(photoId, current.time, count);
 
         return {
             before: this.addFullPathToPhotos(before.reverse()),
             after: this.addFullPathToPhotos(after)
         };
+    }
+
+    /**
+     * 获取时间范围内的相似候选照片（仅图片，不含视频和Bin）
+     * @param {number} photoId - 当前照片ID
+     * @param {number} minuteRange - 前后分钟数
+     * @returns {object[]} 照片列表（含 fullPath）
+     */
+    getSimilarPhotosByTime(photoId, minuteRange = 5) {
+        const current = this.db.prepare('SELECT time FROM photos WHERE id = ?').get(photoId);
+        if (!current || !current.time) return [];
+
+        const currentMs = new Date(current.time).getTime();
+        if (isNaN(currentMs)) return [];
+
+        const rangeMs = minuteRange * 60 * 1000;
+        const startTime = new Date(currentMs - rangeMs).toISOString();
+        const endTime   = new Date(currentMs + rangeMs).toISOString();
+
+        const photos = this.db.prepare(`
+            SELECT * FROM photos
+            WHERE id != ?
+              AND type != 'video'
+              AND time >= ?
+              AND time <= ?
+              AND directory != 'Bin'
+            ORDER BY time ASC
+        `).all(photoId, startTime, endTime);
+
+        return this.addFullPathToPhotos(photos);
     }
 
     /**
@@ -1032,10 +1176,25 @@ class DatabaseManager {
      */
     updatePhotoLike(directory, filename, like) {
         const stmt = this.db.prepare(`
-            UPDATE photos SET like = ? 
+            UPDATE photos SET like = ?
             WHERE directory = ? AND filename = ?
         `);
         return stmt.run(like ? 1 : 0, directory, filename);
+    }
+
+    /**
+     * 为所有没有定位信息的照片设置默认坐标
+     * @param {number} lat
+     * @param {number} lng
+     * @returns {number} 受影响的行数
+     */
+    setDefaultLocationForUnlocatedPhotos(lat, lng) {
+        const result = this.db.prepare(`
+            UPDATE photos SET lat = ?, lng = ?
+            WHERE (lat IS NULL OR lng IS NULL)
+              AND directory != 'Bin'
+        `).run(lat, lng);
+        return result.changes;
     }
 
     // ==================== 人脸扫描进度 ====================
@@ -1069,11 +1228,13 @@ class DatabaseManager {
         const lastPhotoIdStr = this.getSetting('face_scan_last_photo_id');
         const scannedStr     = this.getSetting('face_scan_scanned');
         const totalStr       = this.getSetting('face_scan_total');
+        const matchedStr     = this.getSetting('face_scan_matched');
         const tagId       = (tagIdStr === null || tagIdStr === '-1') ? -1 : parseInt(tagIdStr, 10);
         const lastPhotoId = lastPhotoIdStr ? parseInt(lastPhotoIdStr, 10) : 0;
         const scanned     = scannedStr ? parseInt(scannedStr, 10) : 0;
         const total       = totalStr ? parseInt(totalStr, 10) : 0;
-        return { tagId, lastPhotoId, scanned, total };
+        const matched     = matchedStr ? parseInt(matchedStr, 10) : 0;
+        return { tagId, lastPhotoId, scanned, total, matched };
     }
 
     /**
@@ -1082,12 +1243,14 @@ class DatabaseManager {
      * @param {number} lastPhotoId - 最后成功处理的照片 ID
      * @param {number} scanned     - 累计已扫描张数
      * @param {number} total       - 本次扫描总张数（大计）
+     * @param {number} matched     - 累计已识别标记张数
      */
-    saveFaceScanProgress(tagId, lastPhotoId, scanned, total) {
+    saveFaceScanProgress(tagId, lastPhotoId, scanned, total, matched = 0) {
         this.saveSetting('face_scan_tag_id',        String(tagId));
         this.saveSetting('face_scan_last_photo_id', String(lastPhotoId));
         this.saveSetting('face_scan_scanned',       String(scanned));
         this.saveSetting('face_scan_total',         String(total));
+        this.saveSetting('face_scan_matched',       String(matched));
     }
 
     /**
@@ -1099,6 +1262,49 @@ class DatabaseManager {
     }
 
     /**
+     * 将 directory 字段中存储的绝对路径（在 photoDir 范围内）统一转换为相对路径。
+     * 用于修复旧版本将绝对 binDir 写入 DB 的历史数据。
+     * @returns {number} 修复的记录数
+     */
+    normalizeDirectoryPaths(photoDir) {
+        if (!photoDir) return 0;
+        const nodePath = require('path');
+        const normPhotoDir = nodePath.normalize(photoDir);
+        const prefix = normPhotoDir + nodePath.sep;
+
+        const photos = this.db.prepare('SELECT id, directory FROM photos').all();
+        const stmt = this.db.prepare('UPDATE photos SET directory = ? WHERE id = ?');
+        let count = 0;
+        for (const photo of photos) {
+            const d = photo.directory;
+            if (!d || !nodePath.isAbsolute(d)) continue;
+            const normD = nodePath.normalize(d);
+            const relPath = normD === normPhotoDir ? '' :
+                normD.startsWith(prefix) ? normD.slice(prefix.length) : null;
+            if (relPath === null || relPath === d) continue;
+            stmt.run(relPath, photo.id);
+            count++;
+        }
+        if (count > 0) this.pathExistsCache.clear();
+        return count;
+    }
+
+    /**
+     * 移动照片后同步更新数据库路径和备注（标签不变）
+     * @param {string|null} newRemark  传 undefined 则不改 remark，传 null 则清空
+     */
+    movePhoto(photoId, newDirectory, newFilename, newRemark) {
+        if (newRemark !== undefined) {
+            this.db.prepare('UPDATE photos SET directory = ?, filename = ?, remark = ? WHERE id = ?')
+                .run(newDirectory, newFilename, newRemark, photoId);
+        } else {
+            this.db.prepare('UPDATE photos SET directory = ?, filename = ? WHERE id = ?')
+                .run(newDirectory, newFilename, photoId);
+        }
+        this.pathExistsCache.clear();
+    }
+
+    /**
      * 清除人脸扫描状态（扫描完成或取消）
      */
     clearFaceScanState() {
@@ -1106,6 +1312,93 @@ class DatabaseManager {
         this.saveSetting('face_scan_last_photo_id', '0');
         this.saveSetting('face_scan_scanned',       '0');
         this.saveSetting('face_scan_total',         '0');
+        this.saveSetting('face_scan_matched',       '0');
+    }
+
+    // ==================== 重复照片扫描 ====================
+
+    /**
+     * 获取所有重复照片组（拍摄时间 + 位置完全相同，且有位置信息，排除 Bin）。
+     * 返回每组的照片 ID 列表，仅返回数量 > 1 的组。
+     * @returns {{ time: string, lat: number, lng: number, ids: number[] }[]}
+     */
+    getPhotoDuplicateGroups() {
+        // 先找出重复组的 key（time, lat, lng），再取对应照片详情，避免 SQLite 不支持 tuple IN
+        // 使用 ROUND 处理浮点数精度问题（6位小数≈0.1米精度）
+        const groupRows = this.db.prepare(`
+            SELECT time, ROUND(lat, 6) AS lat, ROUND(lng, 6) AS lng, GROUP_CONCAT(id ORDER BY id ASC) AS ids
+            FROM photos
+            WHERE lat IS NOT NULL AND lng IS NOT NULL
+              AND lat != 0.0 AND lng != 0.0
+              AND time IS NOT NULL AND time != ''
+              AND directory != 'Bin'
+            GROUP BY time, ROUND(lat, 6), ROUND(lng, 6)
+            HAVING COUNT(*) > 1
+            ORDER BY time, lat, lng
+        `).all();
+
+        return groupRows.map(row => ({
+            time: row.time,
+            lat:  row.lat,
+            lng:  row.lng,
+            ids:  row.ids.split(',').map(Number)
+        }));
+    }
+
+    /**
+     * 根据 ID 获取单张照片记录（不含 fullPath 增强）
+     * @param {number} id
+     */
+    getPhotoById(id) {
+        return this.db.prepare('SELECT * FROM photos WHERE id = ?').get(id) || null;
+    }
+
+    /**
+     * 读取重复照片扫描状态
+     * @returns {{ doneCount: number, total: number }}
+     *   doneCount = -1 表示无任务
+     */
+    getDupScanState() {
+        const doneStr  = this.getSetting('dup_scan_done_count');
+        const totalStr = this.getSetting('dup_scan_total');
+        const doneCount = (doneStr === null || doneStr === '-1') ? -1 : parseInt(doneStr, 10);
+        const total     = totalStr ? parseInt(totalStr, 10) : 0;
+        return { doneCount, total };
+    }
+
+    /**
+     * 保存重复照片扫描进度
+     * @param {number} doneCount - 已处理的组数
+     * @param {number} total     - 本次扫描总组数
+     */
+    saveDupScanProgress(doneCount, total) {
+        this.saveSetting('dup_scan_done_count', String(doneCount));
+        this.saveSetting('dup_scan_total',      String(total));
+    }
+
+    /**
+     * 清除重复照片扫描状态
+     */
+    clearDupScanState() {
+        this.saveSetting('dup_scan_done_count', '-1');
+        this.saveSetting('dup_scan_total',      '0');
+    }
+
+    /**
+     * 永久删除指定 ID 的照片记录（含 photo_tags 关联）
+     * @param {number[]} ids
+     */
+    deletePhotosByIds(ids) {
+        if (!ids || ids.length === 0) return;
+        const del = this.db.transaction(() => {
+            const delTags   = this.db.prepare('DELETE FROM photo_tags WHERE photo_id = ?');
+            const delPhotos = this.db.prepare('DELETE FROM photos WHERE id = ?');
+            for (const id of ids) {
+                delTags.run(id);
+                delPhotos.run(id);
+            }
+        });
+        del();
     }
 
     // ==================== 设置操作 ====================

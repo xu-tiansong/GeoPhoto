@@ -55,7 +55,7 @@ class AutoFaceScan {
      * @param {number} tagId - 人物标签 ID（必须已有 face descriptors）
      * @returns {{ success: boolean, error?: string }}
      */
-    async start(tagId, mode = 'balanced') {
+    async start(tagId, mode = 'balanced', fromScratch = false) {
         // 检查互斥锁：同一时间只能扫描一个人物
         const state = this.db.getFaceScanState();
         if (state.tagId !== -1) {
@@ -74,18 +74,23 @@ class AutoFaceScan {
             return { success: false, error: '该标签没有人脸识别数据' };
         }
 
+        // 从头扫描时重置游标
+        if (fromScratch) {
+            this.db.setTagAutoScanCursor(tagId, 0);
+        }
+
         // 读取上次扫描完成时记录的游标，仅扫描新照片
-        const autoScanCursor = this.db.getTagAutoScanCursor(tagId);
+        const autoScanCursor = fromScratch ? 0 : this.db.getTagAutoScanCursor(tagId);
 
         // 预先获取全部待扫描照片，计算总数
         const photos     = this.db.getPhotosForFaceScan(tagId, autoScanCursor);
         const grandTotal = photos.length;
 
-        // 写入扫描状态标志（从游标位置开始 → lastPhotoId=autoScanCursor, scanned=0, total=grandTotal）
-        this.db.saveFaceScanProgress(tagId, autoScanCursor, 0, grandTotal);
+        // 写入扫描状态标志（从游标位置开始 → lastPhotoId=autoScanCursor, scanned=0, matched=0, total=grandTotal）
+        this.db.saveFaceScanProgress(tagId, autoScanCursor, 0, grandTotal, 0);
 
         // 异步执行扫描，不阻塞调用方
-        this._startScan(tagId, tagData, photos, 0, grandTotal, mode).catch(err => {
+        this._startScan(tagId, tagData, photos, 0, 0, grandTotal, mode).catch(err => {
             console.error('AutoFaceScan._startScan 错误:', err);
             this.db.clearFaceScanState();
             this.isRunning = false;
@@ -102,9 +107,10 @@ class AutoFaceScan {
      * @param {object}   tagData      - 含 descriptors 的标签对象
      * @param {object[]} photos       - 待扫描照片列表（已预取）
      * @param {number}   startScanned - 本次开始前已累计扫描张数（断点续扫时 > 0）
+     * @param {number}   startMatched - 本次开始前已累计识别标记张数（断点续扫时 > 0）
      * @param {number}   grandTotal   - 本次任务总张数（包含已扫部分）
      */
-    async _startScan(tagId, tagData, photos, startScanned, grandTotal, mode = 'balanced') {
+    async _startScan(tagId, tagData, photos, startScanned, startMatched, grandTotal, mode = 'balanced') {
         this.isRunning = true;
 
         // tagData.descriptors 来自 _mergeTagExtension，descriptor 字段未经 JSON.parse，仍为字符串
@@ -112,13 +118,21 @@ class AutoFaceScan {
             const raw = d.descriptor;
             return typeof raw === 'string' ? JSON.parse(raw) : raw;
         });
-        const tagName     = tagData.name;
+        const tagName = tagData.name;
+
+        // 获取所有其他人物标签的 descriptors，用于交叉比较排除误识别
+        const otherDescriptors = this.db.getAllFaceTagsWithDescriptors()
+            .filter(t => t.id !== tagId)
+            .flatMap(t => (t.descriptors || []).map(d => {
+                const raw = d.descriptor;
+                return typeof raw === 'string' ? JSON.parse(raw) : raw;
+            }));
 
         // 发送初始进度（体现已经扫过的部分）
-        this._sendProgress(startScanned, grandTotal, tagId);
+        this._sendProgress(startScanned, grandTotal, tagId, startMatched);
 
         if (photos.length === 0) {
-            this._onScanComplete(tagId, tagName, 0, grandTotal);
+            this._onScanComplete(tagId, tagName, startMatched, grandTotal);
             return;
         }
 
@@ -131,7 +145,7 @@ class AutoFaceScan {
         }
 
         // 初始化 worker（加载模型 + 构建 FaceMatcher）
-        const initOk = await this._initWorker(worker, tagId, descriptors, mode);
+        const initOk = await this._initWorker(worker, tagId, descriptors, otherDescriptors, mode);
         if (!initOk) {
             console.error('AutoFaceScan: worker 初始化失败');
             if (!worker.isDestroyed()) worker.close();
@@ -141,7 +155,7 @@ class AutoFaceScan {
         }
 
         let scanned = 0; // 本次会话新扫张数
-        let matched = 0;
+        let matched = 0; // 本次会话新识别标记张数
 
         for (let i = 0; i < photos.length; i++) {
             if (worker.isDestroyed() || this.cancelled) break;
@@ -159,12 +173,13 @@ class AutoFaceScan {
 
             scanned++;
             const totalScanned = startScanned + scanned;
+            const totalMatched = startMatched + matched;
 
             // 更新游标及累计进度
-            this.db.saveFaceScanProgress(tagId, photo.id, totalScanned, grandTotal);
+            this.db.saveFaceScanProgress(tagId, photo.id, totalScanned, grandTotal, totalMatched);
 
             // 发送进度更新（cumulative）
-            this._sendProgress(totalScanned, grandTotal, tagId);
+            this._sendProgress(totalScanned, grandTotal, tagId, totalMatched);
 
             // 每 10 张睡眠 500ms，避免长时间占用资源
             if (scanned % 10 === 0) {
@@ -186,7 +201,7 @@ class AutoFaceScan {
                 this.cancelled = false;
             }
         } else {
-            this._onScanComplete(tagId, tagName, matched, grandTotal);
+            this._onScanComplete(tagId, tagName, startMatched + matched, grandTotal);
         }
     }
 
@@ -240,7 +255,7 @@ class AutoFaceScan {
     }
 
     /** 等待 worker 加载完毕并初始化（face-worker-ready 信号） */
-    _initWorker(worker, tagId, descriptors, mode = 'balanced') {
+    _initWorker(worker, tagId, descriptors, otherDescriptors, mode = 'balanced') {
         return new Promise((resolve) => {
             let done = false;
             const handler = (_event, result) => {
@@ -249,7 +264,7 @@ class AutoFaceScan {
                 resolve(result.success);
             };
             ipcMain.once('face-worker-ready', handler);
-            worker.webContents.send('face-worker-init', { tagId, descriptors, mode });
+            worker.webContents.send('face-worker-init', { tagId, descriptors, otherDescriptors, mode });
             // 超时保护（模型从 CDN 加载可能较慢，给 60 秒）
             setTimeout(() => {
                 if (!done) {
@@ -290,9 +305,9 @@ class AutoFaceScan {
     }
 
     /** 向主窗口发送扫描进度 */
-    _sendProgress(scanned, total, tagId) {
+    _sendProgress(scanned, total, tagId, matched = 0) {
         if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-            this.mainWindow.webContents.send('face-scan-progress', { scanned, total, tagId });
+            this.mainWindow.webContents.send('face-scan-progress', { scanned, total, tagId, matched });
         }
     }
 
@@ -323,13 +338,14 @@ class AutoFaceScan {
         const remainingPhotos = db.getPhotosForFaceScan(state.tagId, state.lastPhotoId);
 
         // 兼容旧版（未保存 total/scanned 的扫描状态）：回退到用剩余张数估算
-        const grandTotal   = state.total > 0 ? state.total : (state.scanned + remainingPhotos.length);
-        const startScanned = state.total > 0 ? state.scanned : 0;
+        const grandTotal    = state.total > 0 ? state.total : (state.scanned + remainingPhotos.length);
+        const startScanned  = state.total > 0 ? state.scanned : 0;
+        const startMatched  = state.matched || 0;
 
-        console.log(`AutoFaceScan: 恢复扫描 "${tagData.name}"，从 photo id ${state.lastPhotoId} 继续（已扫 ${startScanned}/${grandTotal}）`);
+        console.log(`AutoFaceScan: 恢复扫描 "${tagData.name}"，从 photo id ${state.lastPhotoId} 继续（已扫 ${startScanned}/${grandTotal}，已标记 ${startMatched}）`);
 
         const scanner = new AutoFaceScan(db, mainWindow);
-        scanner._startScan(state.tagId, tagData, remainingPhotos, startScanned, grandTotal, 'balanced').catch(err => {
+        scanner._startScan(state.tagId, tagData, remainingPhotos, startScanned, startMatched, grandTotal, 'balanced').catch(err => {
             console.error('AutoFaceScan 恢复失败:', err);
             db.clearFaceScanState();
         });

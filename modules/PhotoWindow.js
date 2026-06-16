@@ -60,7 +60,9 @@ class PhotoWindow {
             parent: effectiveParent,
             modal: true,
             frame: false,
-            resizable: false,
+            resizable: true,
+            minWidth: 680,
+            minHeight: 400,
             fullscreenable: true,
             show: false,
             backgroundColor: '#1a1a1a',
@@ -89,31 +91,8 @@ class PhotoWindow {
             }
         });
 
-        // 监听父窗口大小变化
-        this.parentResizeListener = () => {
-            if (this.photoWindow && !this.photoWindow.isDestroyed()) {
-                const newBounds = effectiveParent.getBounds();
-                const newWidth = newBounds.width - 112;
-                const newHeight = newBounds.height - 112;
-                const newX = newBounds.x + 56;
-                const newY = newBounds.y + 56;
-
-                this.photoWindow.setBounds({
-                    x: newX,
-                    y: newY,
-                    width: newWidth,
-                    height: newHeight
-                });
-            }
-        };
-
-        effectiveParent.on('resize', this.parentResizeListener);
-        effectiveParent.on('move', this.parentResizeListener);
-
         // 窗口关闭时清理
         this.photoWindow.on('closed', () => {
-            effectiveParent.removeListener('resize', this.parentResizeListener);
-            effectiveParent.removeListener('move', this.parentResizeListener);
             this.photoWindow = null;
             this.currentPhoto = null;
             this.navPhotos = null;

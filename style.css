@@ -68,8 +68,12 @@ body {
 }
 
 /* 矩形框选模式下强制十字光标，覆盖 marker/cluster 的 pointer */
+/* body 上设置确保拖拽期间（mousedown 后）也生效 */
+body[style*="cursor: crosshair"],
+body[style*="cursor: crosshair"] *,
 #map.leaflet-crosshair,
-#map.leaflet-crosshair * {
+#map .leaflet-crosshair,
+#map .leaflet-crosshair * {
     cursor: crosshair !important;
 }
 
@@ -468,6 +472,62 @@ body {
 }
 
 #face-scan-cancel:hover {
+    background: rgba(220, 60, 60, 1);
+}
+
+/* ── 重复照片移除进度指示器 ─────────────────────────────── */
+#dup-scan-overlay {
+    display: none;
+    position: fixed;
+    right: 16px;
+    bottom: 72px; /* 位于时间轴 (56px) 上方，留 16px 间距 */
+    z-index: 500;
+    flex-direction: column;
+    align-items: center;
+    background: rgba(0, 0, 0, 0.72);
+    border-radius: 12px;
+    padding: 8px 12px 8px;
+    gap: 4px;
+    pointer-events: none;
+    box-shadow: 0 2px 16px rgba(0,0,0,0.6);
+}
+
+#dup-scan-overlay.visible {
+    display: flex;
+}
+
+#dup-scan-title {
+    color: #ffd080;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+    text-align: center;
+    font-family: 'Segoe UI', sans-serif;
+    letter-spacing: 0.4px;
+}
+
+#dup-scan-text {
+    color: #d0d0d0;
+    font-size: 11px;
+    white-space: nowrap;
+    text-align: center;
+    font-family: 'Segoe UI', sans-serif;
+}
+
+#dup-scan-stop {
+    pointer-events: auto;
+    margin-top: 4px;
+    padding: 3px 18px;
+    background: rgba(220, 60, 60, 0.75);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-size: 12px;
+    font-family: 'Segoe UI', sans-serif;
+    cursor: pointer;
+}
+
+#dup-scan-stop:hover {
     background: rgba(220, 60, 60, 1);
 }
 

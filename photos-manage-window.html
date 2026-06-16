@@ -185,6 +185,17 @@
         .tree-children.collapsed {
             display: none;
         }
+        .tree-rename-input {
+            flex: 1;
+            min-width: 0;
+            background: #2a2a2a;
+            color: #eee;
+            border: 1px solid #4a9eff;
+            border-radius: 3px;
+            padding: 0 4px;
+            font-size: 12px;
+            outline: none;
+        }
 
         /* 地图缩略图 */
         .map-thumbnail {
@@ -499,6 +510,11 @@
             background: rgba(255,255,255,0.7);
         }
 
+        .calendar-day.in-range {
+            background: rgba(74, 158, 255, 0.22);
+            color: #cde;
+        }
+
         .calendar-day.today-marker {
             border: 1px solid #4a6f9e;
         }
@@ -606,6 +622,7 @@
         let calendarYear = new Date().getFullYear();
         let calendarMonth = new Date().getMonth(); // 0-indexed
         let calendarSelectedDate = null; // 'YYYY-MM-DD'
+        let calendarRangeDate = null;   // shift+点击时的第二个日期，形成范围选择
         let photoDateMap = new Map(); // 'YYYY-MM-DD' -> [photos] (基于 currentPhotos)
         let allPhotoTimes = []; // 数据库中所有照片的时间字符串（仅用于日历高亮）
         let allPhotoDateSet = new Set(); // 'YYYY-MM-DD' 集合，快速查找
@@ -678,6 +695,15 @@
                 setTimeout(() => {
                     rightPanel.focus();
                 }, 200);
+
+                // 右键容器背景：容器操作菜单
+                rightPanel.addEventListener('contextmenu', (e) => {
+                    if (e.target.closest('.photo-item')) return; // 点到照片上不处理
+                    if (currentPhotos.length === 0) return;
+                    const photoIds = currentPhotos.map(p => p.id);
+                    const photoPaths = currentPhotos.map(p => ({ directory: p.directory, filename: p.filename }));
+                    ipcRenderer.send('show-container-context-menu', { photoIds, photoPaths });
+                });
             }
 
             // 默认 direct tab 处于激活状态，初始加载目录树
@@ -707,23 +733,33 @@
                 console.error('找不到tab panel:', tabName);
             }
 
-            // 如果切换到 selected tab，重新绘制地图
-            if (tabName === 'selected' && mapBounds) {
-                console.log('准备绘制地图...');
-                setTimeout(() => {
-                    if (miniMap) {
-                        console.log('地图已存在，刷新尺寸');
-                        miniMap.invalidateSize();
-                    } else {
-                        console.log('绘制新地图');
-                        drawMapThumbnail();
-                    }
-                }, 150);
+            // 如果切换到 selected tab，重新绘制地图并刷新照片列表
+            if (tabName === 'selected') {
+                renderPhotos();
+                if (mapBounds) {
+                    setTimeout(() => {
+                        if (miniMap) {
+                            miniMap.invalidateSize();
+                        } else {
+                            drawMapThumbnail();
+                        }
+                    }, 150);
+                }
             }
 
-            // 如果切换到 calendar tab，渲染日历
+            // 如果切换到 calendar tab，渲染日历；若有已选日期则恢复该日照片
             if (tabName === 'calendar') {
                 renderCalendar();
+                if (calendarSelectedDate) {
+                    const [y, mo, dy] = calendarSelectedDate.split('-').map(Number);
+                    const startTime = new Date(y, mo - 1, dy, 0, 0, 0, 0).toISOString();
+                    const endTime   = new Date(y, mo - 1, dy, 23, 59, 59, 999).toISOString();
+                    ipcRenderer.invoke('query-photos-by-time', { startTime, endTime }).then(dayPhotos => {
+                        renderPhotos(dayPhotos);
+                    });
+                } else {
+                    renderPhotos(currentPhotos);
+                }
             }
 
             // 如果切换到 direct tab，加载目录树
@@ -851,12 +887,206 @@
             }
         });
 
-        // 照片被删除时，从网格和数据数组中移除
-        ipcRenderer.on('photo-deleted', (_event, { photoId }) => {
+        // 更新目录树节点的照片计数徽章；返回 true 表示节点找到，false 表示未找到
+        function updateTreeNodeCount(relPath, delta) {
+            if (relPath === null || relPath === undefined) return false;
+            // CSS attribute selector 中反斜杠需转义为 \\，引号转义为 \"
+            const escaped = relPath.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+            const label = document.querySelector(`.tree-node-label[data-rel-path="${escaped}"]`);
+            if (!label) return false;
+            let countSpan = label.querySelector('.tree-count');
+            const current = countSpan ? parseInt(countSpan.textContent, 10) || 0 : 0;
+            const next = current + delta;
+            if (next <= 0) {
+                if (countSpan) countSpan.remove();
+            } else {
+                if (!countSpan) {
+                    countSpan = document.createElement('span');
+                    countSpan.className = 'tree-count';
+                    label.appendChild(countSpan);
+                }
+                countSpan.textContent = next;
+            }
+            return true;
+        }
+
+        // 照片被删除/恢复/移动时，从网格和数据数组中移除，并更新目录树计数
+        ipcRenderer.on('photo-deleted', async (_event, { photoId, fromDir, toDir }) => {
             currentPhotos       = currentPhotos.filter(p => p.id !== photoId);
             sortedCurrentPhotos = sortedCurrentPhotos.filter(p => p.id !== photoId);
             const item = document.querySelector(`.photo-item[data-photo-id="${photoId}"]`);
             if (item) item.remove();
+            updateTreeNodeCount(fromDir, -1);
+            const toDirFound = updateTreeNodeCount(toDir, +1);
+            // toDir 节点不在树中（如空目录刚被恢复），重新加载整棵树使其出现
+            if (!toDirFound && toDir !== null && toDir !== undefined) {
+                await loadDirectoryTree();
+            }
+
+            // 如果当前选中的目录是 toDir（照片恢复/移动到的目录），重新加载该目录照片
+            const selectedLabel = document.querySelector('.tree-node-label.selected');
+            if (selectedLabel && toDir !== undefined && toDir !== null) {
+                const selectedRelPath = selectedLabel.dataset.relPath;
+                if (selectedRelPath === toDir) {
+                    const photos = await ipcRenderer.invoke('query-photos-by-directory', toDir);
+                    renderPhotos(photos);
+                }
+            }
+        });
+
+        // 目录被删除后，刷新目录树并清空照片面板
+        ipcRenderer.on('directory-deleted', () => {
+            renderPhotos([]);
+            loadDirectoryTree();
+        });
+
+        // Bin 照片全部恢复后，刷新目录树和照片面板
+        ipcRenderer.on('bin-photos-restored', () => {
+            renderPhotos([]);
+            loadDirectoryTree();
+        });
+
+        // 主进程通知启动内联重命名
+        ipcRenderer.on('dir-rename-prompt', (_event, { relPath, name }) => {
+            const label = document.querySelector(`.tree-node-label[data-rel-path="${relPath.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"]`);
+            if (!label) return;
+            const nameSpan = label.querySelector('.tree-name');
+            if (!nameSpan) return;
+
+            const input = document.createElement('input');
+            input.className = 'tree-rename-input';
+            input.value = name;
+            nameSpan.replaceWith(input);
+            input.select();
+            input.focus();
+
+            let committed = false;
+
+            const cancel = () => {
+                if (committed) return;
+                committed = true;
+                input.replaceWith(nameSpan);
+            };
+
+            const confirm = async () => {
+                if (committed) return;
+                committed = true;
+                const newName = input.value.trim();
+                if (!newName || newName === name) { input.replaceWith(nameSpan); return; }
+                const result = await ipcRenderer.invoke('rename-directory', { oldRelPath: relPath, newName });
+                if (result.success) {
+                    // 原地更新节点，不重建整棵树
+                    nameSpan.textContent = result.newName;
+                    label.dataset.relPath = result.newRelPath;
+                    input.replaceWith(nameSpan);
+                } else {
+                    input.replaceWith(nameSpan);
+                    alert(result.error || '重命名失败');
+                }
+            };
+
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter')  { e.preventDefault(); confirm(); }
+                if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+            });
+            // blur 时延迟确认，让 Enter 有机会先触发
+            input.addEventListener('blur', () => setTimeout(() => { if (!committed) confirm(); }, 150));
+        });
+
+        // 主进程通知启动内联创建子目录
+        ipcRenderer.on('dir-create-subdir-prompt', (_event, { relPath, absPath }) => {
+            const label = document.querySelector(`.tree-node-label[data-rel-path="${relPath.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"]`);
+            if (!label) return;
+            const treeNode = label.parentElement;
+            if (!treeNode) return;
+
+            // 确保子目录容器存在并展开
+            let childrenEl = treeNode.querySelector('.tree-children');
+            if (!childrenEl) {
+                childrenEl = document.createElement('div');
+                childrenEl.className = 'tree-children';
+                treeNode.appendChild(childrenEl);
+            }
+            childrenEl.classList.remove('collapsed');
+            // 更新展开箭头
+            const toggle = label.querySelector('.tree-toggle');
+            if (toggle) toggle.textContent = '▼';
+
+            // 创建临时输入节点
+            const tempNode = document.createElement('div');
+            tempNode.className = 'tree-node';
+            const tempLabel = document.createElement('div');
+            tempLabel.className = 'tree-node-label';
+            
+            const tempToggle = document.createElement('span');
+            tempToggle.className = 'tree-toggle';
+            tempToggle.textContent = '';
+            tempLabel.appendChild(tempToggle);
+            
+            const tempIcon = document.createElement('span');
+            tempIcon.className = 'tree-icon';
+            tempIcon.textContent = '📁';
+            tempLabel.appendChild(tempIcon);
+
+            const input = document.createElement('input');
+            input.className = 'tree-rename-input';
+            input.placeholder = 'New Folder';
+            tempLabel.appendChild(input);
+            
+            tempNode.appendChild(tempLabel);
+            childrenEl.insertBefore(tempNode, childrenEl.firstChild);
+            input.focus();
+
+            let committed = false;
+
+            const cancel = () => {
+                if (committed) return;
+                committed = true;
+                tempNode.remove();
+            };
+
+            const confirm = async () => {
+                if (committed) return;
+                committed = true;
+                const subDirName = input.value.trim();
+                if (!subDirName) { tempNode.remove(); return; }
+
+                const result = await ipcRenderer.invoke('create-subdirectory', { parentRelPath: relPath, subDirName });
+                if (result.success) {
+                    tempNode.remove();
+                    // 直接在父节点的子目录容器中插入新节点，并选中它
+                    const newNodeData = {
+                        name:       result.name,
+                        fullPath:   result.newRelPath,
+                        absPath:    result.newAbsPath,
+                        photoCount: 0,
+                        children:   []
+                    };
+                    const newEl = createTreeNode(newNodeData, false);
+                    // 按名称排序插入
+                    const siblings = Array.from(childrenEl.children).filter(c => c.classList.contains('tree-node'));
+                    const insertBefore = siblings.find(s => {
+                        const n = s.querySelector('.tree-name');
+                        return n && n.textContent.localeCompare(result.name, undefined, { sensitivity: 'base' }) > 0;
+                    });
+                    if (insertBefore) childrenEl.insertBefore(newEl, insertBefore);
+                    else childrenEl.appendChild(newEl);
+                    // 确保父节点箭头显示为展开
+                    const parentToggle = label.querySelector('.tree-toggle');
+                    if (parentToggle && !parentToggle.textContent) parentToggle.textContent = '▼';
+                    // 选中新节点
+                    newEl.querySelector('.tree-node-label').click();
+                } else {
+                    tempNode.remove();
+                    alert(result.error || '创建子目录失败');
+                }
+            };
+
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter')  { e.preventDefault(); confirm(); }
+                if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+            });
+            input.addEventListener('blur', () => setTimeout(() => { if (!committed) confirm(); }, 150));
         });
 
         // 渲染照片网格（分页显示，每页≈50张完整行）
@@ -1159,11 +1389,15 @@
 
             // 右键菜单
             div.addEventListener('contextmenu', () => {
+                const navIndex = sortedCurrentPhotos.indexOf(photo);
+                const navPhotos = sortedCurrentPhotos.map(p => ({ directory: p.directory, filename: p.filename }));
                 ipcRenderer.send('show-photo-context-menu', {
                     photoId:   photo.id,
                     directory: photo.directory,
                     filename:  photo.filename,
-                    isVideo:   photo.type === 'video'
+                    isVideo:   photo.type === 'video',
+                    navPhotos,
+                    currentIndex: navIndex
                 });
             });
 
@@ -1550,6 +1784,7 @@
 
             const label = document.createElement('div');
             label.className = 'tree-node-label';
+            label.dataset.relPath = node.fullPath;
 
             const toggle = document.createElement('span');
             toggle.className = 'tree-toggle';
@@ -1558,7 +1793,7 @@
 
             const icon = document.createElement('span');
             icon.className = 'tree-icon';
-            icon.textContent = '📁';
+            icon.textContent = node.fullPath === 'Bin' ? '🗑️' : '📁';
             label.appendChild(icon);
 
             const name = document.createElement('span');
@@ -1597,13 +1832,19 @@
                 // 高亮选中
                 document.querySelectorAll('.tree-node-label.selected').forEach(el => el.classList.remove('selected'));
                 label.classList.add('selected');
-                // 加载照片
-                if (node.photoCount > 0) {
-                    const photos = await ipcRenderer.invoke('query-photos-by-directory', node.fullPath);
-                    renderPhotos(photos);
-                } else {
-                    renderPhotos([]);
-                }
+                // 加载照片（始终查询 DB，避免动态更新后计数过期）
+                const photos = await ipcRenderer.invoke('query-photos-by-directory', node.fullPath);
+                renderPhotos(photos);
+            });
+
+            label.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                ipcRenderer.send('show-directory-context-menu', {
+                    relPath: node.fullPath,
+                    absPath: node.absPath,
+                    name:    node.name
+                });
             });
 
             return el;
@@ -1701,23 +1942,45 @@
                 if (key === todayKey) {
                     cell.classList.add('today-marker');
                 }
-                if (key === calendarSelectedDate) {
+                if (key === calendarSelectedDate || key === calendarRangeDate) {
                     cell.classList.add('selected');
+                } else if (calendarSelectedDate && calendarRangeDate) {
+                    const lo = calendarSelectedDate < calendarRangeDate ? calendarSelectedDate : calendarRangeDate;
+                    const hi = calendarSelectedDate < calendarRangeDate ? calendarRangeDate : calendarSelectedDate;
+                    if (key > lo && key < hi) cell.classList.add('in-range');
                 }
 
                 // 点击：从数据库查询当天全部照片（与地图选中区域无关）
                 if (allPhotoDateSet.has(key)) {
-                    cell.addEventListener('click', async () => {
-                        calendarSelectedDate = key;
-                        renderCalendar();
-                        // 用本地时区计算当天的起止时间戳，再转 ISO 供数据库比较
-                        const [y, mo, dy] = key.split('-').map(Number);
-                        const startTime = new Date(y, mo - 1, dy, 0, 0, 0, 0).toISOString();
-                        const endTime   = new Date(y, mo - 1, dy, 23, 59, 59, 999).toISOString();
-                        const dayPhotos = await ipcRenderer.invoke('query-photos-by-time', { startTime, endTime });
-                        renderPhotos(dayPhotos);
-                        if (dayInfo) {
-                            dayInfo.textContent = `${key}  ·  ${i18n.t('manage.calPhotoCount', { count: dayPhotos.length })}`;
+                    cell.addEventListener('click', async (e) => {
+                        if (e.shiftKey && calendarSelectedDate && calendarSelectedDate !== key) {
+                            // Shift+点击：区间选择
+                            calendarRangeDate = key;
+                            renderCalendar();
+                            const lo = calendarSelectedDate < calendarRangeDate ? calendarSelectedDate : calendarRangeDate;
+                            const hi = calendarSelectedDate < calendarRangeDate ? calendarRangeDate : calendarSelectedDate;
+                            const [y0, mo0, dy0] = lo.split('-').map(Number);
+                            const [y1, mo1, dy1] = hi.split('-').map(Number);
+                            const startTime = new Date(y0, mo0 - 1, dy0, 0, 0, 0, 0).toISOString();
+                            const endTime   = new Date(y1, mo1 - 1, dy1, 23, 59, 59, 999).toISOString();
+                            const rangePhotos = await ipcRenderer.invoke('query-photos-by-time', { startTime, endTime });
+                            renderPhotos(rangePhotos);
+                            if (dayInfo) {
+                                dayInfo.textContent = `${lo} ~ ${hi}  ·  ${i18n.t('manage.calPhotoCount', { count: rangePhotos.length })}`;
+                            }
+                        } else {
+                            // 普通点击：单日选择
+                            calendarSelectedDate = key;
+                            calendarRangeDate = null;
+                            renderCalendar();
+                            const [y, mo, dy] = key.split('-').map(Number);
+                            const startTime = new Date(y, mo - 1, dy, 0, 0, 0, 0).toISOString();
+                            const endTime   = new Date(y, mo - 1, dy, 23, 59, 59, 999).toISOString();
+                            const dayPhotos = await ipcRenderer.invoke('query-photos-by-time', { startTime, endTime });
+                            renderPhotos(dayPhotos);
+                            if (dayInfo) {
+                                dayInfo.textContent = `${key}  ·  ${i18n.t('manage.calPhotoCount', { count: dayPhotos.length })}`;
+                            }
                         }
                     });
                 }

@@ -49,6 +49,14 @@
         <button id="face-scan-cancel" data-i18n="face.scan.cancel">取消</button>
     </div>
 
+    <!-- 重复照片移除进度指示器（固定在地图右下角） -->
+    <div id="dup-scan-overlay">
+        <div id="dup-scan-title" data-i18n="dup.scan.title">移除重复</div>
+        <canvas id="dup-scan-canvas" width="128" height="128"></canvas>
+        <div id="dup-scan-text"></div>
+        <button id="dup-scan-stop" data-i18n="dup.scan.stop">终止</button>
+    </div>
+
     <script src="renderer.js"></script>
 </body>
 </html>

@@ -124,6 +124,11 @@ class MenuManager {
                 {
                     label: this.t('menu.map.routes'),
                     click: () => this.handleMenuClick('travelRoutes')
+                },
+                { type: 'separator' },
+                {
+                    label: this.t('menu.map.setDefaultLocation'),
+                    click: () => this.handleMenuClick('setDefaultLocation')
                 }
             ]
         };

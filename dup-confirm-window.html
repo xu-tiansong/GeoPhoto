@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Review Duplicate Photos</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            background: #1a1a1a;
+            color: #e0e0e0;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            user-select: none;
+        }
+
+        /* ── Title Bar ─────────────────────────────────── */
+        .title-bar {
+            -webkit-app-region: drag;
+            height: 38px;
+            background: rgba(0,0,0,0.50);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 12px;
+            border-bottom: 1px solid #2e2e2e;
+            flex-shrink: 0;
+        }
+        .title-bar-text {
+            font-size: 13px;
+            font-weight: 500;
+            color: #ccc;
+        }
+        .title-bar-close {
+            -webkit-app-region: no-drag;
+            width: 28px; height: 28px;
+            background: #c62828;
+            border: none; border-radius: 4px;
+            cursor: pointer; color: #fff; font-size: 16px; line-height: 1;
+            display: flex; align-items: center; justify-content: center;
+            transition: background 0.15s;
+        }
+        .title-bar-close:hover { background: #b71c1c; }
+
+        /* ── Main Layout ───────────────────────────────── */
+        .main-layout {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+
+        /* ── Thumbnail Panel ────────────────────────────── */
+        .thumb-panel {
+            width: 220px;
+            flex-shrink: 0;
+            overflow-y: auto;
+            overflow-x: hidden;
+            background: #111;
+            border-right: 1px solid #2e2e2e;
+            padding: 6px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .thumb-panel::-webkit-scrollbar { width: 6px; }
+        .thumb-panel::-webkit-scrollbar-track { background: #111; }
+        .thumb-panel::-webkit-scrollbar-thumb { background: #444; border-radius: 3px; }
+
+        .thumb-item {
+            position: relative;
+            border: 2px solid #3a3a3a;
+            border-radius: 6px;
+            overflow: hidden;
+            cursor: pointer;
+            transition: border-color 0.15s, opacity 0.15s;
+            background: #1e1e1e;
+        }
+        .thumb-item:hover { border-color: #666; }
+
+        /* Currently viewing in main panel */
+        .thumb-item.viewing { border-color: #2196f3; }
+
+        /* Will be KEPT — green border */
+        .thumb-item.keep { border-color: #4caf50; }
+
+        /* Viewing + keeping */
+        .thumb-item.viewing.keep {
+            border-color: #4caf50;
+            box-shadow: inset 0 0 0 2px #2196f3;
+        }
+
+        /* Will be sent to Bin — dimmed */
+        .thumb-item:not(.keep) .thumb-img { opacity: 0.45; filter: grayscale(50%); }
+        .thumb-item:not(.keep) .thumb-img-wrapper::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: rgba(180, 0, 0, 0.18);
+            pointer-events: none;
+        }
+
+        .thumb-img-wrapper {
+            position: relative;
+            width: 100%;
+            height: 150px;
+        }
+        .thumb-img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+            background: #0a0a0a;
+            transition: opacity 0.15s, filter 0.15s;
+        }
+
+        /* ── Checkbox (top-left) ─────────────────────── */
+        .thumb-checkbox-wrap {
+            position: absolute;
+            top: 5px;
+            left: 5px;
+            z-index: 10;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0,0,0,0.55);
+            border-radius: 4px;
+            -webkit-app-region: no-drag;
+        }
+        .thumb-checkbox {
+            width: 14px;
+            height: 14px;
+            cursor: pointer;
+            accent-color: #4caf50;
+            margin: 0;
+        }
+
+        /* Recommended badge (top-right) */
+        .thumb-badge {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background: rgba(33, 150, 243, 0.88);
+            color: #fff;
+            font-size: 10px;
+            font-weight: 600;
+            padding: 2px 6px;
+            border-radius: 10px;
+            white-space: nowrap;
+        }
+
+        /* Metadata overlay (bottom) */
+        .thumb-overlay {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(0, 0, 0, 0.70);
+            padding: 5px 7px;
+            font-size: 10px;
+            line-height: 1.45;
+            color: #ddd;
+        }
+        .overlay-row {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .overlay-row.remark-row { color: #aaa; }
+
+        /* ── Viewer Panel ──────────────────────────────── */
+        .viewer-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            background: #0d0d0d;
+        }
+
+        .photo-container {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            cursor: grab;
+        }
+        .photo-container.dragging { cursor: grabbing; }
+
+        .photo-wrapper {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .photo-wrapper img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            user-select: none;
+            -webkit-user-drag: none;
+            transform-origin: center center;
+            transition: transform 0.08s ease-out;
+        }
+
+        .no-photo-placeholder {
+            color: #555;
+            font-size: 14px;
+            text-align: center;
+        }
+
+        /* ── Footer ─────────────────────────────────────── */
+        .footer {
+            height: 50px;
+            background: rgba(0,0,0,0.40);
+            border-top: 1px solid #2e2e2e;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 14px;
+            flex-shrink: 0;
+        }
+
+        .footer-stats {
+            font-size: 12px;
+            color: #888;
+            flex: 1;
+            margin-right: 12px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .footer-buttons {
+            display: flex;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+
+        .footer-buttons button {
+            padding: 7px 16px;
+            border: none;
+            border-radius: 5px;
+            font-size: 13px;
+            cursor: pointer;
+            font-family: inherit;
+            transition: background 0.15s;
+        }
+
+        #btn-skip {
+            background: #333;
+            color: #ccc;
+        }
+        #btn-skip:hover { background: #444; }
+
+        #btn-interrupt {
+            background: #5a2020;
+            color: #f88;
+        }
+        #btn-interrupt:hover { background: #6a2828; }
+
+        #btn-confirm {
+            background: #1565c0;
+            color: #fff;
+            font-weight: 600;
+        }
+        #btn-confirm:hover { background: #1976d2; }
+    </style>
+</head>
+<body>
+    <div class="title-bar">
+        <span class="title-bar-text" id="group-counter"></span>
+        <button class="title-bar-close" id="close-btn">&#x2715;</button>
+    </div>
+
+    <div class="main-layout">
+        <div class="thumb-panel" id="thumb-panel"></div>
+
+        <div class="viewer-panel">
+            <div class="photo-container" id="photo-container">
+                <div class="photo-wrapper" id="photo-wrapper">
+                    <img id="main-photo" src="" alt="" />
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <span class="footer-stats" id="footer-stats"></span>
+        <div class="footer-buttons">
+            <button id="btn-skip">Skip</button>
+            <button id="btn-interrupt">Stop</button>
+            <button id="btn-confirm">Keep Selected</button>
+        </div>
+    </div>
+
+    <script>
+        const { ipcRenderer } = require('electron');
+        const { pathToFileURL } = require('url');
+        const i18n = require('./modules/i18n');
+
+        let currentPhotos = [];
+        let viewingIndex = 0;
+        let keepSet = new Set(); // indices of photos to keep
+        let scale = 1, translateX = 0, translateY = 0;
+        let isDragging = false, dragStartX = 0, dragStartY = 0;
+
+        const photoContainer = document.getElementById('photo-container');
+        const mainPhoto = document.getElementById('main-photo');
+        const thumbPanel = document.getElementById('thumb-panel');
+
+        // ── Language ─────────────────────────────────────────────
+        function applyLabels() {
+            document.getElementById('btn-skip').textContent      = i18n.t('dup.review.skip');
+            document.getElementById('btn-interrupt').textContent = i18n.t('dup.review.interrupt');
+            document.getElementById('btn-confirm').textContent   = i18n.t('dup.review.confirm');
+        }
+
+        ipcRenderer.on('language-changed', (_e, lang) => {
+            i18n.applyToDOM(document, lang);
+            applyLabels();
+            renderThumbs();
+        });
+
+        ipcRenderer.send('dup-confirm-renderer-ready');
+
+        // ── Data ──────────────────────────────────────────────────
+        ipcRenderer.on('dup-confirm-data', (_event, { photoData, stats, lang }) => {
+            i18n.applyToDOM(document, lang);
+            applyLabels();
+            currentPhotos = photoData;
+            viewingIndex = 0;
+            keepSet = new Set([0]); // default: keep the recommended (largest) photo
+            renderThumbs();
+            loadMainImage(currentPhotos[0]);
+            updateStats(stats);
+        });
+
+        // ── Helpers ───────────────────────────────────────────────
+        function formatTime(timeStr) {
+            if (!timeStr) return '-';
+            try {
+                const d = new Date(timeStr);
+                if (isNaN(d.getTime())) return timeStr;
+                const p = n => String(n).padStart(2, '0');
+                return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ` +
+                       `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+            } catch (_) { return timeStr; }
+        }
+
+        function formatCoords(lat, lng) {
+            if (lat == null || lng == null) return '-';
+            const ns = lat >= 0 ? 'N' : 'S';
+            const ew = lng >= 0 ? 'E' : 'W';
+            return `${Math.abs(lat).toFixed(4)}°${ns}  ${Math.abs(lng).toFixed(4)}°${ew}`;
+        }
+
+        function formatFileSize(bytes) {
+            if (!bytes) return '-';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+        }
+
+        // ── Render thumbnails ──────────────────────────────────────
+        function renderThumbs() {
+            thumbPanel.innerHTML = '';
+            currentPhotos.forEach((item, idx) => {
+                const { photo, fullPath, size, width, height } = item;
+                const isKeep    = keepSet.has(idx);
+                const isViewing = idx === viewingIndex;
+
+                const container = document.createElement('div');
+                let cls = 'thumb-item';
+                if (isViewing) cls += ' viewing';
+                if (isKeep)    cls += ' keep';
+                container.className = cls;
+
+                const imgWrapper = document.createElement('div');
+                imgWrapper.className = 'thumb-img-wrapper';
+
+                // Checkbox (top-left) — click toggles keep state
+                const cbWrap = document.createElement('div');
+                cbWrap.className = 'thumb-checkbox-wrap';
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.className = 'thumb-checkbox';
+                cb.checked = isKeep;
+                cb.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    toggleKeep(idx);
+                });
+                cbWrap.appendChild(cb);
+                imgWrapper.appendChild(cbWrap);
+
+                const img = document.createElement('img');
+                img.className = 'thumb-img';
+                img.draggable = false;
+                loadThumbImage(img, fullPath);
+
+                // Recommended badge on first item
+                if (idx === 0) {
+                    const badge = document.createElement('div');
+                    badge.className = 'thumb-badge';
+                    badge.textContent = i18n.t('dup.review.recommended');
+                    imgWrapper.appendChild(badge);
+                }
+
+                // Metadata overlay
+                const overlay = document.createElement('div');
+                overlay.className = 'thumb-overlay';
+                const remarkText = photo.remark
+                    ? i18n.t('dup.review.hasRemark')
+                    : i18n.t('dup.review.noRemark');
+                const dimText = (width && height) ? `${width}×${height}` : '-';
+                overlay.innerHTML =
+                    `<div class="overlay-row">${escapeHtml(formatTime(photo.time))}</div>` +
+                    `<div class="overlay-row">${escapeHtml(formatCoords(photo.lat, photo.lng))}</div>` +
+                    `<div class="overlay-row">${escapeHtml(dimText)}  ${escapeHtml(formatFileSize(size))}</div>` +
+                    `<div class="overlay-row remark-row">${escapeHtml(remarkText)}</div>`;
+
+                imgWrapper.appendChild(img);
+                imgWrapper.appendChild(overlay);
+                container.appendChild(imgWrapper);
+
+                // Click on the container → view in main panel
+                container.addEventListener('click', () => viewPhoto(idx));
+                thumbPanel.appendChild(container);
+            });
+        }
+
+        function escapeHtml(str) {
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+        }
+
+        function loadThumbImage(imgEl, fullPath) {
+            if (!fullPath) return;
+            if (/\.heic$/i.test(fullPath)) {
+                ipcRenderer.invoke('convert-heic', { filePath: fullPath }).then(result => {
+                    if (result && result.success && result.data) {
+                        const blob = new Blob(
+                            [Buffer.from(result.data, 'base64')],
+                            { type: 'image/jpeg' }
+                        );
+                        imgEl.src = URL.createObjectURL(blob);
+                    }
+                }).catch(() => {});
+            } else {
+                imgEl.src = pathToFileURL(fullPath).href;
+            }
+        }
+
+        // ── View photo in main panel ───────────────────────────────
+        function viewPhoto(idx) {
+            viewingIndex = idx;
+            thumbPanel.querySelectorAll('.thumb-item').forEach((el, i) => {
+                el.classList.toggle('viewing', i === viewingIndex);
+            });
+            const thumbEl = thumbPanel.children[idx];
+            if (thumbEl) thumbEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            loadMainImage(currentPhotos[idx]);
+        }
+
+        // ── Toggle keep/bin for a photo ────────────────────────────
+        function toggleKeep(idx) {
+            if (keepSet.has(idx)) {
+                // Don't allow unchecking the last selected photo
+                if (keepSet.size === 1) return;
+                keepSet.delete(idx);
+            } else {
+                keepSet.add(idx);
+            }
+            const el = thumbPanel.children[idx];
+            if (!el) return;
+            el.classList.toggle('keep', keepSet.has(idx));
+            const cb = el.querySelector('.thumb-checkbox');
+            if (cb) cb.checked = keepSet.has(idx);
+        }
+
+        async function loadMainImage(item) {
+            if (!item) return;
+            resetZoom();
+            mainPhoto.src = '';
+
+            const { fullPath } = item;
+            if (/\.heic$/i.test(fullPath)) {
+                const result = await ipcRenderer.invoke('convert-heic', { filePath: fullPath });
+                if (result && result.success && result.data) {
+                    const blob = new Blob(
+                        [Buffer.from(result.data, 'base64')],
+                        { type: 'image/jpeg' }
+                    );
+                    const url = URL.createObjectURL(blob);
+                    mainPhoto.onload = () => resetZoom();
+                    mainPhoto.src = url;
+                }
+            } else {
+                mainPhoto.onload = () => resetZoom();
+                mainPhoto.src = pathToFileURL(fullPath).href;
+                if (mainPhoto.complete && mainPhoto.naturalWidth > 0) resetZoom();
+            }
+        }
+
+        // ── Stats ─────────────────────────────────────────────────
+        function updateStats(stats) {
+            document.getElementById('group-counter').textContent =
+                i18n.t('dup.review.title') + '  (' + stats.groupIndex + ' / ' + stats.totalGroups + ')';
+
+            document.getElementById('footer-stats').textContent =
+                i18n.t('dup.review.stats', {
+                    processed:  stats.groupIndex - 1,
+                    total:      stats.totalGroups,
+                    removed:    stats.removedSoFar
+                });
+        }
+
+        // ── Zoom / Pan ────────────────────────────────────────────
+        function resetZoom() {
+            scale = 1; translateX = 0; translateY = 0;
+            updateTransform();
+        }
+
+        function updateTransform() {
+            mainPhoto.style.transform =
+                `scale(${scale}) translate(${translateX / scale}px, ${translateY / scale}px)`;
+        }
+
+        photoContainer.addEventListener('wheel', e => {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? -0.12 : 0.12;
+            scale = Math.max(0.1, Math.min(10, scale + delta));
+            updateTransform();
+        }, { passive: false });
+
+        photoContainer.addEventListener('mousedown', e => {
+            if (e.button !== 0) return;
+            isDragging = true;
+            dragStartX = e.clientX - translateX;
+            dragStartY = e.clientY - translateY;
+            photoContainer.classList.add('dragging');
+        });
+
+        document.addEventListener('mousemove', e => {
+            if (!isDragging) return;
+            translateX = e.clientX - dragStartX;
+            translateY = e.clientY - dragStartY;
+            updateTransform();
+        });
+
+        document.addEventListener('mouseup', () => {
+            isDragging = false;
+            photoContainer.classList.remove('dragging');
+        });
+
+        photoContainer.addEventListener('dblclick', () => resetZoom());
+
+        // ── Buttons ───────────────────────────────────────────────
+        document.getElementById('btn-skip').addEventListener('click', () => {
+            ipcRenderer.send('dup-confirm-response', { action: 'skip' });
+        });
+
+        document.getElementById('btn-interrupt').addEventListener('click', () => {
+            ipcRenderer.send('dup-confirm-response', { action: 'interrupt' });
+        });
+
+        document.getElementById('btn-confirm').addEventListener('click', () => {
+            if (currentPhotos.length === 0) return;
+            // 发送要保留的索引列表（主进程按相同顺序的 photoData 做过滤）
+            const keepIndices = [...keepSet];
+            ipcRenderer.send('dup-confirm-response', { action: 'confirm', keepIndices });
+        });
+
+        document.getElementById('close-btn').addEventListener('click', () => {
+            ipcRenderer.send('dup-confirm-response', { action: 'interrupt' });
+        });
+    </script>
+</body>
+</html>
