@@ -1103,6 +1103,15 @@ function registerIpcHandlers() {
         return { success: true, currentIndex: photoWindow.currentIndex, total: photoWindow.navPhotos.length };
     });
 
+    // 编辑落盘后（另存副本入库 / 覆盖原图且改名）通知主窗口刷新地图标记，
+    // 使新照片立即出现、改名照片的标记指向新文件，而不必等用户手动调整日期。
+    ipcMain.handle('refresh-map-photos', (_event, photo) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('map-photos-changed', photo);
+        }
+        return true;
+    });
+
     // 「覆盖原图」且格式改变（HEIC→JPG 改名）后：更新当前导航项的文件名，
     // 否则翻页离开再回来会因旧文件名找不到记录。
     ipcMain.handle('update-current-nav-entry', (_event, newPhoto) => {

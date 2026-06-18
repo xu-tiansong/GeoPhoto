@@ -671,6 +671,12 @@
         sendPreview();   // 基线（无编辑），清除照片窗可能残留的旧预览
     });
 
+    // 恢复上次记住的保存方式（另存副本/覆盖原图）
+    ipcRenderer.on('photo-edit-savemode', (_event, mode) => {
+        const radio = document.querySelector(`input[name="savemode"][value="${mode}"]`);
+        if (radio) radio.checked = true;
+    });
+
     // ====================================================================
     //  初始化
     // ====================================================================

@@ -1626,16 +1626,18 @@
                     return;
                 }
                 if (res.mode === 'copy' && res.photo) {
-                    // 另存副本：作为独立照片跳转显示，并插入导航列表当前项之后
+                    // 另存副本：作为独立照片跳转显示，插入导航列表，并通知主窗刷新地图
                     currentPhoto = res.photo;
                     await loadPhoto(res.photo);
                     await ipcRenderer.invoke('insert-edited-copy-into-nav', res.photo);
+                    await ipcRenderer.invoke('refresh-map-photos', res.photo);
                     console.log('[photo-edit] 已另存为新照片并跳转:', res.path);
                 } else if (res.mode === 'overwrite' && res.renamed) {
-                    // 覆盖原图但格式改变（如 HEIC→JPG）：文件名已更新，同步导航项后重载
+                    // 覆盖原图但格式改变（如 HEIC→JPG）：文件名已更新，同步导航项与地图后重载
                     currentPhoto.filename = res.filename;
                     currentPhoto.fullPath = res.path;
                     await ipcRenderer.invoke('update-current-nav-entry', currentPhoto);
+                    await ipcRenderer.invoke('refresh-map-photos', currentPhoto);
                     await loadPhoto(currentPhoto);
                     console.log('[photo-edit] 已覆盖原图（改名）:', res.path);
                 } else {

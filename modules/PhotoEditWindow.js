@@ -18,6 +18,7 @@
 //      'photo-edit-set-collapsed'          折叠/展开 {collapsed:boolean}
 //    主→编辑窗：
 //      'photo-edit-load'                   下发当前照片 photoData
+//      'photo-edit-savemode'               下发上次记住的保存方式 'copy'|'overwrite'
 //    主→opener（转发）：
 //      'photo-edit-applied'                编辑已应用，携带 {photo, edits}
 //      'photo-edit-cancelled'              编辑已取消，携带 {photo}
@@ -46,6 +47,13 @@ const DEFAULT_WIDTH = 320;
 const DEFAULT_HEIGHT = 420;
 const COLLAPSED_HEIGHT = 72;
 const WIN_STATE_KEY = 'photo_edit_win_state';
+const SAVE_MODE_KEY = 'photo_edit_save_mode';
+
+/** 读取上次记住的保存方式（'copy' | 'overwrite'），默认 'copy'。 */
+function getSavedSaveMode() {
+    const m = dbRef && dbRef.getSetting(SAVE_MODE_KEY);
+    return (m === 'overwrite' || m === 'copy') ? m : 'copy';
+}
 
 /**
  * 打开（或聚焦并复用）照片编辑窗体。
@@ -95,6 +103,7 @@ function openPhotoEditWindow(photoData, openerWebContentsId) {
     if (editWin && !editWin.isDestroyed()) {
         editWin.focus();
         editWin.webContents.send('photo-edit-load', currentPhoto);
+        editWin.webContents.send('photo-edit-savemode', getSavedSaveMode());
         return;
     }
 
@@ -132,6 +141,7 @@ function openPhotoEditWindow(photoData, openerWebContentsId) {
         if (editWin && !editWin.isDestroyed()) {
             editWin.show();
             editWin.webContents.send('photo-edit-load', currentPhoto);
+            editWin.webContents.send('photo-edit-savemode', getSavedSaveMode());
         }
     });
 
@@ -157,6 +167,10 @@ function sendToOpener(channel, payload) {
 function settleApply(edits) {
     if (settled) return;
     settled = true;
+    // 记住本次保存方式，供下次打开编辑窗时预选
+    if (dbRef && edits && (edits.saveMode === 'copy' || edits.saveMode === 'overwrite')) {
+        try { dbRef.saveSetting(SAVE_MODE_KEY, edits.saveMode); } catch (_e) { /* 忽略写盘失败 */ }
+    }
     sendToOpener('photo-edit-applied', { photo: currentPhoto, edits });
 }
 

@@ -110,6 +110,22 @@ ipcRenderer.on('photo-deleted', (_event, { photoId, toDir }) => {
     }
 });
 
+// 编辑落盘后刷新地图标记（另存副本=新增；覆盖改名=标记指向新文件名）。
+// 用地图自身当前加载的时间范围（currentTimeStart/End）重新查询，确保与当前
+// 显示的标记集合完全一致、只是反映这次变化，避免误用更窄的范围把已有标记裁掉。
+ipcRenderer.on('map-photos-changed', async (_event, photo) => {
+    if (!mapManager) return;
+    let start = mapManager.currentTimeStart;
+    let end = mapManager.currentTimeEnd;
+    if ((!start || !end) && timeline) {
+        const r = timeline.getCurrentRange();
+        if (r) { start = r.start; end = r.end; }
+    }
+    if (start && end) {
+        await mapManager.loadMarkersByTimeRange(start, end);
+    }
+});
+
 // 监听照片Like状态变化，刷新地图上的markers
 ipcRenderer.on('photo-like-changed', async (event, { directory, filename, like }) => {
     console.log('照片Like状态变化:', directory, filename, like);
