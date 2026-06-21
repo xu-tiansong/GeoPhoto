@@ -934,6 +934,29 @@
             }
         });
 
+        // 右键「刷新缩略图」：删除旧 .gpt 缓存并重建。
+        // 重建走 loadPhotoContent → enqueueThumbnailGeneration 管线，
+        // 该管线把原图（HEIC 经主进程补盖 EXIF 方向、JPEG 由 <img> 自动摆正）
+        // 画到 canvas，因此重建出的缩略图会按拍摄方向正确显示。
+        ipcRenderer.on('regenerate-thumbnail', (_event, { photoId, fullPath }) => {
+            const idStr = String(photoId);
+            let item = null;
+            try { item = document.querySelector(`.photo-item[data-photo-id="${CSS.escape(idStr)}"]`); } catch (_) {}
+            if (!item && fullPath) {
+                item = Array.from(document.querySelectorAll('.photo-item'))
+                    .find(el => el.dataset.filePath === fullPath);
+            }
+            if (!item) return;
+
+            const originalPath = item.dataset.filePath || fullPath;
+            ThumbnailGenerator.deleteThumbnailCache(originalPath);   // 作废旧缓存，强制重建
+            // 移除当前已显示的缩略图元素，重置为未加载态
+            item.querySelectorAll('img, video, .video-overlay').forEach(el => el.remove());
+            item.classList.add('loading');
+            item.dataset.loaded = 'false';
+            loadPhotoContent(item);
+        });
+
         // 目录被删除后，刷新目录树并清空照片面板
         ipcRenderer.on('directory-deleted', () => {
             renderPhotos([]);

@@ -190,6 +190,16 @@ function closeEditWindow() {
 // canvas 能重新编码的栅格格式（用于判断「覆盖原图」能否原地写回）
 const ENCODABLE_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp']);
 
+// 覆盖原图后，删除该照片的旧缓存：`.gpt` 缩略图、(可选) `.gpj` HEIC 解码缓存，
+// 使缩略图/预览不再显示编辑前的旧内容（缩略图随后会从新内容重建）。
+function invalidatePhotoCaches(filePath, removeGpj) {
+    if (!filePath) return;
+    const ext = path.extname(filePath);
+    const baseNoExt = ext ? filePath.slice(0, -ext.length) : filePath;
+    try { fs.unlinkSync(baseNoExt + '.gpt'); } catch (_e) { /* 不存在则忽略 */ }
+    if (removeGpj) { try { fs.unlinkSync(baseNoExt + '.gpj'); } catch (_e) {} }
+}
+
 /**
  * 注册全部 IPC 处理器（在 main.js 的 registerIpcHandlers 中调用一次）。
  * @param {object} db - Database 实例，用于「另存副本」入库及 HEIC 覆盖时的改名
@@ -252,6 +262,7 @@ function registerIPC(db) {
                 if (ENCODABLE_EXT.has(origExt)) {
                     // 原地写回，文件名/扩展名不变，无需数据库操作
                     fs.writeFileSync(srcPath, buf);
+                    invalidatePhotoCaches(srcPath, false);   // 作废旧缩略图
                     return { success: true, mode: 'overwrite', path: srcPath, filename, renamed: false };
                 }
                 // 不可编码格式（HEIC 等）：写 .jpg 取代原文件，并改名数据库记录
@@ -264,6 +275,8 @@ function registerIPC(db) {
                 if (db && originalPhotoId != null) {
                     db.movePhoto(originalPhotoId, directory, newName);
                 }
+                // 作废旧缩略图与已失效的 HEIC 解码缓存（同 basename）
+                invalidatePhotoCaches(newPath, true);
                 return { success: true, mode: 'overwrite', path: newPath, filename: newName, renamed: true };
             }
 

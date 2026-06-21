@@ -1182,6 +1182,7 @@
         const L = require('leaflet');
         const { pathToFileURL } = require('url');
         const fs = require('fs');
+        const ThumbnailGenerator = require('./modules/ThumbnailGenerator');
         const i18n = require('./modules/i18n');
 
         function formatFileSize(bytes) {
@@ -1189,33 +1190,6 @@
             if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
             if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
             return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
-        }
-
-        // EXIF orientation → rotation degrees (for embedded previews without own EXIF rotation)
-        // Handles the common rotation-only cases; flip-only cases (2,4) treated as 0°
-        const EXIF_ORIENT_DEG = { 3: 180, 5: 90, 6: 90, 7: 270, 8: 270 };
-
-        // Rotate a JPEG blob by degrees using an off-screen canvas
-        function rotateBlobByDegrees(blob, degrees) {
-            if (!degrees || degrees % 360 === 0) return Promise.resolve(blob);
-            return new Promise((resolve) => {
-                const img = new Image();
-                const url = URL.createObjectURL(blob);
-                img.onload = () => {
-                    URL.revokeObjectURL(url);
-                    const swap = degrees === 90 || degrees === 270;
-                    const canvas = document.createElement('canvas');
-                    canvas.width  = swap ? img.naturalHeight : img.naturalWidth;
-                    canvas.height = swap ? img.naturalWidth  : img.naturalHeight;
-                    const ctx = canvas.getContext('2d');
-                    ctx.translate(canvas.width / 2, canvas.height / 2);
-                    ctx.rotate(degrees * Math.PI / 180);
-                    ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
-                    canvas.toBlob(newBlob => resolve(newBlob || blob), 'image/jpeg', 0.92);
-                };
-                img.onerror = () => { URL.revokeObjectURL(url); resolve(blob); };
-                img.src = url;
-            });
         }
 
         // i18n 初始化
@@ -1272,6 +1246,13 @@
                 filename:  currentPhoto.filename,
                 isVideo:   currentPhoto.type === 'video'
             });
+        });
+
+        // 右键「刷新缩略图」：用当前显示的（已按 EXIF 方向摆正的）图重建 .gpt
+        ipcRenderer.on('regenerate-thumbnail', (_event, { photoId, fullPath }) => {
+            if (currentPhoto && currentPhoto.id === photoId && currentPhoto.type !== 'video') {
+                regenerateThumbnail(fullPath || currentPhoto.fullPath);
+            }
         });
 
         // 当前显示的照片被删除时：尝试翻页，否则关闭窗口
@@ -1384,12 +1365,9 @@
                     photoImage.src = '';
                     const result = await ipcRenderer.invoke('convert-heic', { filePath });
                     if (result.success) {
-                        let blob = new Blob([Buffer.from(result.data, 'base64')], { type: 'image/jpeg' });
-                        // 内嵌预览通常不含 EXIF 旋转，需手动用 canvas 修正方向
-                        if (result.isPreview) {
-                            const deg = EXIF_ORIENT_DEG[result.orientation] || 0;
-                            if (deg) blob = await rotateBlobByDegrees(blob, deg);
-                        }
+                        // 主进程已把正确的 EXIF Orientation 标签写入 JPEG，
+                        // <img> 会自动摆正，无需在此手动旋转。
+                        const blob = new Blob([Buffer.from(result.data, 'base64')], { type: 'image/jpeg' });
                         const objUrl = URL.createObjectURL(blob);
                         photoImage.onload = () => { URL.revokeObjectURL(objUrl); resetZoom(); };
                         photoImage.src = objUrl;
@@ -1605,6 +1583,19 @@
             return canvas.toDataURL(isPng ? 'image/png' : 'image/jpeg', 0.95);
         }
 
+        // 覆盖原图后，用当前已加载的编辑结果重建该照片的 `.gpt` 缩略图，
+        // 使地图悬浮缩略图、照片管理网格等显示新内容（主进程已先作废旧缓存）。
+        function regenerateThumbnail(fullPath) {
+            if (!fullPath || !ThumbnailGenerator) return;
+            const gen = () => {
+                if (!photoImage.naturalWidth) return;
+                ThumbnailGenerator.generateAndSaveThumbnail(photoImage, fullPath)
+                    .catch(err => console.error('[photo-edit] 缩略图重建失败:', err));
+            };
+            if (photoImage.complete && photoImage.naturalWidth > 0) gen();
+            else photoImage.addEventListener('load', gen, { once: true });
+        }
+
         ipcRenderer.on('photo-edit-applied', async (_event, { photo, edits }) => {
             try {
                 if (!currentPhoto || currentPhoto.type === 'video') return;
@@ -1639,11 +1630,14 @@
                     await ipcRenderer.invoke('update-current-nav-entry', currentPhoto);
                     await ipcRenderer.invoke('refresh-map-photos', currentPhoto);
                     await loadPhoto(currentPhoto);
+                    regenerateThumbnail(res.path);
                     console.log('[photo-edit] 已覆盖原图（改名）:', res.path);
                 } else {
-                    // 覆盖原图（原地写回）：刷新当前视图，加时间戳绕过缓存
+                    // 覆盖原图（原地写回）：刷新当前视图，重建缩略图，并刷新地图
                     photoImage.onload = () => { resetZoom(); };
                     photoImage.src = pathToFileURL(res.path).href + '?t=' + Date.now();
+                    regenerateThumbnail(res.path);
+                    await ipcRenderer.invoke('refresh-map-photos', { id: currentPhoto.id, directory: currentPhoto.directory, filename: currentPhoto.filename });
                     console.log('[photo-edit] 已覆盖原图:', res.path);
                 }
             } catch (err) {

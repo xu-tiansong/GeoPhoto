@@ -853,20 +853,55 @@ function registerIpcHandlers() {
     // 获取当前语言
     ipcMain.handle('get-language', () => i18n.getLanguage());
 
+    // 读取原始文件的 EXIF Orientation（数字 1..8），失败回退 1。
+    // 必须关闭 translateValues，否则 exifr 会把 6 翻译成 "Rotate 90 CW" 字符串。
+    async function readExifOrientation(filePath) {
+        try {
+            const exifr = require('exifr');
+            const meta = await exifr.parse(filePath, { pick: ['Orientation'], translateValues: false });
+            const o = meta && meta.Orientation;
+            return (typeof o === 'number' && o >= 1 && o <= 8) ? o : 1;
+        } catch (_) { return 1; }
+    }
+
+    // 给解码出的 JPEG 写入正确的 EXIF Orientation 标签。
+    // nativeImage / heic-convert 输出的都是「原始像素方向」且不含方向标签，
+    // 打上标签后浏览器 <img>（默认 image-orientation: from-image）会自动摆正，
+    // 放大视图、缩略图生成、去重确认窗等所有消费方都一致正确。
+    // orientation === 1 时原样返回（绝大多数横拍照片零开销）。
+    function stampOrientation(jpegBuf, orientation) {
+        if (!orientation || orientation === 1) return jpegBuf;
+        try {
+            const dataStr = jpegBuf.toString('binary');
+            let exifObj;
+            try { exifObj = piexif.load(dataStr); }
+            catch (_) { exifObj = { '0th': {}, 'Exif': {}, 'GPS': {}, '1st': {} }; }
+            if (!exifObj['0th']) exifObj['0th'] = {};
+            exifObj['0th'][piexif.ImageIFD.Orientation] = orientation;
+            const exifBytes = piexif.dump(exifObj);
+            return Buffer.from(piexif.insert(exifBytes, dataStr), 'binary');
+        } catch (_) {
+            return jpegBuf;   // 打标签失败则退回未标版（仍可显示，只是方向不修正）
+        }
+    }
+
     // HEIC → JPEG 转换（Chromium 不原生支持 HEIC，通过主进程解码）
     // Step 1: 命中 .gpj 缓存文件 → 直接返回（最快）
     // Step 2: nativeImage.createFromPath() → 利用 Windows HEIC 解码器（快，需系统安装扩展）
     // Step 3: heic-convert WASM → 纯软件解码（慢，但不依赖系统扩展）
-    // Step 4: exifr.thumbnail() 内嵌预览降级 → 低分辨率，需修正旋转
+    // Step 4: exifr.thumbnail() 内嵌预览降级 → 低分辨率
+    // 所有步骤的输出都补盖 EXIF Orientation（含缓存命中，自动修复旧的无标签缓存）。
     ipcMain.handle('convert-heic', async (_event, { filePath }) => {
         const ext = path.extname(filePath);
         const cacheFile = filePath.slice(0, -ext.length) + '.gpj';
+        const orientation = await readExifOrientation(filePath);
+        const stamp = (buf) => stampOrientation(buf, orientation);
 
-        // Step 1: 命中缓存
+        // Step 1: 命中缓存（旧缓存为原始方向、无标签，这里补盖标签后返回）
         try {
             const cached = fs.readFileSync(cacheFile);
             if (cached.length > 5000) {
-                return { success: true, data: cached.toString('base64'), isPreview: false };
+                return { success: true, data: stamp(cached).toString('base64') };
             }
         } catch (_) {}
 
@@ -875,8 +910,8 @@ function registerIpcHandlers() {
             const img = nativeImage.createFromPath(filePath);
             if (!img.isEmpty()) {
                 const jpegBuf = img.toJPEG(92);
-                try { fs.writeFileSync(cacheFile, jpegBuf); } catch (_) {}
-                return { success: true, data: jpegBuf.toString('base64'), isPreview: false };
+                try { fs.writeFileSync(cacheFile, jpegBuf); } catch (_) {}   // 缓存原始版，读时再补标签
+                return { success: true, data: stamp(jpegBuf).toString('base64') };
             }
         } catch (_) {}
 
@@ -887,19 +922,14 @@ function registerIpcHandlers() {
             const outputBuffer = await heicConvert({ buffer: inputBuffer, format: 'JPEG', quality: 1 });
             const jpegBuf = Buffer.from(outputBuffer);
             try { fs.writeFileSync(cacheFile, jpegBuf); } catch (_) {}
-            return { success: true, data: jpegBuf.toString('base64'), isPreview: false };
+            return { success: true, data: stamp(jpegBuf).toString('base64') };
         } catch (convertErr) {
-            // Step 4: 内嵌 JPEG 预览降级（低分辨率，需修正旋转）
+            // Step 4: 内嵌 JPEG 预览降级（低分辨率）
             try {
                 const exifr = require('exifr');
                 const thumbnailBuf = await exifr.thumbnail(filePath);
                 if (thumbnailBuf && thumbnailBuf.length > 5000) {
-                    let orientation = 1;
-                    try {
-                        const meta = await exifr.parse(filePath, { pick: ['Orientation'] });
-                        orientation = meta?.Orientation || 1;
-                    } catch (_) {}
-                    return { success: true, data: Buffer.from(thumbnailBuf).toString('base64'), isPreview: true, orientation };
+                    return { success: true, data: stamp(Buffer.from(thumbnailBuf)).toString('base64') };
                 }
             } catch (_) {}
             return { success: false, error: convertErr.message };
@@ -1698,6 +1728,17 @@ Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; pu
                     });
                     if (!canceled && savePath) {
                         try { fs.copyFileSync(fullPath, savePath); } catch (e) { console.error('另存失败:', e); }
+                    }
+                }
+            },
+            {
+                label:   i18n.t('photo.contextMenu.refreshThumbnail'),
+                enabled: !!fullPath,
+                click: () => {
+                    // 缩略图重建需在渲染进程用 canvas 进行（会按 EXIF 方向自动摆正），
+                    // 通知触发右键菜单的窗口（照片管理窗）重建该照片缩略图。
+                    if (senderWin && !senderWin.isDestroyed()) {
+                        senderWin.webContents.send('regenerate-thumbnail', { photoId, fullPath });
                     }
                 }
             },

@@ -31,6 +31,24 @@ class ThumbnailGenerator {
         return { path: originalPath, isThumbnail: false };
     }
 
+    /**
+     * 删除指定原图对应的 .gpt 缩略图缓存（用于强制重建）
+     * @param {string} originalPath - 原始文件路径
+     * @returns {boolean} 是否删除了文件
+     */
+    deleteThumbnailCache(originalPath) {
+        const dir = path.dirname(originalPath);
+        const ext = path.extname(originalPath);
+        const basename = path.basename(originalPath, ext);
+        const thumbnailPath = path.join(dir, `${basename}.gpt`);
+        try {
+            if (fs.existsSync(thumbnailPath)) { fs.unlinkSync(thumbnailPath); return true; }
+        } catch (err) {
+            console.error('删除缩略图缓存失败:', err);
+        }
+        return false;
+    }
+
     toFileUrl(filePath) {
         try {
             return pathToFileURL(path.resolve(filePath)).href;
