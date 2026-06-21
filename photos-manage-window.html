@@ -1574,7 +1574,9 @@
                             img.onload = () => { task.photoItem.classList.remove('loading'); resolve(); };
                             img.onerror = () => { task.photoItem.classList.remove('loading'); task.photoItem.style.backgroundColor = '#333'; resolve(); };
                             task.photoItem.insertBefore(img, info);
-                            img.src = ThumbnailGenerator.toFileUrl(thumbPath);
+                            // 加时间戳绕过浏览器图片缓存：刷新缩略图时文件已重建，
+                            // 若沿用同一 file:// URL 会显示缓存中的旧图（仍是旧方向）。
+                            img.src = ThumbnailGenerator.toFileUrl(thumbPath) + '?t=' + Date.now();
                         });
                     } else if (task.type === 'video') {
                         // 视频帧已就绪，直接生成缩略图（后台静默，不更新显示）
