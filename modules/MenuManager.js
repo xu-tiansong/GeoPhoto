@@ -167,6 +167,11 @@ class MenuManager {
                 },
                 { type: 'separator' },
                 {
+                    label: this.t('menu.system.centerMeridian'),
+                    click: () => this.handleMenuClick('setMapCenterMeridian')
+                },
+                { type: 'separator' },
+                {
                     label: this.t('menu.system.devtools'),
                     accelerator: 'F12',
                     click: () => {

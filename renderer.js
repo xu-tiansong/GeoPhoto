@@ -187,15 +187,59 @@ function handleMenuAction(action) {
         case 'about':
             alert(i18n.t('about.text'));
             break;
+        case 'setMapCenterMeridian':
+            openMeridianModal();
+            break;
         default:
             console.log('未处理的菜单动作:', action);
     }
+}
+
+// ==================== 设置地图中心经线 ====================
+function openMeridianModal() {
+    if (!mapManager) return;
+    const modal = document.getElementById('meridian-modal');
+    const input = document.getElementById('meridian-input');
+    const slider = document.getElementById('meridian-slider');
+    const cur = Math.round(mapManager.getCenterMeridian ? mapManager.getCenterMeridian() : 0);
+    input.value = cur;
+    slider.value = cur;
+    modal.classList.remove('hidden');
+}
+
+function initMeridianModal() {
+    const modal = document.getElementById('meridian-modal');
+    if (!modal) return;
+    const input = document.getElementById('meridian-input');
+    const slider = document.getElementById('meridian-slider');
+    const clamp = (v) => Math.max(-180, Math.min(180, Math.round(Number(v) || 0)));
+
+    input.addEventListener('input', () => { slider.value = clamp(input.value); });
+    slider.addEventListener('input', () => { input.value = slider.value; });
+
+    modal.querySelectorAll('.meridian-presets button[data-m]').forEach(btn => {
+        btn.addEventListener('click', () => { input.value = btn.dataset.m; slider.value = btn.dataset.m; });
+    });
+    document.getElementById('meridian-use-current').addEventListener('click', () => {
+        const lng = clamp(mapManager.map.getCenter().lng);
+        input.value = lng; slider.value = lng;
+    });
+
+    document.getElementById('meridian-cancel').addEventListener('click', () => modal.classList.add('hidden'));
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.add('hidden'); });
+    document.getElementById('meridian-ok').addEventListener('click', () => {
+        mapManager.setCenterMeridian(clamp(input.value));
+        modal.classList.add('hidden');
+    });
 }
 
 // ==================== 页面初始化 ====================
 window.onload = async () => {
     // 1. 初始化地图管理器
     mapManager = new MapManager(ipcRenderer, 'map');
+
+    // 设置地图中心经线弹窗
+    initMeridianModal();
 
     // 2. 恢复地图状态
     await mapManager.restoreState();

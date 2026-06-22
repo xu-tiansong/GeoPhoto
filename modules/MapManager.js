@@ -5,6 +5,7 @@
 
 const ThumbnailGenerator = require('./ThumbnailGenerator');
 const i18n = require('./i18n');
+const GlobeView = require('./GlobeView');
 
 class MapManager {
     constructor(ipcRenderer, mapElementId = 'map') {
@@ -39,22 +40,123 @@ class MapManager {
         this.initDrawTools();
         this.initMarkerCluster();
         this.initEvents();
+        this.initGlobe();
+    }
+
+    /**
+     * 初始化 3D 地球：缩到最小后再向外滚动即切换为可旋转的地球。
+     */
+    initGlobe() {
+        this.globe = new GlobeView('globe-container', {
+            onExit: (lat, lng) => this._exitGlobe(lat, lng)
+        });
+
+        // 在地图容器上拦截「已到最小缩放仍继续缩小」的滚轮，进入地球
+        const mapEl = document.getElementById(this.mapElementId);
+        if (mapEl) {
+            mapEl.addEventListener('wheel', (e) => {
+                if (this.globe.isActive()) return;
+                if (e.deltaY > 0 && this.map.getZoom() <= this.map.getMinZoom()) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this._enterGlobe();
+                }
+            }, { passive: false, capture: true });
+        }
+
+        // 地球激活时保持容器贴合地图区域
+        window.addEventListener('resize', () => {
+            if (this.globe && this.globe.isActive()) this._positionGlobeOverMap();
+        });
+    }
+
+    /** 让地球容器精确覆盖 #map 的位置/尺寸 */
+    _positionGlobeOverMap() {
+        const mapEl = document.getElementById(this.mapElementId);
+        const c = document.getElementById('globe-container');
+        if (!mapEl || !c) return;
+        const r = mapEl.getBoundingClientRect();
+        c.style.top = r.top + 'px';
+        c.style.left = r.left + 'px';
+        c.style.width = r.width + 'px';
+        c.style.height = r.height + 'px';
+    }
+
+    /** 进入 3D 地球视图，定位到当前地图中心 */
+    _enterGlobe() {
+        if (!this.globe || !this.globe.available) {
+            console.warn('[MapManager] 3D 地球不可用（THREE 未加载）');
+            return;
+        }
+        this._positionGlobeOverMap();
+        const c = this.map.getCenter();
+        this.globe.show(this.currentPhotosCache, c.lat, c.lng);
+    }
+
+    /** 从地球退出回 2D 地图并定位到选定经纬度 */
+    _exitGlobe(lat, lng) {
+        if (this.globe) this.globe.hide();
+        // 退出时拉近到大区域级别，便于继续浏览
+        this.map.setView([lat, lng], 5);
     }
 
     /**
      * 初始化地图
      */
     initMap() {
-        this.map = L.map(this.mapElementId, { center: [20, 0], zoom: 2 });
+        this.map = L.map(this.mapElementId, {
+            center: [20, 0], zoom: 3, maxBoundsViscosity: 1.0
+        });
         // 自定义 pane，使地标小红旗始终在最上层（高于 markerPane 的 z-index 600）
         this.map.createPane('landmarkPane').style.zIndex = 650;
+        // 以中心经线限定可视世界范围（默认 0，本初子午线）
+        this.applyCenterMeridian(0, false);
+        // 动态 minZoom：保证最小缩放下单个世界已铺满视口宽度，不出现重复世界地图；
+        // 再向外缩则切换到 3D 地球。视口变化时同步更新。
+        this._updateMinZoom();
+        this.map.on('resize', () => this._updateMinZoom());
     }
+
+    /** 根据视口宽度计算并设置 minZoom，使世界宽度 ≥ 视口宽度（避免横向重复世界） */
+    _updateMinZoom() {
+        const w = (this.map.getSize && this.map.getSize().x) ||
+            (document.getElementById(this.mapElementId) || {}).clientWidth || 1024;
+        const minZ = Math.max(2, Math.ceil(Math.log2(Math.max(256, w) / 256)));
+        if (this.map.getMinZoom() !== minZ) this.map.setMinZoom(minZ);
+    }
+
+    /**
+     * 应用「地图中心经线」：把可平移范围限定为以该经线为中心、左右各 180° 的单个世界，
+     * 配合瓦片环绕即可让地图以任意经线为中心连续展开（可跨越国际日界线）。
+     * @param {number} meridian   中心经线（经度，-180..180）
+     * @param {boolean} recenter  是否把视图重新居中到该经线
+     */
+    applyCenterMeridian(meridian, recenter = true) {
+        let m = Number(meridian);
+        if (!isFinite(m)) m = 0;
+        while (m < -180) m += 360;
+        while (m > 180) m -= 360;
+        this._centerMeridian = m;
+        this.map.setMaxBounds(L.latLngBounds([[-85, m - 180], [85, m + 180]]));
+        if (recenter) {
+            const c = this.map.getCenter();
+            this.map.setView([c.lat, m], this.map.getZoom(), { animate: true });
+        }
+    }
+
+    /** 设置并持久化中心经线 */
+    setCenterMeridian(meridian) {
+        this.applyCenterMeridian(meridian, true);
+        this.ipcRenderer.invoke('save-map-center-meridian', this._centerMeridian).catch(() => {});
+    }
+
+    getCenterMeridian() { return this._centerMeridian; }
 
     /**
      * 初始化地图图层
      */
     initTileLayers() {
-        // 卫星底图
+        // 卫星底图（允许横向环绕，配合 maxBounds 限定为以中心经线为中心的单个世界）
         L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
             attribution: 'Tiles &copy; Esri'
         }).addTo(this.map);
@@ -191,23 +293,55 @@ class MapManager {
      */
     async restoreState() {
         this.isRestoringState = true;
+
+        // 先恢复中心经线（设定 maxBounds）
         try {
-            const mapState = await this.ipcRenderer.invoke('load-map-state');
-            if (mapState && typeof mapState.lat === 'number' && 
-                typeof mapState.lng === 'number' && typeof mapState.zoom === 'number') {
-                this.map.setView([mapState.lat, mapState.lng], mapState.zoom);
-                console.log('地图状态已恢复:', mapState);
+            const meridian = await this.ipcRenderer.invoke('get-map-center-meridian');
+            this.applyCenterMeridian(meridian || 0, false);
+        } catch (_) {}
+
+        // 读取保存的缩放/位置
+        try {
+            const ms = await this.ipcRenderer.invoke('load-map-state');
+            if (ms && typeof ms.lat === 'number' && typeof ms.lng === 'number' && typeof ms.zoom === 'number') {
+                this._pendingRestore = { lat: ms.lat, lng: ms.lng, zoom: ms.zoom };
             } else {
+                this._pendingRestore = null;
                 console.log('没有保存的地图状态，使用默认视图');
             }
         } catch (error) {
+            this._pendingRestore = null;
             console.error('恢复地图状态失败:', error);
         }
-        
+
+        // 应用恢复：在 #map 容器拿到真实尺寸后再 setView，否则启动早期容器尺寸为 0
+        // 会导致视图不生效或经度漂移。先轮询等待非零尺寸，再恢复，最后兜底重应用一次。
+        const apply = () => {
+            this.map.invalidateSize(false);
+            this._updateMinZoom();
+            if (this._pendingRestore) {
+                const s = this._pendingRestore;
+                this.map.setView([s.lat, s.lng], s.zoom, { animate: false });
+                console.log('地图状态已恢复:', s);
+            }
+        };
+        let tries = 0;
+        const whenSized = () => {
+            const sz = this.map.getSize();
+            if ((sz.x > 0 && sz.y > 0) || tries++ > 60) {
+                apply();
+                setTimeout(apply, 500);   // 布局/时间轴/滚动条引起尺寸微调后再确保一次
+            } else {
+                setTimeout(whenSized, 50);
+            }
+        };
+        whenSized();
+
         setTimeout(() => {
             this.isRestoringState = false;
+            this._pendingRestore = null;
             console.log('地图状态恢复完成，开始监听变化');
-        }, 1000);
+        }, 2000);
     }
 
     /**
@@ -445,6 +579,7 @@ class MapManager {
             console.log(`加载照片: ${photos.length} 张 (${start.toISOString()} - ${end.toISOString()})`);
 
             this.currentPhotosCache = photos;
+            if (this.globe) this.globe.setPhotos(photos);
             this.markersLayer.clearLayers();
             this.photoMarkerMap.clear();
             
@@ -525,6 +660,7 @@ class MapManager {
         try {
             const photos = await this.ipcRenderer.invoke('get-all-photos');
             this.currentPhotosCache = photos;
+            if (this.globe) this.globe.setPhotos(photos);
             this.markersLayer.clearLayers();
             this.photoMarkerMap.clear();
 

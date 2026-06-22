@@ -12,6 +12,8 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
+    <!-- 3D 地球（缩小时显示），原生 Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
 <body>
     <!-- 加载遮罩层 -->
@@ -20,6 +22,32 @@
         <div class="loading-text" data-i18n="loading.scanning">Scanning files...</div>
     </div>
     <div id="map"></div>
+    <!-- 3D 地球容器（缩小到底时覆盖在地图上）+ 提示与返回按钮 -->
+    <div id="globe-container" class="hidden">
+        <div id="globe-hint" data-i18n="globe.hint">拖动旋转地球 · 滚轮放大 · 点击球面进入该位置</div>
+        <button id="globe-back-btn" data-i18n="globe.back">返回地图</button>
+    </div>
+    <!-- 设置地图中心经线 -->
+    <div id="meridian-modal" class="modal-overlay hidden">
+        <div class="modal-box">
+            <div class="modal-title" data-i18n="meridian.title">设置地图中心经线</div>
+            <div class="modal-desc" data-i18n="meridian.desc">地图以这根经线为中心，向两边各展开 180°。</div>
+            <div class="modal-row">
+                <label data-i18n="meridian.label">中心经线（经度°）</label>
+                <input type="number" id="meridian-input" min="-180" max="180" step="1" value="0">
+            </div>
+            <input type="range" id="meridian-slider" min="-180" max="180" step="1" value="0">
+            <div class="meridian-presets">
+                <button data-m="0" data-i18n="meridian.preset.greenwich">本初子午线 0°</button>
+                <button data-m="180" data-i18n="meridian.preset.dateline">国际日界线 180°</button>
+                <button id="meridian-use-current" data-i18n="meridian.useCurrent">用当前地图中心</button>
+            </div>
+            <div class="modal-actions">
+                <button id="meridian-cancel" data-i18n="meridian.cancel">取消</button>
+                <button id="meridian-ok" class="primary" data-i18n="meridian.ok">确定</button>
+            </div>
+        </div>
+    </div>
     <div id="timeline-container">
         <div id="timeline-arrow-left" class="timeline-arrow">
             <svg viewBox="0 0 24 24" width="24" height="24">

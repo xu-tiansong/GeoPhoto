@@ -67,6 +67,67 @@ body {
     min-height: 0;
 }
 
+/* ===== 3D 地球（缩小到底时覆盖在地图区域上） ===== */
+#globe-container {
+    position: fixed;            /* 由 JS 设置 top/left/width/height 精确贴合 #map */
+    z-index: 800;
+    overflow: hidden;
+    background: radial-gradient(circle at 50% 38%, #0b1736 0%, #05060a 72%);
+}
+#globe-container.hidden { display: none; }
+#globe-container canvas { display: block; }
+#globe-hint {
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+    color: #cfe0ff; background: rgba(0, 0, 0, .45); padding: 6px 14px;
+    border-radius: 16px; font-size: 13px; pointer-events: none; z-index: 2;
+    white-space: nowrap;
+}
+#globe-back-btn {
+    position: absolute; top: 12px; right: 12px; z-index: 2;
+    background: rgba(20, 30, 50, .82); color: #fff; border: 1px solid #3a4a6a;
+    padding: 7px 14px; border-radius: 6px; cursor: pointer; font-size: 13px;
+}
+#globe-back-btn:hover { background: rgba(40, 55, 85, .96); }
+
+/* ===== 设置地图中心经线 弹窗 ===== */
+.modal-overlay {
+    position: fixed; inset: 0; z-index: 1000;
+    background: rgba(0, 0, 0, .5);
+    display: flex; align-items: center; justify-content: center;
+}
+.modal-overlay.hidden { display: none; }
+.modal-box {
+    width: 360px; max-width: 90vw;
+    background: #232323; color: #e0e0e0;
+    border: 1px solid #3a3a3a; border-radius: 8px;
+    padding: 18px 20px; box-shadow: 0 10px 40px rgba(0, 0, 0, .5);
+    font-size: 13px;
+}
+.modal-title { font-size: 15px; font-weight: 600; margin-bottom: 8px; }
+.modal-desc { color: #9a9a9a; font-size: 12px; line-height: 1.5; margin-bottom: 14px; }
+.modal-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.modal-row label { flex: 1; color: #c0c0c0; }
+.modal-row input[type="number"] {
+    width: 90px; height: 30px; text-align: center;
+    background: #2a2a2a; color: #fff; border: 1px solid #3a3a3a; border-radius: 4px;
+}
+#meridian-slider { width: 100%; margin: 4px 0 14px; accent-color: #4a9eff; }
+.meridian-presets { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.meridian-presets button {
+    flex: 1 1 auto; min-width: 0; padding: 6px 8px;
+    background: #2c2c2c; color: #ddd; border: 1px solid #3a3a3a;
+    border-radius: 4px; cursor: pointer; font-size: 12px; white-space: nowrap;
+}
+.meridian-presets button:hover { background: #353535; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 10px; }
+.modal-actions button {
+    padding: 7px 18px; border-radius: 5px; cursor: pointer; font-size: 13px;
+    background: #333; color: #e0e0e0; border: 1px solid #3a3a3a;
+}
+.modal-actions button.primary { background: #4a9eff; color: #fff; border-color: #4a9eff; }
+.modal-actions button.primary:hover { background: #3b8ef0; }
+.modal-actions button:hover { background: #3a3a3a; }
+
 /* 矩形框选模式下强制十字光标，覆盖 marker/cluster 的 pointer */
 /* body 上设置确保拖拽期间（mousedown 后）也生效 */
 body[style*="cursor: crosshair"],

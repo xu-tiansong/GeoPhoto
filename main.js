@@ -1058,6 +1058,17 @@ function registerIpcHandlers() {
         return db.getMapState();
     });
 
+    // 地图中心经线（持久化）
+    ipcMain.handle('get-map-center-meridian', () => {
+        const v = db.getSetting('map_center_meridian');
+        const n = v != null ? parseFloat(v) : 0;
+        return isFinite(n) ? n : 0;
+    });
+    ipcMain.handle('save-map-center-meridian', (_event, meridian) => {
+        db.saveSetting('map_center_meridian', String(meridian));
+        return true;
+    });
+
     // 保存时间轴状态
     ipcMain.handle('save-timeline-state', (event, state) => {
         db.saveTimelineState(state);
