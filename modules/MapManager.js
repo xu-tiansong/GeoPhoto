@@ -7,6 +7,12 @@ const ThumbnailGenerator = require('./ThumbnailGenerator');
 const i18n = require('./i18n');
 const GlobeView = require('./GlobeView');
 
+// 无定位信息的照片在地图上的停放点（太平洋上一处空白海域）。
+// 它只是个显示用的占位坐标，数据库里这些记录的 lat/lng 是 NULL，
+// 所以框选时必须单独把它们捞出来（SQL 的范围比较匹配不到 NULL）。
+const UNLOCATED_LAT = 7.027442337002744;
+const UNLOCATED_LNG = 141.29636113745886;
+
 class MapManager {
     constructor(ipcRenderer, mapElementId = 'map') {
         this.ipcRenderer = ipcRenderer;
@@ -185,7 +191,7 @@ class MapManager {
                 circlemarker: false,
                 rectangle: {
                     shapeOptions: {
-                        color: '#ff7800',
+                        color: '#2997ff',
                         weight: 2
                     }
                 }
@@ -477,7 +483,7 @@ class MapManager {
         const dateTimeStr = time ? `${date} ${time}` : date;
         
         // Like图标
-        const likeIcon = photo.like ? '<span style="color:#ff6b6b;margin-left:6px;">♥</span>' : '';
+        const likeIcon = photo.like ? '<span style="color:#ff453a;margin-left:6px;">♥</span>' : '';
         
         if (photo.lat && photo.lng) {
             setTimeout(async () => {
@@ -505,7 +511,22 @@ class MapManager {
                             <img src="${fileUrl}" 
                                  style="width:224px;height:224px;object-fit:cover;"
                                  onload="generateImageThumbnail(this)"
-                                 onerror="this.style.display='none'; this.parentElement.innerHTML='<div style=\\'width:224px;height:224px;background:#333;display:flex;align-items:center;justify-content:center;\\'><div class=\\'video-play-icon\\'></div></div>';" />
+                                 onerror="this.style.display='none'; this.parentElement.innerHTML='<div style=\\'width:224px;height:224px;background:#2a2a2c;display:flex;align-items:center;justify-content:center;\\'><div class=\\'video-play-icon\\'></div></div>';" />
+                            <div class="video-play-icon"></div>
+                        </div>
+                        ${infoHtml}
+                    </div>
+                `;
+            } else if (ThumbnailGenerator.needsFfmpeg(filePath)) {
+                // Chromium 解不了的格式（mpg/avi 等）：先显示占位，ffmpeg 生成后替换为缩略图
+                ThumbnailGenerator.generateVideoThumbnailFfmpeg(filePath).then((thumbPath) => {
+                    const wrapper = document.getElementById(uniqueId);
+                    if (!wrapper) return;   // tooltip 已关闭
+                    wrapper.innerHTML = `<img src="${ThumbnailGenerator.toFileUrl(thumbPath)}?t=${Date.now()}" style="width:224px;height:224px;object-fit:cover;" /><div class="video-play-icon"></div>`;
+                }).catch((err) => console.error('ffmpeg 生成视频缩略图失败:', filePath, err.message));
+                return `
+                    <div class="photo-tooltip">
+                        <div class="thumbnail-wrapper" id="${uniqueId}" style="width:224px;height:224px;overflow:hidden;display:flex;align-items:center;justify-content:center;background:#2a2a2c;position:relative;">
                             <div class="video-play-icon"></div>
                         </div>
                         ${infoHtml}
@@ -515,11 +536,11 @@ class MapManager {
                 return `
                     <div class="photo-tooltip">
                         <div class="thumbnail-wrapper" id="${uniqueId}" style="width:224px;height:224px;overflow:hidden;display:flex;align-items:center;justify-content:center;background:#000;position:relative;">
-                            <video src="${fileUrl}" 
+                            <video src="${fileUrl}"
                                    style="width:224px;height:224px;object-fit:cover;"
                                    data-original-path="${filePath}"
                                    onloadedmetadata="generateVideoThumbnail(this);"
-                                   onerror="this.style.display='none'; this.parentElement.innerHTML='<div style=\\'width:224px;height:224px;background:#333;display:flex;align-items:center;justify-content:center;\\'><div class=\\'video-play-icon\\'></div></div>';" 
+                                   onerror="this.style.display='none'; this.parentElement.innerHTML='<div style=\\'width:224px;height:224px;background:#2a2a2c;display:flex;align-items:center;justify-content:center;\\'><div class=\\'video-play-icon\\'></div></div>';" 
                                    muted preload="metadata">
                             </video>
                             <div class="video-play-icon"></div>
@@ -537,7 +558,7 @@ class MapManager {
                              data-is-thumbnail="${thumbnailInfo.isThumbnail}"
                              style="width:224px;height:224px;object-fit:cover;"
                              onload="generateImageThumbnail(this);"
-                             onerror="this.style.display='none'; this.parentElement.innerHTML='<div style=\\'width:224px;height:224px;background:#333;display:flex;align-items:center;justify-content:center;color:#999;\\'>无法加载</div>';">
+                             onerror="this.style.display='none'; this.parentElement.innerHTML='<div style=\\'width:224px;height:224px;background:#2a2a2c;display:flex;align-items:center;justify-content:center;color:#86868b;\\'>无法加载</div>';">
                     </div>
                     ${infoHtml}
                 </div>
@@ -586,14 +607,11 @@ class MapManager {
             const locationCount = new Map();
             const markers = [];
             
-            // 默认坐标（无定位信息时使用）
-            const DEFAULT_LAT = 7.027442337002744;
-            const DEFAULT_LNG = 141.29636113745886;
-            
+
             photos.forEach((photo, index) => {
                 // 如果没有有效的经纬度，使用默认坐标
-                let photoLat = (photo.lat && typeof photo.lat === 'number') ? photo.lat : DEFAULT_LAT;
-                let photoLng = (photo.lng && typeof photo.lng === 'number') ? photo.lng : DEFAULT_LNG;
+                let photoLat = (photo.lat && typeof photo.lat === 'number') ? photo.lat : UNLOCATED_LAT;
+                let photoLng = (photo.lng && typeof photo.lng === 'number') ? photo.lng : UNLOCATED_LNG;
                 
                 const locKey = `${photoLat.toFixed(5)},${photoLng.toFixed(5)}`;
                 const count = locationCount.get(locKey) || 0;
@@ -608,7 +626,7 @@ class MapManager {
                     lng += offset * Math.sin(angle);
                 }
                 
-                const marker = L.marker([lat, lng]);
+                const marker = this._createPhotoMarker(lat, lng, photo);
                     const markerId = `marker-${photo.id || index}-${Date.now()}`;
                     marker._markerId = markerId;
                     marker.photoData = JSON.parse(JSON.stringify(photo));
@@ -654,6 +672,19 @@ class MapManager {
     }
 
     /**
+     * 创建照片标记：喜欢的照片使用红色定位图标，其余为默认蓝色
+     */
+    _createPhotoMarker(lat, lng, photo) {
+        if (photo && photo.like) {
+            if (!this._likedIcon) {
+                this._likedIcon = new L.Icon.Default({ className: 'liked-marker-icon' });
+            }
+            return L.marker([lat, lng], { icon: this._likedIcon });
+        }
+        return L.marker([lat, lng]);
+    }
+
+    /**
      * 加载所有照片标记
      */
     async loadAllMarkers() {
@@ -667,14 +698,11 @@ class MapManager {
             const locationCount = new Map();
             const markers = [];
             
-            // 默认坐标（无定位信息时使用）
-            const DEFAULT_LAT = 7.027442337002744;
-            const DEFAULT_LNG = 141.29636113745886;
-            
+
             photos.forEach((photo, index) => {
                 // 如果没有有效的经纬度，使用默认坐标
-                let photoLat = (photo.lat && typeof photo.lat === 'number') ? photo.lat : DEFAULT_LAT;
-                let photoLng = (photo.lng && typeof photo.lng === 'number') ? photo.lng : DEFAULT_LNG;
+                let photoLat = (photo.lat && typeof photo.lat === 'number') ? photo.lat : UNLOCATED_LAT;
+                let photoLng = (photo.lng && typeof photo.lng === 'number') ? photo.lng : UNLOCATED_LNG;
                 
                 const locKey = `${photoLat.toFixed(5)},${photoLng.toFixed(5)}`;
                 const count = locationCount.get(locKey) || 0;
@@ -689,7 +717,7 @@ class MapManager {
                     lng += offset * Math.sin(angle);
                 }
                 
-                const marker = L.marker([lat, lng]);
+                const marker = this._createPhotoMarker(lat, lng, photo);
                     const markerId = `marker-${photo.id || index}-${Date.now()}`;
                     marker._markerId = markerId;
                     marker.photoData = JSON.parse(JSON.stringify(photo));
@@ -741,6 +769,12 @@ class MapManager {
             east: bounds.getEast(),
             west: bounds.getWest()
         };
+
+        // 无定位的照片在地图上画在 UNLOCATED_* 这个占位点，但数据库里它们的 lat/lng 是 NULL，
+        // 光靠经纬度范围永远查不到。框住了那个点，就把这些记录一并带上。
+        range.includeUnlocated =
+            range.south <= UNLOCATED_LAT && UNLOCATED_LAT <= range.north &&
+            range.west <= UNLOCATED_LNG && UNLOCATED_LNG <= range.east;
 
         // 附带当前时间轴的时间范围，确保只返回时间范围内的照片
         if (this.currentTimeStart && this.currentTimeEnd) {
@@ -839,7 +873,7 @@ class MapManager {
         photoData.lat = newLat;
         photoData.lng = newLng;
 
-        const marker = L.marker([newLat, newLng]);
+        const marker = this._createPhotoMarker(newLat, newLng, photoData);
         marker.photoData = JSON.parse(JSON.stringify(photoData));
         marker.on('mouseover', function() {
             if (!this._tooltipBound) {

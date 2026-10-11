@@ -18,9 +18,9 @@
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
-            background-color: #2a2a2a;
-            color: #e0e0e0;
+            font-family: var(--font-text);
+            background-color: var(--surface-1);
+            color: var(--text);
             overflow: hidden;
             height: 100vh;
             display: flex;
@@ -37,20 +37,20 @@
             align-items: center;
             justify-content: space-between;
             padding: 0 14px;
-            border-bottom: 1px solid #2e2e2e;
+            border-bottom: 1px solid var(--hairline);
             flex-shrink: 0;
         }
-        .title-bar-text { font-size: 14px; font-weight: 500; color: #ddd; }
+        .title-bar-text { font-size: 14px; font-weight: 600; color: var(--text); }
         .title-bar-close {
             -webkit-app-region: no-drag;
             width: 30px; height: 30px;
-            background: #c62828;
-            border: none; border-radius: 4px;
+            background: var(--danger);
+            border: none; border-radius: var(--r-sm);
             cursor: pointer; color: #fff; font-size: 18px; line-height: 1;
             display: flex; align-items: center; justify-content: center;
             transition: background 0.15s;
         }
-        .title-bar-close:hover { background: #b71c1c; }
+        .title-bar-close:hover { background: var(--danger-press); }
 
         /* ── Main Layout ───────────────────────────────── */
         .main { flex: 1; display: flex; overflow: hidden; }
@@ -58,8 +58,8 @@
         /* 左侧容器 */
         .left-panel {
             width: 375px;
-            background-color: #1a1a1a;
-            border-right: 1px solid #2e2e2e;
+            background-color: var(--surface-2);
+            border-right: 1px solid var(--hairline);
             display: flex;
             flex-direction: column;
         }
@@ -67,8 +67,8 @@
         /* Tab 容器 */
         .tabs {
             display: flex;
-            background-color: #1f1f1f;
-            border-bottom: 1px solid #2e2e2e;
+            background-color: var(--surface-2);
+            border-bottom: 1px solid var(--hairline);
         }
 
         .tab {
@@ -78,32 +78,33 @@
             cursor: pointer;
             background: transparent;
             border: none;
-            color: #666;
+            color: var(--text-4);
             font-size: 12px;
-            font-family: inherit;
+            font-family: var(--font-text);
             transition: all 0.18s;
             border-bottom: 2px solid transparent;
         }
 
         .tab:hover {
             background: rgba(255,255,255,0.04);
-            color: #bbb;
+            color: var(--text-2);
         }
 
         .tab.active {
-            color: #e0e0e0;
-            border-bottom-color: #4a9eff;
+            color: var(--text);
+            border-bottom-color: var(--link);
             background: transparent;
         }
 
         .tab:disabled, .tab[disabled] {
             cursor: not-allowed;
-            color: #3a3a3a;
+            color: var(--text-4);
+            opacity: 0.5;
             pointer-events: none;
         }
         .tab:disabled:hover, .tab[disabled]:hover {
             background: transparent;
-            color: #3a3a3a;
+            color: var(--text-4);
         }
 
         /* Tab 内容区 */
@@ -140,27 +141,29 @@
         .tree-node-label {
             display: flex;
             align-items: center;
-            gap: 4px;
-            padding: 4px 8px;
+            gap: 6px;
+            padding: 5px 10px;
+            margin: 1px 6px;
             cursor: pointer;
-            border-radius: 3px;
-            font-size: 12px;
-            color: #bbb;
+            border-radius: var(--r-sm);
+            font-size: 13px;
+            letter-spacing: -0.08px;
+            color: var(--text);
             white-space: nowrap;
         }
         .tree-node-label:hover {
             background: rgba(255,255,255,0.07);
-            color: #eee;
+            color: var(--text);
         }
         .tree-node-label.selected {
-            background: rgba(74,158,255,0.2);
-            color: #4a9eff;
+            background: rgba(41, 151, 255, 0.2);
+            color: var(--link);
         }
         .tree-toggle {
             width: 14px;
             flex-shrink: 0;
             font-size: 9px;
-            color: #666;
+            color: var(--text-4);
             text-align: center;
             transition: transform 0.15s;
         }
@@ -175,8 +178,8 @@
         }
         .tree-count {
             flex-shrink: 0;
-            font-size: 10px;
-            color: #555;
+            font-size: 11px;
+            color: var(--text-3);
             margin-left: 4px;
         }
         .tree-children {
@@ -188,10 +191,10 @@
         .tree-rename-input {
             flex: 1;
             min-width: 0;
-            background: #2a2a2a;
-            color: #eee;
-            border: 1px solid #4a9eff;
-            border-radius: 3px;
+            background: var(--surface-3);
+            color: var(--text);
+            border: 1px solid var(--link);
+            border-radius: var(--r-xs);
             padding: 0 4px;
             font-size: 12px;
             outline: none;
@@ -201,8 +204,8 @@
         .map-thumbnail {
             width: 100%;
             height: 200px;
-            background-color: #1a1a1a;
-            border-radius: 4px;
+            background-color: var(--surface-1);
+            border-radius: var(--r-lg);
             margin-bottom: 16px;
             position: relative;
             overflow: hidden;
@@ -217,19 +220,21 @@
             position: absolute;
             bottom: 8px;
             left: 8px;
-            background-color: rgba(0, 0, 0, 0.7);
-            padding: 6px 12px;
-            border-radius: 12px;
+            background-color: var(--chip-dark);
+            backdrop-filter: var(--blur);
+            padding: 6px 14px;
+            border-radius: var(--r-pill);
             font-size: 12px;
-            color: white;
+            letter-spacing: -0.12px;
+            color: var(--text);
         }
 
         /* 右侧照片网格容器 */
         .right-panel {
             flex: 1;
-            background-color: #2a2a2a;
+            background-color: var(--surface-1);
             overflow-y: auto;
-            padding: 16px;
+            padding: 20px;
             outline: none; /* 移除焦点时的默认轮廓 */
         }
 
@@ -246,14 +251,14 @@
             position: relative;
             cursor: pointer;
             border: 3px solid transparent;
-            border-radius: 4px;
+            border-radius: var(--r-md);
             overflow: hidden;
-            background-color: #1a1a1a;
-            transition: border-color 0.2s;
+            background-color: var(--surface-2);
+            transition: border-color 0.2s var(--ease), transform 0.2s var(--ease);
         }
 
         .photo-item.loading {
-            background: linear-gradient(90deg, #1a1a1a 25%, #2a2a2a 50%, #1a1a1a 75%);
+            background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-3) 50%, var(--surface-2) 75%);
             background-size: 200% 100%;
             animation: loading 1.5s ease-in-out infinite;
         }
@@ -264,11 +269,11 @@
         }
 
         .photo-item:hover {
-            border-color: #555;
+            border-color: rgba(255, 255, 255, 0.24);
         }
 
         .photo-item.selected {
-            border-color: #4a9eff;
+            border-color: var(--link);
         }
 
         .photo-item img,
@@ -284,9 +289,10 @@
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            width: 48px;
-            height: 48px;
-            background-color: rgba(0, 0, 0, 0.6);
+            width: 44px;
+            height: 44px;
+            background-color: var(--chip);
+            backdrop-filter: var(--blur);
             border-radius: 50%;
             display: flex;
             align-items: center;
@@ -298,9 +304,9 @@
             content: '';
             width: 0;
             height: 0;
-            border-left: 16px solid white;
-            border-top: 10px solid transparent;
-            border-bottom: 10px solid transparent;
+            border-left: 15px solid var(--surface-1);
+            border-top: 9px solid transparent;
+            border-bottom: 9px solid transparent;
             margin-left: 4px;
         }
 
@@ -310,25 +316,24 @@
             left: 0;
             right: 0;
             background: linear-gradient(transparent, rgba(0, 0, 0, 0.8));
-            padding: 8px;
-            font-size: 11px;
-            color: #ccc;
+            padding: 10px;
+            font-size: 12px;
+            letter-spacing: -0.12px;
+            color: #fff;
         }
 
         .photo-item .like-icon {
             position: absolute;
             top: 6px;
             right: 6px;
-            color: #ff6b6b;
+            color: var(--danger);
             font-size: 14px;
             text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
             z-index: 5;
         }
 
         /* 滚动条样式 */
-        ::-webkit-scrollbar { width: 5px; height: 5px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 3px; }
+        /* 滚动条样式由 apple-theme.css 统一提供 */
 
         /* 加载更多按钮 */
         .load-more-btn {
@@ -338,13 +343,14 @@
             justify-content: center;
             padding: 16px 0 24px;
             cursor: pointer;
-            color: #484848;
-            font-size: 12px;
+            color: var(--link);
+            font-size: 14px;
+            letter-spacing: -0.224px;
             gap: 4px;
-            transition: color 0.15s;
+            transition: opacity 0.2s;
             user-select: none;
         }
-        .load-more-btn:hover { color: #909090; }
+        .load-more-btn:hover { opacity: 0.8; }
         .load-more-arrow {
             font-size: 24px;
             line-height: 1;
@@ -357,7 +363,7 @@
 
         .info-text {
             padding: 16px;
-            color: #888;
+            color: var(--text-3);
             text-align: center;
         }
 
@@ -368,38 +374,38 @@
             display: flex;
             align-items: center;
             gap: 6px;
-            padding: 5px 8px;
+            padding: 6px 8px;
             cursor: pointer;
-            border-radius: 3px;
-            font-size: 10px;
-            font-weight: 700;
-            color: #666;
+            border-radius: var(--r-sm);
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-3);
             text-transform: uppercase;
-            letter-spacing: 0.6px;
+            letter-spacing: 0.4px;
             user-select: none;
             transition: background 0.12s, color 0.12s;
         }
-        .tag-cat-header:hover { background: rgba(255,255,255,0.05); color: #999; }
-        .tag-cat-toggle { font-size: 8px; color: #555; width: 10px; text-align: center; flex-shrink: 0; }
+        .tag-cat-header:hover { background: rgba(255,255,255,0.05); color: var(--text-3); }
+        .tag-cat-toggle { font-size: 8px; color: var(--text-4); width: 10px; text-align: center; flex-shrink: 0; }
         .tag-cat-children { padding-left: 2px; }
         .tag-cat-children.collapsed { display: none; }
         .tag-node-row {
             display: flex;
             align-items: center;
             gap: 7px;
-            padding: 4px 8px;
-            border-radius: 3px;
-            font-size: 12px;
-            color: #bbb;
+            padding: 5px 8px;
+            border-radius: var(--r-sm);
+            font-size: 13px;
+            color: var(--text);
             cursor: pointer;
             user-select: none;
             transition: background 0.12s;
         }
-        .tag-node-row:hover { background: rgba(255,255,255,0.06); color: #ddd; }
+        .tag-node-row:hover { background: rgba(255,255,255,0.06); color: var(--text); }
         .tag-node-row input[type="checkbox"] {
-            width: 13px;
-            height: 13px;
-            accent-color: #4a9eff;
+            width: 14px;
+            height: 14px;
+            accent-color: var(--primary);
             cursor: pointer;
             flex-shrink: 0;
         }
@@ -407,8 +413,8 @@
         .tag-children { padding-left: 18px; }
         .tag-filter-hint {
             padding: 20px 12px;
-            color: #484848;
-            font-size: 11px;
+            color: var(--text-3);
+            font-size: 13px;
             text-align: center;
         }
 
@@ -422,27 +428,59 @@
 
         .calendar-nav button {
             background: transparent;
-            border: 1px solid #3a3a3a;
-            border-radius: 4px;
-            color: #aaa;
+            border: none;
+            border-radius: 50%;
+            width: 28px;
+            height: 28px;
+            background: var(--surface-3);
+            color: var(--text);
             cursor: pointer;
-            padding: 4px 12px;
+            padding: 0;
             font-size: 16px;
             line-height: 1;
             transition: background 0.15s, color 0.15s;
-            font-family: inherit;
+            font-family: var(--font-text);
         }
 
         .calendar-nav button:hover {
-            background: rgba(255,255,255,0.08);
-            color: #ddd;
+            background: var(--surface-4);
         }
 
         .calendar-month-label {
-            font-size: 13px;
-            color: #ddd;
-            font-weight: 500;
-            letter-spacing: 0.5px;
+            font-family: var(--font-display);
+            font-size: 15px;
+            color: var(--text);
+            font-weight: 600;
+            letter-spacing: -0.2px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .calendar-select {
+            background: transparent;
+            border: 1px solid transparent;
+            border-radius: var(--r-sm);
+            color: var(--text);
+            font-family: var(--font-display);
+            font-size: 15px;
+            font-weight: 600;
+            padding: 3px 4px;
+            cursor: pointer;
+        }
+
+        .calendar-select:hover {
+            background: var(--surface-3);
+        }
+
+        .calendar-select:focus {
+            outline: none;
+            border-color: var(--link);
+        }
+
+        /* 没有照片的年/月仍可选，但显示为暗色以示区分 */
+        .calendar-select option.empty-period {
+            color: var(--text-4);
         }
 
         .calendar-weekday-row {
@@ -453,8 +491,8 @@
 
         .calendar-weekday {
             text-align: center;
-            font-size: 10px;
-            color: #555;
+            font-size: 11px;
+            color: var(--text-3);
             padding: 4px 0;
             font-weight: 600;
             text-transform: uppercase;
@@ -469,25 +507,25 @@
         .calendar-day {
             text-align: center;
             padding: 7px 2px;
-            border-radius: 4px;
-            font-size: 12px;
-            color: #3a3a3a;
+            border-radius: var(--r-sm);
+            font-size: 13px;
+            color: var(--text-4);
             position: relative;
             user-select: none;
         }
 
         .calendar-day.other-month {
-            color: #2a2a2a;
+            color: rgba(255, 255, 255, 0.16);
         }
 
         .calendar-day.has-photos {
-            color: #d0d0d0;
+            color: var(--text);
             cursor: pointer;
-            font-weight: 500;
+            font-weight: 600;
         }
 
         .calendar-day.has-photos:hover {
-            background: rgba(74, 158, 255, 0.18);
+            background: rgba(41, 151, 255, 0.18);
             color: #fff;
         }
 
@@ -497,12 +535,12 @@
             width: 4px;
             height: 4px;
             border-radius: 50%;
-            background: #4a9eff;
+            background: var(--primary);
             margin: 2px auto 0;
         }
 
         .calendar-day.selected {
-            background: #4a9eff !important;
+            background: var(--primary) !important;
             color: #fff !important;
         }
 
@@ -511,23 +549,24 @@
         }
 
         .calendar-day.in-range {
-            background: rgba(74, 158, 255, 0.22);
-            color: #cde;
+            background: var(--primary-tint-strong);
+            color: var(--text);
         }
 
         .calendar-day.today-marker {
-            border: 1px solid #4a6f9e;
+            border: 1px solid var(--link);
         }
 
         .calendar-day-info {
             margin-top: 12px;
-            font-size: 11px;
-            color: #666;
+            font-size: 12px;
+            color: var(--text-3);
             text-align: center;
             min-height: 18px;
         }
 
     </style>
+    <link rel="stylesheet" href="apple-theme.css">
 </head>
 <body>
     <!-- 顶部标题栏 -->
@@ -563,9 +602,14 @@
             </div>
             <div class="tab-panel" id="calendar-panel">
                 <div class="calendar-nav">
-                    <button id="calPrevBtn">&#8249;</button>
-                    <span class="calendar-month-label" id="calMonthLabel"></span>
-                    <button id="calNextBtn">&#8250;</button>
+                    <button id="calPrevYearBtn" data-i18n-title="manage.calPrevYear">&#171;</button>
+                    <button id="calPrevBtn" data-i18n-title="manage.calPrevMonth">&#8249;</button>
+                    <span class="calendar-month-label">
+                        <select class="calendar-select" id="calYearSelect"></select>
+                        <select class="calendar-select" id="calMonthSelect"></select>
+                    </span>
+                    <button id="calNextBtn" data-i18n-title="manage.calNextMonth">&#8250;</button>
+                    <button id="calNextYearBtn" data-i18n-title="manage.calNextYear">&#187;</button>
                 </div>
                 <div class="calendar-weekday-row" id="calWeekdays"></div>
                 <div class="calendar-grid" id="calendarGrid"></div>
@@ -626,6 +670,7 @@
         let photoDateMap = new Map(); // 'YYYY-MM-DD' -> [photos] (基于 currentPhotos)
         let allPhotoTimes = []; // 数据库中所有照片的时间字符串（仅用于日历高亮）
         let allPhotoDateSet = new Set(); // 'YYYY-MM-DD' 集合，快速查找
+        let allPhotoMonthSet = new Set(); // 'YYYY-MM' 集合，供年/月下拉标记哪些时段有照片
         
         // 缩略图生成队列
         let thumbnailQueue = [];
@@ -675,18 +720,24 @@
                 console.error('找不到关闭按钮！');
             }
 
-            // 日历导航按钮
+            // 日历导航：« » 翻年，‹ › 翻月，下拉直接跳到任意年/月
+            document.getElementById('calPrevYearBtn').addEventListener('click', () => {
+                goToCalendarMonth(calendarYear - 1, calendarMonth);
+            });
+            document.getElementById('calNextYearBtn').addEventListener('click', () => {
+                goToCalendarMonth(calendarYear + 1, calendarMonth);
+            });
             document.getElementById('calPrevBtn').addEventListener('click', () => {
-                calendarMonth--;
-                if (calendarMonth < 0) { calendarMonth = 11; calendarYear--; }
-                calendarSelectedDate = null;
-                renderCalendar();
+                goToCalendarMonth(calendarYear, calendarMonth - 1);
             });
             document.getElementById('calNextBtn').addEventListener('click', () => {
-                calendarMonth++;
-                if (calendarMonth > 11) { calendarMonth = 0; calendarYear++; }
-                calendarSelectedDate = null;
-                renderCalendar();
+                goToCalendarMonth(calendarYear, calendarMonth + 1);
+            });
+            document.getElementById('calYearSelect').addEventListener('change', (e) => {
+                goToCalendarMonth(Number(e.target.value), calendarMonth);
+            });
+            document.getElementById('calMonthSelect').addEventListener('change', (e) => {
+                goToCalendarMonth(calendarYear, Number(e.target.value));
             });
 
             // 页面加载完成后，给右侧面板设置焦点
@@ -800,14 +851,21 @@
             ipcRenderer.invoke('get-all-photo-dates').then(times => {
                 allPhotoTimes = times || [];
                 allPhotoDateSet = new Set();
+                allPhotoMonthSet = new Set();
                 allPhotoTimes.forEach(t => {
                     if (!t) return;
                     const d = new Date(t);
                     if (!isNaN(d.getTime())) {
-                        allPhotoDateSet.add(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`);
+                        const ym = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+                        allPhotoDateSet.add(`${ym}-${String(d.getDate()).padStart(2,'0')}`);
+                        allPhotoMonthSet.add(ym);
                     }
                 });
                 console.log('全库照片日期数:', allPhotoDateSet.size);
+                // 日期是异步到的，到了之后重画一次日历，年份下拉才有内容、日期才会高亮
+                if (document.getElementById('calendar-panel').classList.contains('active')) {
+                    renderCalendar();
+                }
             }).catch(err => console.error('获取全库日期失败:', err));
 
             // 然后切换tab
@@ -957,10 +1015,62 @@
             loadPhotoContent(item);
         });
 
+        // 覆盖原图后：照片文件已变（可能改名，如 HEIC→JPG）。原地更新该网格项的路径数据
+        // （双击打开/右键菜单/导航闭包都依赖同一 _photoData 引用），并作废旧缩略图重建。
+        ipcRenderer.on('photo-file-updated', (_event, { photoId, directory, filename, fullPath }) => {
+            const idStr = String(photoId);
+            let item = null;
+            try { item = document.querySelector(`.photo-item[data-photo-id="${CSS.escape(idStr)}"]`); } catch (_) {}
+            if (!item) return;
+            const newPath = fullPath || ((directory != null ? directory : item.dataset.directory) + '/' + filename);
+            const pd = item._photoData;
+            if (pd) {
+                if (directory != null) pd.directory = directory;
+                if (filename != null) pd.filename = filename;
+                pd.fullPath = newPath;
+            }
+            if (directory != null) item.dataset.directory = directory;
+            if (filename != null) item.dataset.filename = filename;
+            item.dataset.filePath = newPath;
+
+            ThumbnailGenerator.deleteThumbnailCache(newPath);
+            item.querySelectorAll('img, video, .video-overlay').forEach(el => el.remove());
+            item.classList.add('loading');
+            item.dataset.loaded = 'false';
+            loadPhotoContent(item);
+        });
+
+        // 照片窗口编辑日期时间后：原地刷新该网格项缩略图上显示的日期时间
+        ipcRenderer.on('photo-time-updated', (_event, { photoId, time }) => {
+            const idStr = String(photoId);
+            let item = null;
+            try { item = document.querySelector(`.photo-item[data-photo-id="${CSS.escape(idStr)}"]`); } catch (_) {}
+            if (!item) return;
+            if (item._photoData) item._photoData.time = time;
+            const infoEl = item.querySelector('.photo-info');
+            if (infoEl) infoEl.textContent = formatDateTime(time);
+        });
+
         // 目录被删除后，刷新目录树并清空照片面板
         ipcRenderer.on('directory-deleted', () => {
             renderPhotos([]);
             loadDirectoryTree();
+        });
+
+        // 目录重新扫描后，刷新目录树并重新加载该目录的照片
+        ipcRenderer.on('directory-rescanned', async (_event, { relPath }) => {
+            const sel = document.querySelector('.tree-node-label.selected');
+            const selPath = sel ? sel.dataset.relPath : null;
+            await loadDirectoryTree();
+            // 重建目录树会丢失高亮，恢复之前选中的目录；右侧只在当前显示的正是被扫描目录时刷新
+            if (selPath !== null) {
+                const esc = selPath.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+                const label = document.querySelector(`.tree-node-label[data-rel-path="${esc}"]`);
+                if (label) label.classList.add('selected');
+                if (selPath === relPath) {
+                    renderPhotos(await ipcRenderer.invoke('query-photos-by-directory', relPath));
+                }
+            }
         });
 
         // Bin 照片全部恢复后，刷新目录树和照片面板
@@ -1138,7 +1248,7 @@
 
             if (!photos || photos.length === 0) {
                 console.log('没有照片可显示');
-                grid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: #888;">${i18n.t('manage.noPhotos')}</div>`;
+                grid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: var(--text-3); font-size: 17px; letter-spacing: -0.374px;">${i18n.t('manage.noPhotos')}</div>`;
                 return;
             }
 
@@ -1349,7 +1459,7 @@
                 // 无勾选：清空右侧并显示提示
                 thumbnailQueue = [];
                 const grid = document.getElementById('photosGrid');
-                grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:40px;color:#484848;">${i18n.t('manage.tagSelectHint')}</div>`;
+                grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text-3);font-size:17px;letter-spacing:-0.374px;">${i18n.t('manage.tagSelectHint')}</div>`;
                 sortedCurrentPhotos = [];
                 displayedCount = 0;
                 removeLoadMoreButton();
@@ -1572,15 +1682,15 @@
                         const img = document.createElement('img');
                         await new Promise((resolve) => {
                             img.onload = () => { task.photoItem.classList.remove('loading'); resolve(); };
-                            img.onerror = () => { task.photoItem.classList.remove('loading'); task.photoItem.style.backgroundColor = '#333'; resolve(); };
+                            img.onerror = () => { task.photoItem.classList.remove('loading'); task.photoItem.style.backgroundColor = '#2a2a2c'; resolve(); };
                             task.photoItem.insertBefore(img, info);
                             // 加时间戳绕过浏览器图片缓存：刷新缩略图时文件已重建，
                             // 若沿用同一 file:// URL 会显示缓存中的旧图（仍是旧方向）。
                             img.src = ThumbnailGenerator.toFileUrl(thumbPath) + '?t=' + Date.now();
                         });
                     } else if (task.type === 'video') {
-                        // 视频帧已就绪，直接生成缩略图（后台静默，不更新显示）
-                        await ThumbnailGenerator.generateAndSaveThumbnail(task.element, task.originalPath);
+                        // 智能挑选非黑帧再生成（避免片头黑场导致缩略图全黑）
+                        await ThumbnailGenerator.generateVideoThumbnailSmart(task.element, task.originalPath);
                     }
                 } catch (err) {
                     console.error('生成缩略图失败:', err);
@@ -1590,7 +1700,7 @@
                         const img = document.createElement('img');
                         await new Promise((resolve) => {
                             img.onload = () => { task.photoItem.classList.remove('loading'); resolve(); };
-                            img.onerror = () => { task.photoItem.classList.remove('loading'); task.photoItem.style.backgroundColor = '#333'; resolve(); };
+                            img.onerror = () => { task.photoItem.classList.remove('loading'); task.photoItem.style.backgroundColor = '#2a2a2c'; resolve(); };
                             task.photoItem.insertBefore(img, info);
                             img.src = ThumbnailGenerator.toFileUrl(task.originalPath);
                         });
@@ -1633,11 +1743,27 @@
                     const img = document.createElement('img');
                     img.src = ThumbnailGenerator.toFileUrl(thumbnailInfo.path);
                     img.onload = () => photoItem.classList.remove('loading');
-                    img.onerror = () => { photoItem.classList.remove('loading'); photoItem.style.backgroundColor = '#333'; };
+                    img.onerror = () => { photoItem.classList.remove('loading'); photoItem.style.backgroundColor = '#2a2a2c'; };
                     photoItem.insertBefore(img, info);
                     const overlay = document.createElement('div');
                     overlay.className = 'video-overlay';
                     photoItem.insertBefore(overlay, info);
+                } else if (ThumbnailGenerator.needsFfmpeg(originalPath)) {
+                    // Chromium 解不了的格式（mpg/avi 等）：交给主进程 ffmpeg 截帧
+                    const overlay = document.createElement('div');
+                    overlay.className = 'video-overlay';
+                    photoItem.insertBefore(overlay, info);
+                    ThumbnailGenerator.generateVideoThumbnailFfmpeg(originalPath).then((thumbPath) => {
+                        const img = document.createElement('img');
+                        img.onload = () => photoItem.classList.remove('loading');
+                        img.onerror = () => { photoItem.classList.remove('loading'); photoItem.style.backgroundColor = '#2a2a2c'; };
+                        photoItem.insertBefore(img, overlay);
+                        img.src = ThumbnailGenerator.toFileUrl(thumbPath) + '?t=' + Date.now();
+                    }).catch((err) => {
+                        console.error('ffmpeg 生成视频缩略图失败:', originalPath, err.message);
+                        photoItem.classList.remove('loading');
+                        photoItem.style.backgroundColor = '#2a2a2c';
+                    });
                 } else {
                     // 无缓存：加载视频帧，帧就绪后入队生成缩略图（不阻塞显示）
                     const video = document.createElement('video');
@@ -1645,13 +1771,14 @@
                     video.preload = 'metadata';
                     video.muted = true;
                     video.addEventListener('loadedmetadata', () => {
-                        video.currentTime = 0.1;
+                        // 跳过常见片头黑场（约 1s 处取帧），随后智能挑选非黑帧
+                        video.currentTime = Math.min(1.0, (video.duration || 2) / 2);
                         photoItem.classList.remove('loading');
                     });
                     video.addEventListener('seeked', () => {
                         enqueueVideoThumbnailGeneration(video, originalPath);
                     }, { once: true });
-                    video.onerror = () => { photoItem.classList.remove('loading'); photoItem.style.backgroundColor = '#333'; };
+                    video.onerror = () => { photoItem.classList.remove('loading'); photoItem.style.backgroundColor = '#2a2a2c'; };
                     photoItem.insertBefore(video, info);
                     const overlay = document.createElement('div');
                     overlay.className = 'video-overlay';
@@ -1663,7 +1790,7 @@
                     const img = document.createElement('img');
                     img.src = ThumbnailGenerator.toFileUrl(thumbnailInfo.path);
                     img.onload = () => photoItem.classList.remove('loading');
-                    img.onerror = () => { photoItem.classList.remove('loading'); photoItem.style.backgroundColor = '#333'; };
+                    img.onerror = () => { photoItem.classList.remove('loading'); photoItem.style.backgroundColor = '#2a2a2c'; };
                     photoItem.insertBefore(img, info);
                 } else {
                     // 无缓存：保持骨架占位，入队串行生成缩略图，生成后立即显示
@@ -1727,7 +1854,7 @@
 
             // 绘制矩形选框
             L.rectangle([[south, west], [north, east]], {
-                color: '#ff7800',
+                color: '#2997ff',
                 weight: 2,
                 fill: false
             }).addTo(miniMap);
@@ -1748,7 +1875,7 @@
                 if (photo.lat && photo.lng) {
                     const marker = L.circleMarker([photo.lat, photo.lng], {
                         radius: 5,
-                        fillColor: '#4a9eff',
+                        fillColor: '#2997ff',
                         color: '#fff',
                         weight: 2,
                         opacity: 1,
@@ -1909,17 +2036,61 @@
             calendarSelectedDate = null;
         }
 
+        // 跳到指定年月（月份越界时自动进位到相邻年份）
+        function goToCalendarMonth(year, month) {
+            calendarYear = year + Math.floor(month / 12);
+            calendarMonth = ((month % 12) + 12) % 12;
+            calendarSelectedDate = null;
+            calendarRangeDate = null;
+            renderCalendar();
+        }
+
+        // 渲染年/月下拉：年份列表取全库有照片的年份，并入当前年份，便于一步跳到任意年
+        function renderCalendarNav() {
+            const yearSelect = document.getElementById('calYearSelect');
+            const monthSelect = document.getElementById('calMonthSelect');
+            if (!yearSelect || !monthSelect) return;
+
+            const years = new Set();
+            allPhotoMonthSet.forEach(ym => years.add(Number(ym.slice(0, 4))));
+            years.add(calendarYear);
+            years.add(new Date().getFullYear());
+            const yearList = [...years].sort((a, b) => b - a); // 新的在前
+
+            yearSelect.innerHTML = '';
+            yearList.forEach(y => {
+                const opt = document.createElement('option');
+                opt.value = y;
+                opt.textContent = i18n.t('manage.calYear', { year: y });
+                if (!allPhotoMonthSet.size || ![...allPhotoMonthSet].some(ym => ym.startsWith(String(y)))) {
+                    opt.className = 'empty-period';
+                }
+                if (y === calendarYear) opt.selected = true;
+                yearSelect.appendChild(opt);
+            });
+
+            monthSelect.innerHTML = '';
+            for (let m = 0; m < 12; m++) {
+                const opt = document.createElement('option');
+                opt.value = m;
+                opt.textContent = i18n.t('manage.calMonth', { month: m + 1 });
+                const ym = `${calendarYear}-${String(m + 1).padStart(2, '0')}`;
+                if (!allPhotoMonthSet.has(ym)) opt.className = 'empty-period';
+                if (m === calendarMonth) opt.selected = true;
+                monthSelect.appendChild(opt);
+            }
+        }
+
         // 渲染日历
         function renderCalendar() {
 
             const grid = document.getElementById('calendarGrid');
             const weekdayRow = document.getElementById('calWeekdays');
-            const label = document.getElementById('calMonthLabel');
             const dayInfo = document.getElementById('calDayInfo');
-            if (!grid || !label) return;
+            if (!grid) return;
 
-            // 月份标题
-            label.textContent = `${calendarYear} / ${String(calendarMonth + 1).padStart(2, '0')}`;
+            // 年/月下拉
+            renderCalendarNav();
 
             // 星期行（使用 i18n，与时间轴共用同一组星期名）
             weekdayRow.innerHTML = '';

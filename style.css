@@ -1,12 +1,14 @@
+/* 主窗口样式 —— 设计令牌见 apple-theme.css */
+
 #controls {
     position: absolute;
     top: 10px;
     left: 50px;
     z-index: 1000; /* 确保按钮在地图上方 */
-    background: white;
+    background: var(--glass);
+    backdrop-filter: var(--blur);
     padding: 10px;
-    border-radius: 5px;
-    box-shadow: 0 0 10px rgba(0,0,0,0.2);
+    border-radius: var(--r-lg);
 }
 
 /* 加载遮罩层 */
@@ -16,7 +18,8 @@
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.7);
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: var(--blur);
     display: flex;
     flex-direction: column;
     justify-content: center;
@@ -29,12 +32,12 @@
 }
 
 .loading-spinner {
-    width: 50px;
-    height: 50px;
-    border: 4px solid #333;
-    border-top: 4px solid #3498db;
+    width: 36px;
+    height: 36px;
+    border: 3px solid rgba(255, 255, 255, 0.14);
+    border-top-color: var(--text);
     border-radius: 50%;
-    animation: spin 1s linear infinite;
+    animation: spin 0.9s linear infinite;
 }
 
 @keyframes spin {
@@ -43,10 +46,12 @@
 }
 
 .loading-text {
-    color: white;
-    margin-top: 20px;
-    font-size: 16px;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: var(--text);
+    margin-top: 18px;
+    font-family: var(--font-display);
+    font-size: 17px;
+    font-weight: 400;
+    letter-spacing: -0.374px;
 }
 
 html, body {
@@ -59,74 +64,138 @@ html, body {
 body {
     display: flex;
     flex-direction: column;
+    background: var(--surface-0);
 }
 
 #map {
     width: 100%;
     flex: 1; /* 地图占满剩余空间 */
     min-height: 0;
+    background: var(--surface-1);
 }
+
+/* ===== Leaflet 控件：frosted-glass 胶囊，无阴影 ===== */
+.leaflet-container {
+    font-family: var(--font-text);
+}
+.leaflet-bar,
+.leaflet-touch .leaflet-bar {
+    border: 1px solid var(--hairline) !important;
+    border-radius: var(--r-md) !important;
+    overflow: hidden;
+    box-shadow: none !important;
+    background: var(--glass);
+    backdrop-filter: var(--blur);
+}
+.leaflet-bar a,
+.leaflet-bar a:hover,
+.leaflet-touch .leaflet-bar a {
+    background-color: transparent;
+    color: var(--text);
+    border-bottom: 1px solid var(--hairline);
+    width: 32px;
+    height: 32px;
+    line-height: 32px;
+    font-weight: 400;
+}
+.leaflet-bar a:hover { background-color: rgba(255, 255, 255, 0.08); }
+.leaflet-bar a:last-child { border-bottom: none; }
+.leaflet-bar a.leaflet-disabled { color: var(--text-4); background: transparent; }
+.leaflet-control-layers {
+    border: 1px solid var(--hairline) !important;
+    border-radius: var(--r-md) !important;
+    box-shadow: none !important;
+    background: var(--glass);
+    backdrop-filter: var(--blur);
+    color: var(--text);
+}
+.leaflet-control-layers-expanded { padding: 8px 12px; }
+.leaflet-control-attribution {
+    background: rgba(29, 29, 31, 0.6) !important;
+    color: var(--text-3);
+    font-size: 10px;
+    border-top-left-radius: var(--r-xs);
+}
+.leaflet-control-attribution a { color: var(--text-2); }
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+    background: var(--surface-2);
+    color: var(--text);
+    box-shadow: none;
+    border: 1px solid var(--hairline-strong);
+}
+.leaflet-popup-content-wrapper { border-radius: var(--r-lg); }
 
 /* ===== 3D 地球（缩小到底时覆盖在地图区域上） ===== */
 #globe-container {
     position: fixed;            /* 由 JS 设置 top/left/width/height 精确贴合 #map */
     z-index: 800;
     overflow: hidden;
-    background: radial-gradient(circle at 50% 38%, #0b1736 0%, #05060a 72%);
+    background: var(--surface-0);
 }
 #globe-container.hidden { display: none; }
 #globe-container canvas { display: block; }
 #globe-hint {
-    position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
-    color: #cfe0ff; background: rgba(0, 0, 0, .45); padding: 6px 14px;
-    border-radius: 16px; font-size: 13px; pointer-events: none; z-index: 2;
-    white-space: nowrap;
+    position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
+    color: var(--text-2); background: var(--chip-dark); backdrop-filter: var(--blur);
+    padding: 7px 16px; border-radius: var(--r-pill);
+    font-size: 12px; letter-spacing: -0.12px;
+    pointer-events: none; z-index: 2; white-space: nowrap;
 }
 #globe-back-btn {
-    position: absolute; top: 12px; right: 12px; z-index: 2;
-    background: rgba(20, 30, 50, .82); color: #fff; border: 1px solid #3a4a6a;
-    padding: 7px 14px; border-radius: 6px; cursor: pointer; font-size: 13px;
+    position: absolute; top: 12px; right: 16px; z-index: 2;
+    background: var(--primary); color: #fff; border: none;
+    padding: 8px 18px; border-radius: var(--r-pill); cursor: pointer;
+    font-size: 14px; letter-spacing: -0.224px;
 }
-#globe-back-btn:hover { background: rgba(40, 55, 85, .96); }
+#globe-back-btn:hover { background: var(--primary-focus); }
 
 /* ===== 设置地图中心经线 弹窗 ===== */
 .modal-overlay {
     position: fixed; inset: 0; z-index: 1000;
-    background: rgba(0, 0, 0, .5);
+    background: rgba(0, 0, 0, .45);
+    backdrop-filter: blur(6px);
     display: flex; align-items: center; justify-content: center;
 }
 .modal-overlay.hidden { display: none; }
 .modal-box {
-    width: 360px; max-width: 90vw;
-    background: #232323; color: #e0e0e0;
-    border: 1px solid #3a3a3a; border-radius: 8px;
-    padding: 18px 20px; box-shadow: 0 10px 40px rgba(0, 0, 0, .5);
-    font-size: 13px;
+    width: 380px; max-width: 90vw;
+    background: var(--surface-2); color: var(--text);
+    border: 1px solid var(--hairline-strong); border-radius: var(--r-lg);
+    padding: 24px;
+    font-size: 14px;
 }
-.modal-title { font-size: 15px; font-weight: 600; margin-bottom: 8px; }
-.modal-desc { color: #9a9a9a; font-size: 12px; line-height: 1.5; margin-bottom: 14px; }
-.modal-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-.modal-row label { flex: 1; color: #c0c0c0; }
+.modal-title {
+    font-family: var(--font-display);
+    font-size: 21px; font-weight: 600; line-height: 1.19; letter-spacing: 0.231px;
+    margin-bottom: 8px;
+}
+.modal-desc { color: var(--text-3); font-size: 14px; line-height: 1.43; letter-spacing: -0.224px; margin-bottom: 20px; }
+.modal-row { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.modal-row label { flex: 1; color: var(--text-2); }
 .modal-row input[type="number"] {
-    width: 90px; height: 30px; text-align: center;
-    background: #2a2a2a; color: #fff; border: 1px solid #3a3a3a; border-radius: 4px;
+    width: 96px; height: 32px; text-align: center; font-size: 14px;
+    background: var(--surface-3); color: var(--text);
+    border: 1px solid var(--hairline-strong); border-radius: var(--r-sm);
+    outline: none;
 }
-#meridian-slider { width: 100%; margin: 4px 0 14px; accent-color: #4a9eff; }
-.meridian-presets { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.modal-row input[type="number"]:focus { border-color: var(--link); }
+#meridian-slider { width: 100%; margin: 4px 0 16px; accent-color: var(--link); }
+.meridian-presets { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 24px; }
 .meridian-presets button {
-    flex: 1 1 auto; min-width: 0; padding: 6px 8px;
-    background: #2c2c2c; color: #ddd; border: 1px solid #3a3a3a;
-    border-radius: 4px; cursor: pointer; font-size: 12px; white-space: nowrap;
+    flex: 1 1 auto; min-width: 0; padding: 8px 14px;
+    background: var(--surface-3); color: var(--text); border: 1px solid var(--hairline);
+    border-radius: var(--r-pill); cursor: pointer; font-size: 12px; white-space: nowrap;
 }
-.meridian-presets button:hover { background: #353535; }
+.meridian-presets button:hover { background: var(--surface-4); }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; }
 .modal-actions button {
-    padding: 7px 18px; border-radius: 5px; cursor: pointer; font-size: 13px;
-    background: #333; color: #e0e0e0; border: 1px solid #3a3a3a;
+    padding: 8px 22px; border-radius: var(--r-pill); cursor: pointer; font-size: 14px;
+    background: transparent; color: var(--link); border: 1px solid var(--link);
 }
-.modal-actions button.primary { background: #4a9eff; color: #fff; border-color: #4a9eff; }
-.modal-actions button.primary:hover { background: #3b8ef0; }
-.modal-actions button:hover { background: #3a3a3a; }
+.modal-actions button:hover { background: var(--primary-tint); }
+.modal-actions button.primary { background: var(--primary); color: #fff; border-color: var(--primary); }
+.modal-actions button.primary:hover { background: var(--primary-focus); }
 
 /* 矩形框选模式下强制十字光标，覆盖 marker/cluster 的 pointer */
 /* body 上设置确保拖拽期间（mousedown 后）也生效 */
@@ -141,22 +210,24 @@ body[style*="cursor: crosshair"] *,
 #photo-strip {
     width: 100%;
     height: 15vh;
-    background: #222;
+    background: var(--surface-2);
     display: flex;
     overflow-x: auto; /* 横向滚动 */
     padding: 10px;
     display: none; /* 暂时隐藏 */
 }
 
+/* ===== 时间轴：底部 frosted 条 ===== */
 #timeline-container {
     position: relative;
     width: 100%;
     height: 56px;
     flex-shrink: 0; /* 不压缩 */
-    background: #2a2a2a;
-    color: white;
+    background: var(--surface-1);
+    border-top: 1px solid var(--hairline);
+    color: var(--text);
     user-select: none;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-family: var(--font-text);
     font-size: 11px;
     overflow: hidden;
     cursor: grab; /* 手型光标 */
@@ -171,38 +242,28 @@ body[style*="cursor: crosshair"] *,
     display: flex;
     align-items: center;
     justify-content: center;
-    background: linear-gradient(to right, rgba(42, 42, 42, 0.9), rgba(42, 42, 42, 0.3));
-    color: rgba(255, 255, 255, 0.4);
+    color: var(--text-3);
     cursor: pointer;
     z-index: 10;
-    transition: color 0.2s, background 0.2s;
+    transition: color 0.2s var(--ease), background 0.2s var(--ease);
 }
 
 .timeline-arrow:hover {
-    color: rgba(255, 255, 255, 1);
-    background: linear-gradient(to right, rgba(60, 60, 60, 0.95), rgba(60, 60, 60, 0.5));
+    color: var(--text);
 }
 
-.timeline-arrow:active {
-    background: linear-gradient(to right, rgba(80, 80, 80, 1), rgba(80, 80, 80, 0.6));
+.timeline-arrow:active svg {
+    transform: scale(0.9);
 }
 
 #timeline-arrow-left {
     left: 0;
-    background: linear-gradient(to right, rgba(42, 42, 42, 0.9), rgba(42, 42, 42, 0));
-}
-
-#timeline-arrow-left:hover {
-    background: linear-gradient(to right, rgba(60, 60, 60, 0.95), rgba(60, 60, 60, 0));
+    background: linear-gradient(to right, rgba(29, 29, 31, 0.95) 40%, rgba(29, 29, 31, 0));
 }
 
 #timeline-arrow-right {
     right: 0;
-    background: linear-gradient(to left, rgba(42, 42, 42, 0.9), rgba(42, 42, 42, 0));
-}
-
-#timeline-arrow-right:hover {
-    background: linear-gradient(to left, rgba(60, 60, 60, 0.95), rgba(60, 60, 60, 0));
+    background: linear-gradient(to left, rgba(29, 29, 31, 0.95) 40%, rgba(29, 29, 31, 0));
 }
 
 #timeline-container:active {
@@ -215,8 +276,8 @@ body[style*="cursor: crosshair"] *,
     left: 0;
     width: 100%;
     height: 28px;
-    background: #3a3a3a;
-    border-bottom: 1px solid #555;
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--hairline);
     display: flex;
     align-items: center;
     overflow: hidden;
@@ -228,7 +289,7 @@ body[style*="cursor: crosshair"] *,
     left: 0;
     width: 100%;
     height: 28px;
-    background: #2a2a2a;
+    background: var(--surface-1);
     display: flex;
     align-items: center;
     overflow: hidden;
@@ -240,10 +301,11 @@ body[style*="cursor: crosshair"] *,
     display: flex;
     align-items: center;
     justify-content: center;
-    border-left: 1px solid #555;
+    border-left: 1px solid var(--hairline);
     box-sizing: border-box;
-    color: #ccc;
+    color: var(--text-3);
     font-size: 12px;
+    letter-spacing: -0.12px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -256,26 +318,27 @@ body[style*="cursor: crosshair"] *,
     display: flex;
     align-items: center;
     justify-content: center;
-    border-left: 1px solid #777;
+    border-left: 1px solid var(--hairline-strong);
     box-sizing: border-box;
-    color: #fff;
+    color: var(--text);
     font-size: 12px;
-    font-weight: bold;
-    background: rgba(255,255,255,0.05);
+    font-weight: 600;
+    letter-spacing: -0.12px;
 }
 
 /* ── 事件标签高亮 ─────────────────────────── */
 .timeline-tick-event {
-    background: rgba(74, 158, 255, 0.12);
+    background: var(--primary-tint);
+    color: var(--text);
 }
 
 .timeline-tick-event-dot {
     position: absolute;
-    bottom: 1px;
+    bottom: 2px;
     left: 50%;
     transform: translateX(-50%);
-    width: 6px;
-    height: 6px;
+    width: 5px;
+    height: 5px;
     border-radius: 50%;
     pointer-events: none;
 }
@@ -284,21 +347,21 @@ body[style*="cursor: crosshair"] *,
 .timeline-event-tooltip {
     position: fixed;
     z-index: 10000;
-    background: #232323;
-    border: 1px solid #4a4a4a;
-    border-radius: 6px;
-    padding: 6px 10px;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+    background: var(--glass);
+    backdrop-filter: var(--blur);
+    border: 1px solid var(--hairline-strong);
+    border-radius: var(--r-md);
+    padding: 8px 12px;
     pointer-events: none;
     white-space: nowrap;
     font-size: 12px;
-    color: #ddd;
+    color: var(--text);
 }
 
 .timeline-event-tooltip-row {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
     padding: 2px 0;
 }
 
@@ -322,16 +385,17 @@ body[style*="cursor: crosshair"] *,
     position: absolute;
     top: 0;
     height: 100%;
-    background: rgba(100, 149, 237, 0.4);
-    border: 1px solid rgba(100, 149, 237, 0.8);
-    border-radius: 2px;
+    box-sizing: border-box;
+    background: rgba(41, 151, 255, 0.22);
+    border: 2px solid var(--link);
+    border-radius: var(--r-sm);
     cursor: move;
     pointer-events: auto;
     min-width: 20px;
 }
 
 #timeline-thumb:hover {
-    background: rgba(100, 149, 237, 0.5);
+    background: rgba(41, 151, 255, 0.3);
 }
 
 #timeline-thumb:active {
@@ -348,7 +412,7 @@ body[style*="cursor: crosshair"] *,
 }
 
 .thumb-handle:hover {
-    background: rgba(255, 255, 255, 0.3);
+    background: rgba(255, 255, 255, 0.25);
 }
 
 .thumb-handle.left {
@@ -359,13 +423,14 @@ body[style*="cursor: crosshair"] *,
     right: 0;
 }
 
-/* 照片缩略图 Tooltip */
+/* 照片缩略图 Tooltip：照片是主角，唯一带「产品阴影」的元素 */
 .photo-tooltip {
-    padding: 6px;
-    background: rgba(0, 0, 0, 0.9);
-    border: 1px solid #555;
-    border-radius: 6px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+    padding: 8px;
+    background: var(--glass);
+    backdrop-filter: var(--blur);
+    border: 1px solid var(--hairline-strong);
+    border-radius: var(--r-lg);
+    box-shadow: var(--photo-shadow);
     max-width: 240px;
 }
 
@@ -373,46 +438,51 @@ body[style*="cursor: crosshair"] *,
     position: relative;
     display: inline-block;
     line-height: 0;
+    border-radius: var(--r-md);
+    overflow: hidden;
 }
 
 .photo-tooltip .tooltip-info {
-    margin-top: 6px;
-    padding-top: 6px;
-    border-top: 1px solid rgba(255, 255, 255, 0.2);
+    margin-top: 8px;
+    padding: 0 2px 2px;
     text-align: center;
-    line-height: 1.4;
+    line-height: 1.43;
 }
 
 .photo-tooltip .tooltip-datetime {
-    color: #fff;
-    font-size: 12px;
-    font-weight: 500;
+    color: var(--text);
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: -0.224px;
 }
 
 .photo-tooltip .tooltip-city {
-    color: #aaa;
-    font-size: 11px;
-    margin-top: 2px;
+    color: var(--text-3);
+    font-size: 12px;
+    letter-spacing: -0.12px;
+    margin-top: 1px;
 }
 
 .photo-tooltip img {
     display: block;
-    border-radius: 2px;
+    border-radius: var(--r-md);
 }
 
 .photo-tooltip video {
     display: block;
-    border-radius: 2px;
+    border-radius: var(--r-md);
 }
 
+/* 圆形 chip 播放按钮（浮于照片上） */
 .photo-tooltip .video-play-icon {
     position: absolute;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    width: 48px;
-    height: 48px;
-    background: rgba(0, 0, 0, 0.6);
+    width: 44px;
+    height: 44px;
+    background: var(--chip);
+    backdrop-filter: var(--blur);
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -424,9 +494,9 @@ body[style*="cursor: crosshair"] *,
     content: '';
     width: 0;
     height: 0;
-    border-left: 20px solid white;
-    border-top: 12px solid transparent;
-    border-bottom: 12px solid transparent;
+    border-left: 15px solid var(--surface-1);
+    border-top: 9px solid transparent;
+    border-bottom: 9px solid transparent;
     margin-left: 4px;
 }
 
@@ -442,7 +512,7 @@ body[style*="cursor: crosshair"] *,
     display: none;
 }
 
-/* MarkerCluster 自定义样式 */
+/* MarkerCluster：单一 Action Blue，按数量加深外圈 */
 .marker-cluster {
     background-clip: padding-box;
     border-radius: 50%;
@@ -455,143 +525,109 @@ body[style*="cursor: crosshair"] *,
     margin-top: 2px;
     text-align: center;
     border-radius: 50%;
-    font: 13px 'Segoe UI', Arial, sans-serif;
-    font-weight: bold;
+    font: 600 13px var(--font-text);
+    letter-spacing: -0.224px;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: white;
+    color: #fff;
+    box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.9);
 }
 
 .marker-cluster-small {
-    background-color: rgba(110, 204, 57, 0.6);
+    background-color: rgba(0, 102, 204, 0.22);
 }
 .marker-cluster-small div {
-    background-color: rgba(110, 204, 57, 0.9);
+    background-color: rgba(41, 151, 255, 0.95);
 }
 
 .marker-cluster-medium {
-    background-color: rgba(240, 194, 12, 0.6);
+    background-color: rgba(0, 102, 204, 0.32);
 }
 .marker-cluster-medium div {
-    background-color: rgba(240, 194, 12, 0.9);
+    background-color: rgba(0, 113, 227, 0.95);
 }
 
 .marker-cluster-large {
-    background-color: rgba(241, 128, 23, 0.6);
+    background-color: rgba(0, 102, 204, 0.42);
 }
-/* ── 人脸扫描进度指示器 ────────────────────────────────── */
-#face-scan-overlay {
-    display: none;
-    position: fixed;
-    left: 16px;
-    bottom: 72px; /* 位于时间轴 (56px) 上方，留 16px 间距 */
-    z-index: 500;
-    flex-direction: column;
-    align-items: center;
-    background: rgba(0, 0, 0, 0.72);
-    border-radius: 12px;
-    padding: 8px 12px 8px;
-    gap: 4px;
-    pointer-events: none;
-    box-shadow: 0 2px 16px rgba(0,0,0,0.6);
+.marker-cluster-large div {
+    background-color: rgba(0, 102, 204, 0.98);
 }
 
-#face-scan-overlay.visible {
-    display: flex;
-}
-
-#face-scan-title {
-    color: #a0c8ff;
-    font-size: 12px;
-    font-weight: 600;
-    white-space: nowrap;
-    text-align: center;
-    font-family: 'Segoe UI', sans-serif;
-    letter-spacing: 0.4px;
-}
-
-#face-scan-text {
-    color: #d0d0d0;
-    font-size: 11px;
-    white-space: nowrap;
-    text-align: center;
-    font-family: 'Segoe UI', sans-serif;
-}
-
-#face-scan-cancel {
-    pointer-events: auto;
-    margin-top: 4px;
-    padding: 3px 18px;
-    background: rgba(220, 60, 60, 0.75);
-    color: #fff;
-    border: none;
-    border-radius: 6px;
-    font-size: 12px;
-    font-family: 'Segoe UI', sans-serif;
-    cursor: pointer;
-}
-
-#face-scan-cancel:hover {
-    background: rgba(220, 60, 60, 1);
-}
-
-/* ── 重复照片移除进度指示器 ─────────────────────────────── */
+/* ── 后台任务进度指示器（人脸扫描 / 重复移除）：frosted 卡片 ── */
+#face-scan-overlay,
 #dup-scan-overlay {
     display: none;
     position: fixed;
-    right: 16px;
     bottom: 72px; /* 位于时间轴 (56px) 上方，留 16px 间距 */
     z-index: 500;
     flex-direction: column;
     align-items: center;
-    background: rgba(0, 0, 0, 0.72);
-    border-radius: 12px;
-    padding: 8px 12px 8px;
-    gap: 4px;
+    background: var(--glass);
+    backdrop-filter: var(--blur);
+    border: 1px solid var(--hairline-strong);
+    border-radius: var(--r-lg);
+    padding: 12px 16px;
+    gap: 6px;
     pointer-events: none;
-    box-shadow: 0 2px 16px rgba(0,0,0,0.6);
 }
 
+#face-scan-overlay { left: 16px; }
+#dup-scan-overlay { right: 16px; }
+
+#face-scan-overlay.visible,
 #dup-scan-overlay.visible {
     display: flex;
 }
 
+#face-scan-title,
 #dup-scan-title {
-    color: #ffd080;
-    font-size: 12px;
+    color: var(--text);
+    font-family: var(--font-display);
+    font-size: 14px;
     font-weight: 600;
+    letter-spacing: -0.224px;
     white-space: nowrap;
     text-align: center;
-    font-family: 'Segoe UI', sans-serif;
-    letter-spacing: 0.4px;
 }
 
+#face-scan-canvas,
+#dup-scan-canvas {
+    width: 72px;
+    height: 72px;
+    margin: 4px 0;
+}
+
+#face-scan-text,
 #dup-scan-text {
-    color: #d0d0d0;
-    font-size: 11px;
+    color: var(--text-3);
+    font-size: 12px;
+    letter-spacing: -0.12px;
     white-space: nowrap;
     text-align: center;
-    font-family: 'Segoe UI', sans-serif;
 }
 
+#face-scan-cancel,
 #dup-scan-stop {
     pointer-events: auto;
     margin-top: 4px;
-    padding: 3px 18px;
-    background: rgba(220, 60, 60, 0.75);
-    color: #fff;
-    border: none;
-    border-radius: 6px;
+    padding: 6px 20px;
+    background: transparent;
+    color: var(--danger);
+    border: 1px solid var(--danger);
+    border-radius: var(--r-pill);
     font-size: 12px;
-    font-family: 'Segoe UI', sans-serif;
     cursor: pointer;
 }
 
+#face-scan-cancel:hover,
 #dup-scan-stop:hover {
-    background: rgba(220, 60, 60, 1);
+    background: var(--danger);
+    color: #fff;
 }
 
-.marker-cluster-large div {
-    background-color: rgba(241, 128, 23, 0.9);
+/* 喜欢的照片：蓝色定位图标变红色 */
+.liked-marker-icon {
+    filter: hue-rotate(150deg) saturate(2.5) brightness(1.05);
 }

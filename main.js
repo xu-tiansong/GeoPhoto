@@ -3,7 +3,7 @@
  * 使用模块化结构管理数据库、照片等功能
  */
 
-const { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, clipboard } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, clipboard, shell, nativeTheme } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { execFile } = require('child_process');
@@ -23,6 +23,7 @@ const AutoFaceScan     = require('./modules/AutoFaceScan');
 const AutoDupScan      = require('./modules/AutoDupScan');
 const DupConfirmWindow = require('./modules/DupConfirmWindow');
 const SlideshowWindow  = require('./modules/SlideshowWindow');
+const VideoTranscoder  = require('./modules/VideoTranscoder');
 const PhotoEditWindow  = require('./modules/PhotoEditWindow');
 
 // ==================== 全局变量 ====================
@@ -109,6 +110,87 @@ function applyLanguage(lang) {
 }
 
 // ==================== 目录处理 ====================
+
+/**
+ * 开始扫描前询问：是否完整扫描。
+ * 完整扫描会额外做三件事：检测已删除的目录、检测目录内文件的增删、用 json 重读元数据。
+ * 选择"否"则只做常规扫描（发现并录入新文件）。
+ * @returns {Promise<boolean>}
+ */
+async function confirmFullScan() {
+    const isZh = i18n.getLanguage() === 'zh';
+    const { response } = await dialog.showMessageBox(mainWindow, {
+        type: 'question',
+        title: isZh ? '扫描选项' : 'Scan option',
+        message: isZh
+            ? '是否完整扫描，包括重新检查目录及其所有的文件，重读配置文件？'
+            : 'Run a full scan? This re-checks directories and all their files, and re-reads metadata files.',
+        buttons: isZh ? ['是', '否'] : ['Yes', 'No'],
+        defaultId: 0,
+        cancelId: 1
+    });
+    return response === 0;
+}
+
+/**
+ * 完整扫描检测到一批记录的文件已从磁盘删除，汇总询问一次是否清除这些记录。
+ * @param {{id:number, directory:string, filename:string}[]} missing
+ * @returns {Promise<boolean>}
+ */
+async function confirmRemoveMissingFiles(missing) {
+    const isZh = i18n.getLanguage() === 'zh';
+    const sample = missing.slice(0, 10)
+        .map(r => '  ' + path.join(r.directory || '', r.filename))
+        .join('\n');
+    const more = missing.length > 10
+        ? (isZh ? `\n  ……另有 ${missing.length - 10} 条` : `\n  ...and ${missing.length - 10} more`)
+        : '';
+    const { response } = await dialog.showMessageBox(mainWindow, {
+        type: 'question',
+        title: isZh ? '文件已被删除' : 'Files removed',
+        message: isZh
+            ? `检测到 ${missing.length} 条记录的文件已不在磁盘上：\n${sample}${more}\n\n是否从数据库中清除这些记录？`
+            : `${missing.length} record(s) point to files that no longer exist on disk:\n${sample}${more}\n\nRemove them from the database?`,
+        buttons: isZh ? ['清除', '保留'] : ['Remove', 'Keep'],
+        defaultId: 1,
+        cancelId: 1
+    });
+    return response === 0;
+}
+
+/**
+ * 扫描时检测到目录已从磁盘删除，弹窗询问是否清除该目录的数据库记录。
+ * 附带"对后续目录执行相同操作"复选框，勾选后调用方会对剩余目录跳过询问，直接沿用本次的选择。
+ * @param {string} dirPath    已被删除的目录（相对路径）
+ * @param {number} photoCount 该目录（含子目录）下的照片/视频记录数
+ * @returns {Promise<{confirmed: boolean, applyToAll: boolean}>}
+ */
+async function confirmDeleteMissingDirectory(dirPath, photoCount) {
+    const isZh = i18n.getLanguage() === 'zh';
+    const displayPath = dirPath === '' ? (isZh ? '（根目录）' : '(root)') : dirPath;
+    const { response, checkboxChecked } = await dialog.showMessageBox(mainWindow, {
+        type: 'question',
+        title: isZh ? '目录已被删除' : 'Directory removed',
+        message: isZh
+            ? `检测到目录「${displayPath}」已从磁盘删除，其中有 ${photoCount} 条照片/视频记录。\n是否从数据库中清除这些记录？`
+            : `Directory "${displayPath}" no longer exists on disk. It contains ${photoCount} photo/video record(s).\nRemove them from the database?`,
+        buttons: isZh ? ['清除', '保留'] : ['Remove', 'Keep'],
+        defaultId: 0,
+        cancelId: 1,
+        checkboxLabel: isZh ? '对后续目录执行相同操作' : 'Apply the same action to remaining directories',
+        checkboxChecked: false
+    });
+    return { confirmed: response === 0, applyToAll: checkboxChecked };
+}
+
+let videoTranscoder = null;
+function getVideoTranscoder() {
+    if (!videoTranscoder) {
+        videoTranscoder = new VideoTranscoder(path.join(app.getPath('userData'), 'video-cache'));
+    }
+    return videoTranscoder;
+}
+
 async function handleSetPhotoDirectory() {
     const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
         properties: ['openDirectory'],
@@ -123,30 +205,42 @@ async function handleSetPhotoDirectory() {
     // 保存新目录
     db.savePhotoDirectory(dirPath);
     currentPhotoDirectory = dirPath;
-    
+
+    // 扫描前询问是否完整扫描
+    const fullScan = await confirmFullScan();
+
     // 通知渲染进程开始扫描
     mainWindow.webContents.send('scan-started');
-    
+
     // 进度回调函数
     const progressCallback = (progress) => {
         mainWindow.webContents.send('scan-progress', progress);
     };
-    
+
     // 异步执行扫描，不阻塞UI
     (async () => {
         try {
             // 使用 PhotoFilesManager 扫描并处理目录（遍历所有子目录，文件级别去重）
-            const result = await photoManager.scanAndProcessDirectory(dirPath, progressCallback, false);
-            
+            const result = await photoManager.scanAndProcessDirectory(dirPath, {
+                progressCallback,
+                fullScan,
+                confirmDeleteCallback: confirmDeleteMissingDirectory,
+                confirmRemoveMissingCallback: confirmRemoveMissingFiles
+            });
+
             // 通知渲染进程扫描完成
-            mainWindow.webContents.send('scan-completed', { 
+            mainWindow.webContents.send('scan-completed', {
                 directory: dirPath,
                 totalPhotos: result.totalPhotos,
                 totalVideos: result.totalVideos,
                 newPhotos: result.newPhotos,
                 newVideos: result.newVideos,
                 skippedFiles: result.skippedFiles,
-                skippedDirectory: result.skippedDirectory
+                skippedDirectory: result.skippedDirectory,
+                removedDirs: result.removedDirs,
+                removedPhotos: result.removedPhotos,
+                updatedFiles: result.updatedFiles,
+                removedMissingFiles: result.removedMissingFiles
             });
         } catch (error) {
             console.error('扫描目录出错:', error);
@@ -172,8 +266,9 @@ function createWindow() {
         height: windowState.height,
         x: windowState.x,
         y: windowState.y,
+        backgroundColor: '#1d1d1f',
         webPreferences: {
-            nodeIntegration: true, 
+            nodeIntegration: true,
             contextIsolation: false 
         }
     });
@@ -936,22 +1031,12 @@ function registerIpcHandlers() {
         }
     });
 
-    // 扫描目录
-    ipcMain.handle('scan-directory', async () => {
-        const { canceled, filePaths } = await dialog.showOpenDialog({
-            properties: ['openDirectory']
-        });
-
-        if (canceled) return { count: 0 };
-
-        const dirPath = filePaths[0];
-        const result = await photoManager.scanAndProcessDirectory(dirPath);
-        return { count: result.newPhotos + result.newVideos };
-    });
-
     // 区域查询（附带时间范围过滤）
     ipcMain.handle('query-area', (event, range) => {
-        return db.queryPhotosByArea(range.north, range.south, range.east, range.west, range.startTime, range.endTime);
+        return db.queryPhotosByArea(
+            range.north, range.south, range.east, range.west,
+            range.startTime, range.endTime, range.includeUnlocated
+        );
     });
 
     // 获取所有照片
@@ -1144,6 +1229,15 @@ function registerIpcHandlers() {
         return { success: true, currentIndex: photoWindow.currentIndex, total: photoWindow.navPhotos.length };
     });
 
+    // 覆盖原图后：通知照片管理窗更新该照片的网格项（文件名可能变了，如 HEIC→JPG），
+    // 否则其双击打开、右键刷新缩略图都会用到已失效的旧路径。
+    ipcMain.handle('notify-photo-file-updated', (_event, info) => {
+        if (photosManageWindow && photosManageWindow.isOpen()) {
+            photosManageWindow.manageWindow.webContents.send('photo-file-updated', info);
+        }
+        return true;
+    });
+
     // 编辑落盘后（另存副本入库 / 覆盖原图且改名）通知主窗口刷新地图标记，
     // 使新照片立即出现、改名照片的标记指向新文件，而不必等用户手动调整日期。
     ipcMain.handle('refresh-map-photos', (_event, photo) => {
@@ -1206,6 +1300,51 @@ function registerIpcHandlers() {
             return { success: true, like };
         } catch (error) {
             console.error('Failed to toggle like:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    // ffmpeg 生成视频缩略图（mpg/avi 等 Chromium 无法解码的格式）
+    ipcMain.handle('generate-video-thumbnail', async (_event, { filePath }) => {
+        try {
+            const ext = path.extname(filePath);
+            const thumbPath = path.join(path.dirname(filePath), path.basename(filePath, ext) + '.gpt');
+            if (fs.existsSync(thumbPath) && fs.statSync(thumbPath).size > 0) {
+                return { success: true, thumbPath };
+            }
+            await getVideoTranscoder().generateThumbnail(filePath, thumbPath);
+            return { success: true, thumbPath };
+        } catch (error) {
+            console.error('ffmpeg 生成缩略图失败:', filePath, error.message);
+            return { success: false, error: error.message };
+        }
+    });
+
+    // ffmpeg 转码为可播放的 mp4 缓存
+    ipcMain.handle('prepare-video-playback', async (_event, { filePath }) => {
+        try {
+            if (!filePath || !fs.existsSync(filePath)) {
+                return { success: false, error: i18n.t('photo.fileNotFound') };
+            }
+            const playPath = await getVideoTranscoder().prepareForPlayback(filePath);
+            return { success: true, playPath };
+        } catch (error) {
+            console.error('ffmpeg 转码失败:', filePath, error.message);
+            return { success: false, error: error.message };
+        }
+    });
+
+    // 用系统默认程序打开文件（Chromium 放不了的格式，如 Motion JPEG 的 .avi）
+    ipcMain.handle('open-file-external', async (_event, filePath) => {
+        try {
+            if (!filePath || !fs.existsSync(filePath)) {
+                return { success: false, error: i18n.t('photo.fileNotFound') };
+            }
+            const error = await shell.openPath(filePath);
+            if (error) return { success: false, error };
+            return { success: true };
+        } catch (error) {
+            console.error('Failed to open file externally:', error);
             return { success: false, error: error.message };
         }
     });
@@ -1518,7 +1657,7 @@ function registerIpcHandlers() {
     // 更新照片坐标（照片窗口地图编辑）
     ipcMain.handle('update-photo-location', async (_event, { photoId, lat, lng }) => {
         try {
-            db.db.prepare('UPDATE photos SET lat = ?, lng = ? WHERE id = ?').run(lat, lng, photoId);
+            db.db.prepare('UPDATE photos SET lat = ?, lng = ?, edited = 1 WHERE id = ?').run(lat, lng, photoId);
 
             // 同步写入照片文件 EXIF GPS（仅 JPEG，不修改拍摄日期）
             const photo = db.db.prepare('SELECT directory, filename, type FROM photos WHERE id = ?').get(photoId);
@@ -1530,6 +1669,29 @@ function registerIpcHandlers() {
             if (mainWindow && !mainWindow.isDestroyed()) {
                 mainWindow.webContents.send('photo-location-updated', { photoId, lat, lng });
             }
+            return { success: true };
+        } catch (e) {
+            return { success: false, error: e.message };
+        }
+    });
+
+    // 更新照片拍摄时间（照片窗口点击日期时间编辑）
+    ipcMain.handle('update-photo-time', async (_event, { photoId, time }) => {
+        try {
+            db.db.prepare('UPDATE photos SET time = ?, edited = 1 WHERE id = ?').run(time, photoId);
+
+            // 同步写入照片文件 EXIF 拍摄时间（仅 JPEG）
+            const photo = db.db.prepare('SELECT directory, filename, type FROM photos WHERE id = ?').get(photoId);
+            if (photo && photo.type !== 'video') {
+                const filePath = path.join(photo.directory, photo.filename);
+                writeDateTimeToFile(filePath, time);
+            }
+
+            // 通知照片管理窗更新该照片缩略图上显示的日期时间
+            if (photosManageWindow && photosManageWindow.isOpen()) {
+                photosManageWindow.manageWindow.webContents.send('photo-time-updated', { photoId, time });
+            }
+
             return { success: true };
         } catch (e) {
             return { success: false, error: e.message };
@@ -2095,6 +2257,29 @@ Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; pu
                 }
             },
             {
+                label:   i18n.t('dir.contextMenu.rescan'),
+                click: async () => {
+                    try {
+                        const baseDir = db.getPhotoDirectory();
+                        const result = await photoManager.rescanSingleDirectory(baseDir, relPath);
+                        senderWin.webContents.send('directory-rescanned', { relPath });
+                        if (mainWindow && !mainWindow.isDestroyed()) {
+                            for (const photoId of result.removedIds) {
+                                mainWindow.webContents.send('photo-deleted', { photoId, fromDir: relPath, toDir: 'Bin' });
+                            }
+                        }
+                        dialog.showMessageBox(senderWin, {
+                            type:    'info',
+                            title:   i18n.t('dir.rescanCompleteTitle'),
+                            message: i18n.t('dir.rescanCompleteMsg', { added: result.added, removed: result.removed })
+                        });
+                    } catch (e) {
+                        console.error('重新扫描目录失败:', e);
+                        dialog.showMessageBox(senderWin, { type: 'error', message: e.message });
+                    }
+                }
+            },
+            {
                 label:   i18n.t('dir.contextMenu.rename'),
                 enabled: !isRoot,
                 click: () => {
@@ -2197,6 +2382,8 @@ Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; pu
 
 // ==================== 应用生命周期 ====================
 app.whenReady().then(() => {
+    // 系统标题栏/菜单/对话框跟随应用的深色 Apple 风格界面
+    nativeTheme.themeSource = 'dark';
     initializeModules();
     registerIpcHandlers();
     createWindow();
@@ -2267,5 +2454,48 @@ function writeGpsToFile(filePath, lat, lng) {
         console.log('GPS 写入文件成功:', filePath, lat, lng);
     } catch (e) {
         console.error('writeGpsToFile: 写入失败', filePath, e.message);
+    }
+}
+
+// 将 Date 格式化为 EXIF 时间字符串（本地时区，与 exifr 解析 DateTimeOriginal 的方式一致）
+function _formatExifDateTime(date) {
+    const p = (n) => String(n).padStart(2, '0');
+    return `${date.getFullYear()}:${p(date.getMonth() + 1)}:${p(date.getDate())} ` +
+           `${p(date.getHours())}:${p(date.getMinutes())}:${p(date.getSeconds())}`;
+}
+
+// 将拍摄时间写入 JPEG 文件 EXIF（DateTimeOriginal / DateTimeDigitized / DateTime）
+function writeDateTimeToFile(filePath, isoTime) {
+    const ext = path.extname(filePath).toLowerCase();
+    if (!['.jpg', '.jpeg'].includes(ext)) return; // 仅支持 JPEG
+
+    let buffer;
+    try {
+        buffer = fs.readFileSync(filePath);
+    } catch (e) {
+        console.error('writeDateTimeToFile: 读取文件失败', filePath, e.message);
+        return;
+    }
+
+    const data = buffer.toString('binary');
+    let exifObj;
+    try {
+        exifObj = piexif.load(data);
+    } catch (_) {
+        exifObj = { '0th': {}, 'Exif': {}, 'GPS': {}, '1st': {} };
+    }
+
+    const exifDateStr = _formatExifDateTime(new Date(isoTime));
+    exifObj['0th'][piexif.ImageIFD.DateTime] = exifDateStr;
+    exifObj['Exif'][piexif.ExifIFD.DateTimeOriginal] = exifDateStr;
+    exifObj['Exif'][piexif.ExifIFD.DateTimeDigitized] = exifDateStr;
+
+    try {
+        const exifBytes = piexif.dump(exifObj);
+        const newData   = piexif.insert(exifBytes, data);
+        fs.writeFileSync(filePath, Buffer.from(newData, 'binary'));
+        console.log('拍摄时间写入文件成功:', filePath, exifDateStr);
+    } catch (e) {
+        console.error('writeDateTimeToFile: 写入失败', filePath, e.message);
     }
 }

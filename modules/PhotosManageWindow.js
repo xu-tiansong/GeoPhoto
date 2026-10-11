@@ -46,7 +46,7 @@ class PhotosManageWindow {
             minWidth: 800,
             minHeight: 600,
             show: false,
-            backgroundColor: '#2a2a2a',
+            backgroundColor: '#1d1d1f',
             webPreferences: {
                 nodeIntegration: true,
                 contextIsolation: false

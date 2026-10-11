@@ -4,16 +4,15 @@
 <meta charset="UTF-8">
 <title>Photo Editing</title>
 <style>
-    /* ====================== 设计变量 ====================== */
+    /* ====================== 设计变量（映射到 apple-theme.css 令牌） ====================== */
     :root {
-        --bg:        #1e1e1e;
-        --bg-2:      #262626;
-        --bg-3:      #2e2e2e;
-        --border:    #383838;
-        --text:      #e0e0e0;
-        --text-dim:  #9a9a9a;
-        --accent:    #4a9eff;
-        --radius:    6px;
+        --bg:        var(--surface-1);
+        --bg-2:      var(--surface-3);
+        --bg-3:      var(--surface-4);
+        --border:    var(--hairline);
+        --text-dim:  var(--text-3);
+        --accent:    var(--link);
+        --radius:    var(--r-sm);
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -22,7 +21,7 @@
         height: 100%;
         background: var(--bg);
         color: var(--text);
-        font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+        font-family: var(--font-text);
         font-size: 13px;
         user-select: none;
         overflow: hidden;
@@ -65,9 +64,9 @@
     .tbtn {
         width: 26px; height: 26px;
         display: flex; align-items: center; justify-content: center;
-        background: transparent;
+        background: rgba(255, 255, 255, 0.08);
         border: none;
-        border-radius: 4px;
+        border-radius: 50%;
         color: var(--text-dim);
         cursor: pointer;
         font-size: 15px;
@@ -75,7 +74,7 @@
         transition: background .15s, color .15s;
     }
     .tbtn:hover { background: var(--bg-3); color: var(--text); }
-    .tbtn.danger:hover { background: #5a2a2a; color: #ff8a8a; }
+    .tbtn.danger:hover { background: var(--danger); color: #fff; }
 
     /* ====================== 2. 基础工具区 ====================== */
     .toolbar {
@@ -96,16 +95,14 @@
         justify-content: center;
         gap: 1px;
         background: var(--bg-2);
-        border: 1px solid var(--border);
-        border-radius: var(--radius);
+        border: none;
+        border-radius: var(--r-md);
         color: var(--text);
         cursor: pointer;
-        transition: background .15s, border-color .15s;
     }
-    .iconbtn:hover { background: var(--bg-3); border-color: #4a4a4a; }
-    .iconbtn:active { background: #222; }
+    .iconbtn:hover { background: var(--bg-3); }
     .iconbtn .ico { font-size: 16px; line-height: 1; }
-    .iconbtn .lbl { font-size: 9px; color: var(--text-dim); }
+    .iconbtn .lbl { font-size: 10px; color: var(--text-2); }
 
     /* ====================== 滚动主体 ====================== */
     .scroll {
@@ -113,9 +110,6 @@
         overflow-y: auto;
         overflow-x: hidden;
     }
-    .scroll::-webkit-scrollbar { width: 8px; }
-    .scroll::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 4px; }
-    .scroll::-webkit-scrollbar-thumb:hover { background: #4a4a4a; }
 
     /* ====================== 折叠面板（section） ====================== */
     .section { border-bottom: 1px solid var(--border); }
@@ -123,7 +117,7 @@
         display: flex;
         align-items: center;
         gap: 6px;
-        padding: 8px 10px;
+        padding: 10px 12px;
         cursor: pointer;
         background: var(--bg);
         transition: background .15s;
@@ -137,20 +131,20 @@
         text-align: center;
     }
     .section.collapsed .chev { transform: rotate(-90deg); }
-    .section-head .name { flex: 1; font-size: 12px; font-weight: 600; }
-    .section-body { padding: 4px 10px 12px; }
+    .section-head .name { flex: 1; font-size: 13px; font-weight: 600; letter-spacing: -0.08px; }
+    .section-body { padding: 4px 12px 14px; }
     .section.collapsed .section-body { display: none; }
 
     /* ====================== 3. 裁剪与旋转 ====================== */
     .field { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
-    .field label { width: 56px; color: var(--text-dim); font-size: 11px; }
+    .field label { width: 56px; color: var(--text-dim); font-size: 12px; }
     select {
         flex: 1;
         height: 28px;
         background: var(--bg-2);
         color: var(--text);
         border: 1px solid var(--border);
-        border-radius: 4px;
+        border-radius: var(--r-sm);
         padding: 0 6px;
         cursor: pointer;
         -webkit-app-region: no-drag;
@@ -161,12 +155,11 @@
         height: 30px;
         display: flex; align-items: center; justify-content: center; gap: 4px;
         background: var(--bg-2);
-        border: 1px solid var(--border);
-        border-radius: 4px;
+        border: none;
+        border-radius: var(--r-sm);
         color: var(--text);
         cursor: pointer;
         font-size: 12px;
-        transition: background .15s;
     }
     .minibtn:hover { background: var(--bg-3); }
 
@@ -178,23 +171,24 @@
         gap: 6px;
         margin: 9px 0;
     }
-    .adjust-row .arlabel { color: var(--text-dim); font-size: 11px; }
+    .adjust-row .arlabel { color: var(--text-2); font-size: 12px; }
     .adjust-row input[type="range"] {
         -webkit-appearance: none;
         appearance: none;
         height: 4px;
-        background: #3a3a3a;
+        background: var(--surface-4);
         border-radius: 2px;
         outline: none;
         cursor: pointer;
     }
     .adjust-row input[type="range"]::-webkit-slider-thumb {
         -webkit-appearance: none;
-        width: 14px; height: 14px;
+        width: 16px; height: 16px;
         border-radius: 50%;
-        background: var(--accent);
+        background: #fff;
         cursor: pointer;
-        border: 2px solid #1e1e1e;
+        border: none;
+        box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.2), 0 1px 3px rgba(0, 0, 0, 0.35);
     }
     .adjust-row input[type="number"] {
         width: 100%;
@@ -202,7 +196,7 @@
         background: var(--bg-2);
         color: var(--text);
         border: 1px solid var(--border);
-        border-radius: 4px;
+        border-radius: var(--r-sm);
         text-align: center;
         font-size: 11px;
         -moz-appearance: textfield;
@@ -213,7 +207,7 @@
         display: flex; align-items: center; justify-content: center;
         background: transparent;
         border: none;
-        border-radius: 4px;
+        border-radius: var(--r-sm);
         color: var(--text-dim);
         cursor: pointer;
         font-size: 13px;
@@ -228,8 +222,6 @@
         overflow-y: hidden;
         padding: 4px 2px 8px;
     }
-    .filter-strip::-webkit-scrollbar { height: 6px; }
-    .filter-strip::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 3px; }
     .filter-item {
         flex: 0 0 auto;
         width: 58px;
@@ -238,14 +230,14 @@
     }
     .filter-item .thumb {
         width: 58px; height: 58px;
-        border-radius: var(--radius);
+        border-radius: var(--r-md);
         border: 2px solid transparent;
         background-size: cover;
         background-position: center;
         transition: border-color .15s;
     }
     .filter-item.active .thumb { border-color: var(--accent); }
-    .filter-item .fname { font-size: 10px; color: var(--text-dim); margin-top: 3px; }
+    .filter-item .fname { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
     .filter-item.active .fname { color: var(--text); }
 
     /* ====================== 保存方式开关 ====================== */
@@ -253,11 +245,11 @@
         display: flex;
         align-items: center;
         gap: 12px;
-        padding: 7px 10px;
+        padding: 8px 12px;
         background: var(--bg);
         border-top: 1px solid var(--border);
         flex: 0 0 auto;
-        font-size: 11px;
+        font-size: 12px;
     }
     .savemode .sm-label { color: var(--text-dim); }
     .savemode .sm-opt {
@@ -267,36 +259,37 @@
         color: var(--text);
         cursor: pointer;
     }
-    .savemode input[type="radio"] { accent-color: var(--accent); cursor: pointer; }
+    .savemode input[type="radio"] { accent-color: var(--primary); cursor: pointer; }
 
     /* ====================== 6. 底部操作区 ====================== */
     .footer {
         display: flex;
         gap: 8px;
-        padding: 8px 10px;
-        background: var(--bg-2);
+        padding: 10px 12px;
+        background: var(--glass);
+        backdrop-filter: var(--blur);
         border-top: 1px solid var(--border);
         flex: 0 0 auto;
     }
     .footer button {
         flex: 1;
         height: 34px;
-        border-radius: var(--radius);
-        border: 1px solid var(--border);
+        border-radius: var(--r-pill);
+        border: 1px solid transparent;
         cursor: pointer;
-        font-size: 13px;
-        font-weight: 600;
+        font-size: 14px;
     }
-    .footer .cancel { background: var(--bg-3); color: var(--text); }
-    .footer .cancel:hover { background: #383838; }
-    .footer .apply { background: var(--accent); color: #fff; border-color: var(--accent); }
-    .footer .apply:hover { background: #3b8ef0; }
+    .footer .cancel { background: transparent; color: var(--link); border-color: var(--link); }
+    .footer .cancel:hover { background: var(--primary-tint); }
+    .footer .apply { background: var(--primary); color: #fff; border-color: var(--primary); }
+    .footer .apply:hover { background: var(--primary-focus); }
 
     /* ====================== 折叠态（仅显示一行图标） ====================== */
     body.collapsed .scroll,
     body.collapsed .savemode,
     body.collapsed .footer { display: none; }
 </style>
+<link rel="stylesheet" href="apple-theme.css">
 </head>
 <body>
     <!-- ============ 1. 顶部栏 ============ -->

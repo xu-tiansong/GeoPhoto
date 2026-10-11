@@ -119,7 +119,7 @@ function openPhotoEditWindow(photoData, openerWebContentsId) {
         resizable: true,
         alwaysOnTop: true,     // 始终置顶
         skipTaskbar: true,     // 不在任务栏单独占位
-        backgroundColor: '#1e1e1e',
+        backgroundColor: '#1d1d1f',
         show: false,
         webPreferences: {
             nodeIntegration: true,

@@ -51,6 +51,8 @@ ipcRenderer.on('scan-progress', (_event, progress) => {
         showLoading(i18n.t('loading.processing', { current: progress.current, total: progress.total }));
     } else if (progress.phase === 'database') {
         showLoading(i18n.t('loading.database'));
+    } else if (progress.phase === 'refresh') {
+        showLoading(i18n.t('loading.refreshing', { current: progress.current, total: progress.total }));
     }
 });
 
@@ -77,6 +79,18 @@ ipcRenderer.on('scan-completed', (_event, data) => {
             message += i18n.t('scan.newFiles', { newPhotos: data.newPhotos, newVideos: data.newVideos });
         } else {
             message += i18n.t('scan.noNewFiles', { skippedFiles: data.skippedFiles });
+        }
+
+        if (data.removedPhotos > 0) {
+            message += i18n.t('scan.removedFiles', { removedDirs: data.removedDirs, removedPhotos: data.removedPhotos });
+        }
+
+        if (data.updatedFiles > 0) {
+            message += i18n.t('scan.updatedFiles', { updatedFiles: data.updatedFiles });
+        }
+
+        if (data.removedMissingFiles > 0) {
+            message += i18n.t('scan.removedMissingFiles', { removedMissingFiles: data.removedMissingFiles });
         }
 
         // 扫描完成后刷新地图（根据当前时间轴范围）
@@ -343,39 +357,9 @@ ipcRenderer.on('face-scan-progress', (_event, { scanned, total, matched = 0 }) =
     overlay.classList.add('visible');
 
     const ctx   = canvas.getContext('2d');
-    const cx    = 64, cy = 64, r = 60;  // 半径 64px，留 4px 边距
     const ratio = total > 0 ? scanned / total : 0;
 
-    ctx.clearRect(0, 0, 128, 128);
-
-    // 背景圆
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(255,255,255,0.12)';
-    ctx.fill();
-
-    // 进度扇形（从顶部 -π/2 顺时针）
-    if (ratio > 0) {
-        ctx.beginPath();
-        ctx.moveTo(cx, cy);
-        ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + ratio * Math.PI * 2);
-        ctx.closePath();
-        ctx.fillStyle = '#4a9eff';
-        ctx.fill();
-    }
-
-    // 中心圆（镂空效果）
-    ctx.beginPath();
-    ctx.arc(cx, cy, r * 0.46, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(0,0,0,0.72)';
-    ctx.fill();
-
-    // 中心百分比文字
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 16px "Segoe UI", sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(Math.round(ratio * 100) + '%', cx, cy);
+    drawProgressRing(ctx, ratio, '#2997ff');
 
     text.textContent = `${scanned} / ${total}（${matched}）`;
 });
@@ -398,6 +382,37 @@ document.getElementById('face-scan-cancel').addEventListener('click', () => {
     ipcRenderer.invoke('cancel-face-scan');
 });
 
+/**
+ * 绘制 Apple 风格进度环（128×128 画布，CSS 缩小显示以保持清晰）
+ */
+function drawProgressRing(ctx, ratio, color) {
+    const cx = 64, cy = 64, r = 54;
+    ctx.clearRect(0, 0, 128, 128);
+    ctx.lineWidth = 12;
+    ctx.lineCap = 'round';
+
+    // 轨道
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+    ctx.stroke();
+
+    // 进度弧（从顶部顺时针）
+    if (ratio > 0) {
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + ratio * Math.PI * 2);
+        ctx.strokeStyle = color;
+        ctx.stroke();
+    }
+
+    // 中心百分比
+    ctx.fillStyle = '#f5f5f7';
+    ctx.font = '600 30px system-ui, -apple-system, "Segoe UI", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(Math.round(ratio * 100) + '%', cx, cy + 1);
+}
+
 // ==================== 重复照片移除进度指示器 ====================
 
 /**
@@ -412,39 +427,9 @@ ipcRenderer.on('dup-scan-progress', (_event, { done, total }) => {
     overlay.classList.add('visible');
 
     const ctx   = canvas.getContext('2d');
-    const cx    = 64, cy = 64, r = 60;
     const ratio = total > 0 ? done / total : 0;
 
-    ctx.clearRect(0, 0, 128, 128);
-
-    // 背景圆
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(255,255,255,0.12)';
-    ctx.fill();
-
-    // 进度扇形（从顶部 -π/2 顺时针，橙黄色）
-    if (ratio > 0) {
-        ctx.beginPath();
-        ctx.moveTo(cx, cy);
-        ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + ratio * Math.PI * 2);
-        ctx.closePath();
-        ctx.fillStyle = '#ffb340';
-        ctx.fill();
-    }
-
-    // 中心圆（镂空效果）
-    ctx.beginPath();
-    ctx.arc(cx, cy, r * 0.46, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(0,0,0,0.72)';
-    ctx.fill();
-
-    // 中心百分比文字
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 16px "Segoe UI", sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(Math.round(ratio * 100) + '%', cx, cy);
+    drawProgressRing(ctx, ratio, '#ff9f0a');
 
     text.textContent = `${done} / ${total}`;
 });

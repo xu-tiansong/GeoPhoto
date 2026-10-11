@@ -1,0 +1,226 @@
+/* =====================================================================
+ * GeoPhoto — Apple 风格设计系统（参考 apple-design.md）
+ *
+ * 照片优先：界面退后，让照片说话。
+ *  - 深色画布（Apple 深色 tile 系列 #1d1d1f / #252527 / #272729 / #2a2a2c）
+ *  - 唯一强调色 Action Blue（深色面上的链接/选中用 Sky Link Blue #2997ff）
+ *  - SF Pro / 系统字体，正文 400、强调 600（无 500）
+ *  - 圆角语法：紧凑工具 8px · 卡片 18px · 主操作 pill
+ *  - 界面元素不加阴影；浮层用 frosted-glass（backdrop blur）+ hairline
+ *  - 按下态统一 transform: scale(0.95)
+ *
+ * 各窗口自身 <style> 之后再引入本文件中的「组件」部分以统一外观。
+ * ===================================================================== */
+
+:root {
+    /* ── 强调色 ── */
+    --primary: #0066cc;            /* Action Blue：按钮填充 */
+    --primary-focus: #0071e3;      /* 焦点环 / 悬停 */
+    --link: #2997ff;               /* Sky Link Blue：深色面上的文字链接、选中态 */
+    --primary-tint: rgba(41, 151, 255, 0.16);
+    --primary-tint-strong: rgba(41, 151, 255, 0.28);
+
+    /* ── 表面（深色 tile 阶梯） ── */
+    --surface-0: #000000;          /* 照片舞台 / 真空 */
+    --surface-1: #1d1d1f;          /* 窗口画布 */
+    --surface-2: #252527;          /* 面板 */
+    --surface-3: #2a2a2c;          /* 控件填充 */
+    --surface-4: #333336;          /* 控件悬停 */
+    --surface-5: #424245;          /* 强调控件 */
+    --chip: rgba(210, 210, 215, 0.64);       /* 悬浮于照片上的圆形控件 */
+    --chip-dark: rgba(29, 29, 31, 0.72);     /* 深色 frosted 胶囊 */
+    --glass: rgba(29, 29, 31, 0.80);         /* frosted 导航条 */
+    --blur: saturate(180%) blur(20px);
+
+    /* ── 文本 ── */
+    --text: #f5f5f7;
+    --text-2: #cccccc;             /* body-muted */
+    --text-3: #86868b;
+    --text-4: #6e6e73;             /* 禁用 / 细则 */
+
+    /* ── 分隔 ── */
+    --hairline: rgba(255, 255, 255, 0.08);
+    --hairline-strong: rgba(255, 255, 255, 0.16);
+
+    /* ── 状态色（仅用于破坏性操作/结果反馈，不作为强调色） ── */
+    --danger: #ff453a;
+    --danger-press: #d70015;
+    --danger-tint: rgba(255, 69, 58, 0.16);
+    --success: #30d158;
+    --warning: #ff9f0a;
+
+    /* ── 字体 ── */
+    --font-display: "SF Pro Display", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", "Microsoft YaHei UI", "PingFang SC", sans-serif;
+    --font-text: "SF Pro Text", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "PingFang SC", sans-serif;
+
+    /* ── 圆角 ── */
+    --r-xs: 5px;
+    --r-sm: 8px;
+    --r-md: 11px;
+    --r-lg: 18px;
+    --r-pill: 9999px;
+
+    /* ── 间距 ── */
+    --sp-xxs: 4px;
+    --sp-xs: 8px;
+    --sp-sm: 12px;
+    --sp-md: 17px;
+    --sp-lg: 24px;
+    --sp-xl: 32px;
+
+    /* 唯一的「产品阴影」——只给照片用 */
+    --photo-shadow: rgba(0, 0, 0, 0.22) 3px 5px 30px 0;
+
+    --ease: cubic-bezier(0.25, 0.1, 0.25, 1);
+
+    color-scheme: dark;
+    accent-color: var(--link);
+}
+
+/* ── 基础 ─────────────────────────────────────────────── */
+:where(html, body) {
+    font-family: var(--font-text);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+}
+
+:where(body) {
+    background-color: var(--surface-1);
+    color: var(--text);
+    letter-spacing: -0.01em;
+}
+
+::selection { background: var(--primary-tint-strong); }
+
+:where(button, input, select, textarea) { font-family: inherit; }
+
+:where(button) { transition: background-color 0.2s var(--ease), color 0.2s var(--ease), border-color 0.2s var(--ease), transform 0.12s var(--ease), opacity 0.2s var(--ease); }
+:where(button:not(:disabled)):active { transform: scale(0.95); }
+button:focus-visible,
+[role="button"]:focus-visible { outline: 2px solid var(--primary-focus); outline-offset: 2px; }
+button:disabled { cursor: default; }
+
+input:focus-visible, select:focus-visible, textarea:focus-visible { outline: none; }
+
+/* 原生滚动条：细、圆、只在需要时显现 */
+::-webkit-scrollbar { width: 10px; height: 10px; background: transparent; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.18);
+    border-radius: var(--r-pill);
+    border: 3px solid transparent;
+    background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background-color: rgba(255, 255, 255, 0.32); }
+::-webkit-scrollbar-corner { background: transparent; }
+
+input[type="range"] { accent-color: var(--link); }
+input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
+
+/* ── 窗口标题栏（frameless 窗口通用） ───────────────────── */
+.title-bar, .titlebar {
+    background: var(--glass) !important;
+    backdrop-filter: var(--blur);
+    border-bottom: 1px solid var(--hairline) !important;
+}
+.title-bar-text, .titlebar .title {
+    font-family: var(--font-display);
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    color: var(--text) !important;
+    letter-spacing: -0.08px;
+}
+
+/* 关闭按钮：圆形半透明 chip，悬停变红 */
+.title-bar-close, .title-bar-button {
+    width: 26px !important;
+    height: 26px !important;
+    border-radius: var(--r-pill) !important;
+    background: rgba(255, 255, 255, 0.08) !important;
+    color: var(--text-2) !important;
+    border: none !important;
+    font-size: 16px !important;
+    transition: background-color 0.2s var(--ease), color 0.2s var(--ease), transform 0.12s var(--ease);
+}
+.title-bar-close:hover, .title-bar-button:hover {
+    background: var(--danger) !important;
+    color: #fff !important;
+}
+.title-bar-close:active, .title-bar-button:active { transform: scale(0.92); }
+
+/* ── 通用按钮语法 ─────────────────────────────────────── */
+.btn-primary {
+    background: var(--primary);
+    color: #fff;
+    border: none;
+    border-radius: var(--r-pill);
+    padding: 8px 20px;
+    font-size: 14px;
+    cursor: pointer;
+}
+.btn-primary:hover:not(:disabled) { background: var(--primary-focus); }
+.btn-primary:disabled { opacity: 0.4; }
+
+.btn-secondary {
+    background: transparent;
+    color: var(--link);
+    border: 1px solid var(--link);
+    border-radius: var(--r-pill);
+    padding: 7px 19px;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.btn-utility {
+    background: var(--surface-3);
+    color: var(--text);
+    border: none;
+    border-radius: var(--r-sm);
+    padding: 7px 15px;
+    font-size: 14px;
+    cursor: pointer;
+}
+.btn-utility:hover:not(:disabled) { background: var(--surface-4); }
+
+/* ── 分段控件：统一各窗口的标签页（.tabs / .tab-nav） ─────── */
+.tabs, .tab-nav {
+    display: flex;
+    gap: 2px;
+    padding: 2px !important;
+    margin: 10px 12px !important;
+    background: var(--surface-3) !important;
+    border: none !important;
+    border-radius: var(--r-sm);
+    flex-shrink: 0;
+}
+.tabs > .tab, .tabs > .tab-btn, .tab-nav > .tab-btn {
+    flex: 1;
+    padding: 6px 4px !important;
+    border: none !important;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-2);
+    font-size: 12px;
+    letter-spacing: -0.12px;
+    white-space: nowrap;
+    transition: background-color 0.2s var(--ease), color 0.2s var(--ease);
+}
+.tabs > .tab:hover:not(.active):not(:disabled),
+.tabs > .tab-btn:hover:not(.active):not(:disabled),
+.tab-nav > .tab-btn:hover:not(.active):not(:disabled) {
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.05);
+}
+.tabs > .tab.active, .tabs > .tab-btn.active, .tab-nav > .tab-btn.active {
+    background: var(--surface-5);
+    color: var(--text);
+    font-weight: 600;
+}
+.tabs > .tab:active, .tabs > .tab-btn:active, .tab-nav > .tab-btn:active { transform: none; }
+
+/* ── 目录树选中行：macOS 侧栏式实心高亮 ───────────────── */
+.tree-node-label.selected {
+    background: var(--primary) !important;
+}
+.tree-node-label.selected,
+.tree-node-label.selected * { color: #fff !important; }

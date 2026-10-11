@@ -6,6 +6,7 @@ package-lock.json
 *.db
 *.db-shm
 *.db-wal
+*.db.bak-*
 
 # Backup files
 Backup/

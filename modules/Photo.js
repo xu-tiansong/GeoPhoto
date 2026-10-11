@@ -138,7 +138,9 @@ class Photo {
      * 检查文件扩展名是否为视频
      */
     static isVideoExtension(filename) {
-        return /\.(mp4|mov|avi|mkv|wmv|flv|webm|m4v|3gp)$/i.test(filename);
+        // mpg/mpeg/vob(MPEG-1/2)、mts/m2ts(AVCHD)、asf 等 Chromium 不能直接播放，
+        // 照片窗口会回退到「用系统播放器打开」
+        return /\.(mp4|mov|avi|mkv|wmv|flv|webm|m4v|3gp|3g2|mpg|mpeg|mts|m2ts|vob|asf)$/i.test(filename);
     }
 
     /**

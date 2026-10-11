@@ -43,6 +43,12 @@ class DatabaseManager {
             )
         `);
 
+        // 1.1 迁移：为 photos 添加 edited 列
+        // 用户手工改过时间/定位/like/备注的记录置 1，完整扫描时不会用 json 元数据覆盖它们
+        try {
+            this.db.exec(`ALTER TABLE photos ADD COLUMN edited INTEGER DEFAULT 0`);
+        } catch (_) { /* 列已存在则忽略 */ }
+
         // 2. 目录管理表 (对应菜单 1.2)
         this.db.exec(`
             CREATE TABLE IF NOT EXISTS directories (
@@ -238,6 +244,56 @@ class DatabaseManager {
     isDirectoryScanned(dirPath) {
         const row = this.db.prepare('SELECT last_scan_time FROM directories WHERE path = ?').get(dirPath);
         return row && row.last_scan_time !== null;
+    }
+
+    /**
+     * 查找已在磁盘上被删除的目录（仅返回最上层已删除目录：若某目录的父级目录也已删除，
+     * 则不单独返回该子目录，由父目录的清理一并处理）
+     * @param {string} baseDir 照片根目录的绝对路径
+     * @returns {{path: string, photoCount: number}[]}
+     */
+    findDeletedDirectories(baseDir) {
+        if (!baseDir) return [];
+
+        const allDirs = this.db.prepare("SELECT path FROM directories WHERE path != ''").all().map(r => r.path);
+        const missingSet = new Set(allDirs.filter(p => !fs.existsSync(path.join(baseDir, p))));
+
+        const rootMissing = [...missingSet].filter(p => {
+            let parent = path.dirname(p);
+            while (parent && parent !== path.dirname(parent)) {
+                if (missingSet.has(parent)) return false;
+                parent = path.dirname(parent);
+            }
+            return true;
+        });
+
+        const countStmt = this.db.prepare(
+            'SELECT COUNT(*) as cnt FROM photos WHERE directory = ? OR directory GLOB ?'
+        );
+        return rootMissing
+            .map(p => ({ path: p, photoCount: countStmt.get(p, p + path.sep + '*').cnt }))
+            .sort((a, b) => a.path.localeCompare(b.path));
+    }
+
+    /**
+     * 删除指定目录（及其子目录）下的所有照片/视频记录，并移除 directories 表中的对应记录
+     * @param {string} dirPath
+     * @returns {number} 删除的照片/视频记录数
+     */
+    removeDirectoryRecords(dirPath) {
+        const photoIds = this.db.prepare(
+            'SELECT id FROM photos WHERE directory = ? OR directory GLOB ?'
+        ).all(dirPath, dirPath + path.sep + '*').map(r => r.id);
+
+        if (photoIds.length > 0) {
+            this.deletePhotosByIds(photoIds);
+        }
+
+        this.db.prepare('DELETE FROM directories WHERE path = ? OR path GLOB ?')
+            .run(dirPath, dirPath + path.sep + '*');
+
+        this.pathExistsCache.clear();
+        return photoIds.length;
     }
 
     // ==================== 新增：标签管理 (1.3/1.7) ====================
@@ -715,7 +771,7 @@ class DatabaseManager {
         const loc = this.db.prepare('SELECT lat, lng FROM tag_locations WHERE tag_id = ?').get(tagId);
         if (!loc || loc.lat === null || loc.lng === null) return null;
 
-        this.db.prepare('UPDATE photos SET lat = ?, lng = ? WHERE id = ?').run(loc.lat, loc.lng, photoId);
+        this.db.prepare('UPDATE photos SET lat = ?, lng = ?, edited = 1 WHERE id = ?').run(loc.lat, loc.lng, photoId);
         return { lat: loc.lat, lng: loc.lng };
     }
 
@@ -851,6 +907,42 @@ class DatabaseManager {
         });
         
         insertMany(photos);
+    }
+
+    /**
+     * 读取所有照片/视频记录的路径与元数据（不做文件存在性过滤）
+     * 供完整扫描时做"数据库 ↔ 磁盘"比对，以及判断哪些记录可以被 json 覆盖
+     */
+    getAllPhotoRecords() {
+        return this.db.prepare(
+            'SELECT id, directory, filename, time, lat, lng, type, edited FROM photos'
+        ).all();
+    }
+
+    /**
+     * 用 Takeout json 元数据批量覆盖照片记录
+     * 只覆盖 edited 不为 1 的记录（用户手工改过的不动），且不触碰 like/remark/标签
+     * @param {{id:number,time:string|null,lat:number|null,lng:number|null}[]} updates
+     * @returns {number} 实际被更新的记录数
+     */
+    batchRefreshPhotoMetadata(updates) {
+        if (!updates || updates.length === 0) return 0;
+
+        const stmt = this.db.prepare(`
+            UPDATE photos SET time = ?, lat = ?, lng = ?
+            WHERE id = ? AND COALESCE(edited, 0) != 1
+        `);
+
+        let changed = 0;
+        const runAll = this.db.transaction((items) => {
+            for (const u of items) {
+                changed += stmt.run(u.time, u.lat, u.lng, u.id).changes;
+            }
+        });
+        runAll(updates);
+
+        this.pathExistsCache.clear();
+        return changed;
     }
 
     /**
@@ -1082,27 +1174,25 @@ class DatabaseManager {
     /**
      * 根据区域查询照片
      */
-    queryPhotosByArea(north, south, east, west, startTime, endTime) {
-        let sql;
-        let params;
+    /**
+     * 矩形区域查询
+     * includeUnlocated：框选范围覆盖了地图上「无定位照片」的停放点时传 true，
+     *   此时把 lat/lng 为 NULL 的记录一并返回——它们在地图上看得见，
+     *   但经纬度范围比较永远匹配不到 NULL。
+     */
+    queryPhotosByArea(north, south, east, west, startTime, endTime, includeUnlocated = false) {
+        const geo = includeUnlocated
+            ? '((lat <= ? AND lat >= ? AND lng <= ? AND lng >= ?) OR lat IS NULL OR lng IS NULL)'
+            : '(lat <= ? AND lat >= ? AND lng <= ? AND lng >= ?)';
+
+        let sql = `SELECT * FROM photos WHERE ${geo} AND directory != 'Bin'`;
+        const params = [north, south, east, west];
+
         if (startTime && endTime) {
-            sql = `
-                SELECT * FROM photos
-                WHERE lat <= ? AND lat >= ?
-                AND lng <= ? AND lng >= ?
-                AND time >= ? AND time < ?
-                AND directory != 'Bin'
-            `;
-            params = [north, south, east, west, startTime, endTime];
-        } else {
-            sql = `
-                SELECT * FROM photos
-                WHERE lat <= ? AND lat >= ?
-                AND lng <= ? AND lng >= ?
-                AND directory != 'Bin'
-            `;
-            params = [north, south, east, west];
+            sql += ' AND time >= ? AND time < ?';
+            params.push(startTime, endTime);
         }
+
         const photos = this.db.prepare(sql).all(...params);
         return this.filterExistingPhotos(this.addFullPathToPhotos(photos));
     }
@@ -1165,7 +1255,7 @@ class DatabaseManager {
      */
     savePhotoRemark(directory, filename, remark) {
         const stmt = this.db.prepare(`
-            UPDATE photos SET remark = ? 
+            UPDATE photos SET remark = ?, edited = 1
             WHERE directory = ? AND filename = ?
         `);
         return stmt.run(remark, directory, filename);
@@ -1176,7 +1266,7 @@ class DatabaseManager {
      */
     updatePhotoLike(directory, filename, like) {
         const stmt = this.db.prepare(`
-            UPDATE photos SET like = ?
+            UPDATE photos SET like = ?, edited = 1
             WHERE directory = ? AND filename = ?
         `);
         return stmt.run(like ? 1 : 0, directory, filename);
@@ -1364,8 +1454,8 @@ class DatabaseManager {
     addEditedCopy(originalId, directory, filename) {
         const src = this.getPhotoById(originalId);
         const info = this.db.prepare(`
-            INSERT INTO photos (directory, filename, time, lat, lng, type)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO photos (directory, filename, time, lat, lng, type, edited)
+            VALUES (?, ?, ?, ?, ?, ?, 1)
         `).run(
             directory,
             filename,

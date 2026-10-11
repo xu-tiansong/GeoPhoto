@@ -132,6 +132,77 @@ class ThumbnailGenerator {
     }
 
     /**
+     * 为视频智能生成缩略图：很多视频开头/结尾有黑场，固定取 0.1s 会得到全黑缩略图。
+     * 这里在若干候选时间点采样亮度，挑选第一帧非黑（或最亮）的画面再生成。
+     * @param {HTMLVideoElement} video - 已加载元数据的视频元素
+     * @param {string} originalPath - 原始文件路径
+     * @returns {Promise<string>} 缩略图路径
+     */
+    async generateVideoThumbnailSmart(video, originalPath) {
+        const dur = isFinite(video.duration) ? video.duration : 0;
+        const cand = [];
+        const push = (t) => {
+            t = +(+t).toFixed(2);
+            if (t >= 0 && (dur === 0 || t < dur) && !cand.includes(t)) cand.push(t);
+        };
+        // 优先 ~1s（跳过常见黑场片头），再退而求其次
+        push(dur ? Math.min(1.0, dur * 0.1) : 1.0);
+        push(2.0); push(dur * 0.25); push(dur * 0.5); push(0.5); push(0.1);
+
+        const probe = document.createElement('canvas');
+        probe.width = 32; probe.height = 18;
+        const pctx = probe.getContext('2d');
+
+        const seekTo = (t) => new Promise((resolve) => {
+            let done = false;
+            const onSeeked = () => { if (done) return; done = true; video.removeEventListener('seeked', onSeeked); resolve(); };
+            video.addEventListener('seeked', onSeeked);
+            try { video.currentTime = t; } catch (_) { onSeeked(); }
+            setTimeout(onSeeked, 3000); // 容错：seek 卡住时超时继续
+        });
+        const brightnessAt = async (t) => {
+            await seekTo(t);
+            await new Promise(r => setTimeout(r, 150)); // 等待该帧绘制
+            try {
+                pctx.drawImage(video, 0, 0, 32, 18);
+                const d = pctx.getImageData(0, 0, 32, 18).data;
+                let s = 0; for (let i = 0; i < d.length; i += 4) s += (d[i] + d[i + 1] + d[i + 2]) / 3;
+                return s / (d.length / 4);
+            } catch (_) { return 0; }
+        };
+
+        const BLACK = 18;     // 平均亮度阈值（0=纯黑）
+        let bestT = cand.length ? cand[0] : 0.1, bestB = -1;
+        for (const t of cand) {
+            const b = await brightnessAt(t);
+            if (b > bestB) { bestB = b; bestT = t; }
+            if (b >= BLACK) break;   // 命中非黑帧即可
+        }
+        // 定位到选中的帧再生成
+        await seekTo(bestT);
+        await new Promise(r => setTimeout(r, 150));
+        return this.generateAndSaveThumbnail(video, originalPath);
+    }
+
+    /**
+     * 该视频格式是否要走 ffmpeg（Chromium 的 <video> 无法解码，如 mpg/avi/wmv）
+     */
+    needsFfmpeg(filename) {
+        return /\.(mpg|mpeg|avi|mts|m2ts|vob|asf|wmv|flv|3g2)$/i.test(filename);
+    }
+
+    /**
+     * 让主进程用 ffmpeg 生成视频缩略图（.gpt）
+     * @returns {Promise<string>} 缩略图路径；失败时 reject
+     */
+    async generateVideoThumbnailFfmpeg(originalPath) {
+        const { ipcRenderer } = require('electron');
+        const res = await ipcRenderer.invoke('generate-video-thumbnail', { filePath: originalPath });
+        if (!res || !res.success) throw new Error((res && res.error) || 'ffmpeg thumbnail failed');
+        return res.thumbPath;
+    }
+
+    /**
      * 为图片元素设置缩略图源
      * @param {HTMLImageElement} img - 图片元素
      * @param {string} originalPath - 原始文件路径

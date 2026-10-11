@@ -12,6 +12,14 @@ const i18n = require('./i18n');
 /**
  * 计算两点之间的地表距离（Haversine 公式），返回单位：米
  */
+/** 把任意经度绕回 -180..180（地图向东/西连续平移多圈后，Leaflet 给的经度会累加 n*360） */
+function normalizeLongitude(lng) {
+    let v = Number(lng);
+    if (!isFinite(v)) return v;
+    v = ((v + 180) % 360 + 360) % 360 - 180;
+    return v;
+}
+
 function haversineDistance(lat1, lng1, lat2, lng2) {
     const R = 6371000;
     const φ1 = lat1 * Math.PI / 180;
@@ -77,7 +85,7 @@ class TagManageWindow {
             resizable:      true,
             minWidth:       700,
             minHeight:      480,
-            backgroundColor: '#1a1a1a'
+            backgroundColor: '#1d1d1f'
         });
 
         this.window.loadFile(path.join(__dirname, '..', 'tag-manage-window.html'));
@@ -320,6 +328,11 @@ class TagManageWindow {
 
         this._handleSaveLocation = async (_event, { tagId, lat, lng, radius }) => {
             try {
+                // Leaflet 的点击事件给的经度是「不绕回」的：地图向东连续平移几圈后
+                // 同一个地点会变成 145.37 + n*360。必须先归一化到 -180..180，
+                // 否则不但地图上画不出来，下面几处 haversine 距离校验也会全错。
+                lng = normalizeLongitude(lng);
+
                 // 校验1：子标签圆心必须在父标签圆范围内
                 const parentLoc = this.db.getParentLocationData(tagId);
                 if (parentLoc && parentLoc.lat != null && parentLoc.radius != null) {

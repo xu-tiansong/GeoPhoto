@@ -19,7 +19,7 @@ class TimeLineSettingWindow {
             frame: false,
             center: true,
             resizable: false,
-            backgroundColor: '#1a1a1a'
+            backgroundColor: '#1d1d1f'
         });
 
         this.window.loadFile('timeline-setting-window.html');

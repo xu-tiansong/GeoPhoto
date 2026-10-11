@@ -485,13 +485,13 @@ class Timeline {
         tick.classList.add('timeline-tick-event');
 
         // 使用第一个事件的颜色作为底部标记色
-        const color = markers[0].color || '#4a9eff';
+        const color = markers[0].color || '#2997ff';
         const dot = document.createElement('div');
         dot.className = 'timeline-tick-event-dot';
         dot.style.backgroundColor = color;
         if (markers.length > 1) {
             // 多个事件时显示多色
-            const colors = markers.map(m => m.color || '#4a9eff');
+            const colors = markers.map(m => m.color || '#2997ff');
             dot.style.background = `linear-gradient(90deg, ${colors.join(', ')})`;
         }
         tick.appendChild(dot);
@@ -523,7 +523,7 @@ class Timeline {
 
             const dot = document.createElement('span');
             dot.className = 'timeline-event-tooltip-dot';
-            dot.style.backgroundColor = m.color || '#4a9eff';
+            dot.style.backgroundColor = m.color || '#2997ff';
             row.appendChild(dot);
 
             const label = document.createElement('span');

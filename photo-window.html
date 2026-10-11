@@ -9,9 +9,9 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
-            background: #1a1a1a;
-            color: #e0e0e0;
+            font-family: var(--font-text);
+            background: var(--surface-1);
+            color: var(--text);
             overflow: hidden;
             width: 100vw;
             height: 100vh;
@@ -29,20 +29,20 @@
             align-items: center;
             justify-content: space-between;
             padding: 0 14px;
-            border-bottom: 1px solid #2e2e2e;
+            border-bottom: 1px solid var(--hairline);
             flex-shrink: 0;
         }
-        .title-bar-text { font-size: 14px; font-weight: 500; color: #ddd; }
+        .title-bar-text { font-size: 14px; font-weight: 600; color: var(--text); }
         .title-bar-close {
             -webkit-app-region: no-drag;
             width: 30px; height: 30px;
-            background: #c62828;
-            border: none; border-radius: 4px;
+            background: var(--danger);
+            border: none; border-radius: var(--r-sm);
             cursor: pointer; color: #fff; font-size: 18px; line-height: 1;
             display: flex; align-items: center; justify-content: center;
             transition: background 0.15s;
         }
-        .title-bar-close:hover { background: #b71c1c; }
+        .title-bar-close:hover { background: var(--danger-press); }
 
         /* ── Main Layout ───────────────────────────────── */
         .main { flex: 1; display: flex; overflow: hidden; }
@@ -50,7 +50,7 @@
         /* 左侧照片容器 */
         .photo-container {
             flex: 1;
-            background: #0a0a0a;
+            background: var(--surface-0);
             position: relative;
             overflow: hidden;
             cursor: grab;
@@ -97,29 +97,89 @@
             display: none;
         }
 
+        /* 浏览器内核不支持的格式（如 Motion JPEG 的 .avi）的兜底提示 */
+        .unsupported-media {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 14px;
+            width: 100%;
+            height: 100%;
+            color: var(--text-3);
+            text-align: center;
+            padding: 24px;
+            user-select: none;
+        }
+
+        .unsupported-media.active {
+            display: flex;
+        }
+
+        .unsupported-media .um-icon {
+            font-size: 44px;
+            opacity: 0.55;
+        }
+
+        .unsupported-media .um-title {
+            font-family: var(--font-display);
+            font-size: 21px;
+            font-weight: 600;
+            letter-spacing: 0.231px;
+            color: var(--text);
+        }
+
+        .unsupported-media .um-detail {
+            font-size: 12px;
+            color: var(--text-4);
+            max-width: 460px;
+            line-height: 1.43;
+            font-size: 14px;
+            color: var(--text-3);
+        }
+
+        .unsupported-media .um-open {
+            margin-top: 4px;
+            background: var(--primary);
+            border: none;
+            border-radius: var(--r-pill);
+            color: #fff;
+            cursor: pointer;
+            font-family: var(--font-text);
+            font-size: 14px;
+            padding: 9px 22px;
+        }
+
+        .unsupported-media .um-open:hover {
+            background: var(--primary-focus);
+        }
+
         /* 翻页导航箭头 */
         .nav-arrow {
             position: absolute;
             top: 50%;
             transform: translateY(-50%);
-            width: 48px;
-            height: 96px;
-            background: rgba(0, 0, 0, 0.28);
-            color: rgba(255, 255, 255, 0.75);
-            font-size: 36px;
+            width: 44px;
+            height: 44px;
+            background: var(--chip-dark);
+            backdrop-filter: var(--blur);
+            color: var(--text);
+            font-size: 26px;
+            line-height: 1;
+            padding-bottom: 3px;
             display: none;
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            border-radius: 6px;
+            border-radius: 50%;
             z-index: 20;
-            transition: background 0.18s, color 0.18s;
+            transition: background 0.2s var(--ease), color 0.2s var(--ease);
             user-select: none;
             -webkit-app-region: no-drag;
         }
 
         .nav-arrow:hover {
-            background: rgba(0, 0, 0, 0.72);
+            background: rgba(66, 66, 69, 0.85);
             color: #fff;
         }
 
@@ -127,8 +187,8 @@
             display: flex;
         }
 
-        .nav-prev { left: 12px; }
-        .nav-next { right: 12px; }
+        .nav-prev { left: 16px; }
+        .nav-next { right: 16px; }
 
         /* 缩放控制按钮 */
         .zoom-controls {
@@ -137,20 +197,23 @@
             left: 50%;
             transform: translateX(-50%);
             display: flex;
-            gap: 10px;
-            background: rgba(0, 0, 0, 0.7);
-            padding: 8px 12px;
-            border-radius: 6px;
+            align-items: center;
+            gap: 4px;
+            background: var(--chip-dark);
+            backdrop-filter: var(--blur);
+            border: 1px solid var(--hairline);
+            padding: 4px;
+            border-radius: var(--r-pill);
             z-index: 10;
         }
 
         .zoom-btn {
-            background: #2a2a2a;
-            border: 1px solid #383838;
-            color: #e0e0e0;
-            width: 30px;
-            height: 30px;
-            border-radius: 4px;
+            background: transparent;
+            border: none;
+            color: var(--text);
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
             cursor: pointer;
             font-size: 18px;
             display: flex;
@@ -160,21 +223,24 @@
         }
 
         .zoom-btn:hover {
-            background: #333;
+            background: rgba(255, 255, 255, 0.12);
         }
 
         .zoom-level {
-            color: #aaa;
+            color: var(--text-2);
             display: flex;
             align-items: center;
-            padding: 0 10px;
-            font-size: 14px;
+            padding: 0 8px;
+            font-size: 13px;
+            font-variant-numeric: tabular-nums;
+            min-width: 48px;
+            justify-content: center;
         }
 
         /* 右侧容器 */
         .sidebar {
             width: 320px;
-            background: #2a2a2a;
+            background: var(--surface-1);
             display: flex;
             flex-direction: column;
             flex-shrink: 0;
@@ -187,9 +253,9 @@
 
         /* 左右分隔拖拽条 */
         .split-divider {
-            width: 5px;
+            width: 1px;
             flex-shrink: 0;
-            background: #222;
+            background: var(--hairline-strong);
             cursor: col-resize;
             position: relative;
             transition: background 0.15s;
@@ -197,7 +263,7 @@
         }
         .split-divider:hover,
         .split-divider.dragging {
-            background: #4a9eff;
+            background: var(--primary);
         }
         /* 扩大命中区域 */
         .split-divider::after {
@@ -210,7 +276,7 @@
         /* Tab导航 */
         .tab-nav {
             display: flex;
-            background: #1a1a1a;
+            background: var(--surface-1);
             padding: 10px 10px 0 10px;
             gap: 5px;
         }
@@ -220,22 +286,22 @@
             padding: 10px;
             background: transparent;
             border: none;
-            color: #666;
+            color: var(--text-4);
             cursor: pointer;
             border-bottom: 2px solid transparent;
             transition: all 0.18s;
             font-size: 12px;
-            font-family: inherit;
+            font-family: var(--font-text);
         }
 
         .tab-btn:hover {
-            color: #bbb;
+            color: var(--text-2);
             background: rgba(255,255,255,0.04);
         }
 
         .tab-btn.active {
-            color: #e0e0e0;
-            border-bottom-color: #4a9eff;
+            color: var(--text);
+            border-bottom-color: var(--link);
         }
 
         /* Tab内容 */
@@ -270,14 +336,17 @@
         }
 
         .info-label {
-            color: #777;
-            font-size: 11px;
+            color: var(--text-3);
+            font-size: 12px;
+            letter-spacing: -0.12px;
             margin-bottom: 4px;
         }
 
         .info-value {
-            color: #e0e0e0;
+            color: var(--text);
             font-size: 14px;
+            letter-spacing: -0.224px;
+            line-height: 1.43;
             word-break: break-all;
         }
 
@@ -294,25 +363,62 @@
         .coord-action-btn {
             flex-shrink: 0;
             background: none;
-            border: 1px solid #444;
-            border-radius: 4px;
-            color: #aaa;
+            border: none;
+            background: var(--surface-3);
+            border-radius: var(--r-sm);
+            color: var(--text);
             cursor: pointer;
             font-size: 13px;
-            padding: 1px 5px;
+            padding: 2px 7px;
             line-height: 1.4;
             transition: background 0.15s, color 0.15s, border-color 0.15s;
         }
-        .coord-action-btn:hover { background: #333; color: #e0e0e0; border-color: #666; }
+        .coord-action-btn:hover { background: var(--surface-4); }
         .coord-action-btn:disabled { opacity: 0.3; cursor: default; }
-        .coord-action-btn:disabled:hover { background: none; color: #aaa; border-color: #444; }
+        .coord-action-btn:disabled:hover { background: var(--surface-3); }
 
         /* ── 目录复制 ──────────────────────────────────── */
         #info-directory {
             cursor: pointer;
         }
         #info-directory:hover {
-            text-decoration: underline dotted #888;
+            text-decoration: underline dotted var(--text-3);
+        }
+
+        /* ── 拍摄时间编辑 ──────────────────────────────── */
+        #info-datetime {
+            cursor: pointer;
+        }
+        #info-datetime:hover {
+            text-decoration: underline dotted var(--text-3);
+        }
+        #info-datetime.readonly {
+            cursor: default;
+        }
+        #info-datetime.readonly:hover {
+            text-decoration: none;
+        }
+        .datetime-edit-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 4px;
+        }
+        .datetime-edit-input {
+            flex: 1;
+            min-width: 0;
+            background: var(--surface-3);
+            border: 1px solid var(--hairline);
+            border-radius: var(--r-sm);
+            color: var(--text);
+            padding: 4px 6px;
+            font-size: 13px;
+            font-family: var(--font-text);
+            outline: none;
+            transition: border-color 0.15s;
+        }
+        .datetime-edit-input:focus {
+            border-color: var(--link);
         }
 
         /* Remark输入框样式 */
@@ -323,32 +429,32 @@
         .remark-textarea {
             width: 100%;
             min-height: 80px;
-            background: #222;
-            border: 1px solid #383838;
-            border-radius: 4px;
-            color: #ddd;
+            background: var(--surface-3);
+            border: 1px solid var(--hairline);
+            border-radius: var(--r-sm);
+            color: var(--text);
             padding: 8px;
             font-size: 13px;
-            font-family: inherit;
+            font-family: var(--font-text);
             resize: vertical;
             outline: none;
             transition: border-color 0.15s;
         }
 
         .remark-textarea:focus {
-            border-color: #4a9eff;
+            border-color: var(--link);
         }
 
         .remark-save-btn {
-            margin-top: 8px;
-            padding: 6px 16px;
-            background: #4a9eff;
+            margin-top: 10px;
+            padding: 7px 20px;
+            background: var(--primary);
             border: none;
-            border-radius: 4px;
+            border-radius: var(--r-pill);
             color: #fff;
             cursor: pointer;
-            font-size: 13px;
-            font-family: inherit;
+            font-size: 14px;
+            font-family: var(--font-text);
             transition: background 0.15s;
             display: none;
         }
@@ -358,45 +464,44 @@
         }
 
         .remark-save-btn:hover {
-            background: #3a8eef;
+            background: var(--primary-focus);
         }
 
         /* Like按钮 */
         .like-container {
             margin-top: 16px;
             padding-top: 16px;
-            border-top: 1px solid #2e2e2e;
+            border-top: 1px solid var(--hairline);
         }
 
         .like-btn {
             width: 100%;
             padding: 10px;
-            background: #2a2a2a;
-            border: 1px solid #383838;
-            border-radius: 4px;
+            background: var(--surface-3);
+            border: none;
+            border-radius: var(--r-pill);
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
             gap: 8px;
-            color: #777;
-            font-size: 13px;
-            font-family: inherit;
+            color: var(--text);
+            font-size: 14px;
+            font-family: var(--font-text);
             transition: all 0.15s;
         }
 
         .like-btn:hover {
-            background: #333;
-            color: #ff6b6b;
+            background: var(--surface-4);
         }
 
         .like-btn.liked {
-            background: #ff6b6b;
-            color: #fff;
+            background: var(--danger-tint);
+            color: var(--danger);
         }
 
         .like-btn.liked:hover {
-            background: #ff5252;
+            background: rgba(255, 69, 58, 0.24);
         }
 
         .like-btn .heart-icon {
@@ -407,24 +512,22 @@
             width: 100%;
             margin-top: 8px;
             padding: 10px;
-            background: #2a2a2a;
-            border: 1px solid #383838;
-            border-radius: 4px;
+            background: transparent;
+            border: none;
+            border-radius: var(--r-pill);
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
             gap: 8px;
-            color: #888;
-            font-size: 13px;
-            font-family: inherit;
+            color: var(--danger);
+            font-size: 14px;
+            font-family: var(--font-text);
             transition: all 0.15s;
         }
 
         .delete-btn:hover {
-            background: #3a1a1a;
-            border-color: #c62828;
-            color: #e57373;
+            background: var(--danger-tint);
         }
 
         /* ── Similar tab ────────────────────────────────── */
@@ -451,42 +554,42 @@
         }
         .sim-control-label {
             font-size: 12px;
-            color: #999;
+            color: var(--text-3);
             white-space: nowrap;
         }
         .sim-number-input {
             width: 52px;
-            background: #222;
-            border: 1px solid #444;
-            border-radius: 3px;
-            color: #e0e0e0;
-            padding: 3px 6px;
+            background: var(--surface-2);
+            border: 1px solid var(--hairline-strong);
+            border-radius: var(--r-xs);
+            color: var(--text);
+            padding: 4px 6px;
             font-size: 12px;
-            font-family: inherit;
+            font-family: var(--font-text);
             outline: none;
             text-align: center;
         }
-        .sim-number-input:focus { border-color: #4a9eff; }
+        .sim-number-input:focus { border-color: var(--link); }
         .sim-refresh-btn {
             margin-left: 4px;
-            padding: 4px 12px;
-            background: #333;
-            border: 1px solid #555;
-            border-radius: 3px;
-            color: #ccc;
+            padding: 5px 14px;
+            background: transparent;
+            border: 1px solid var(--link);
+            border-radius: var(--r-pill);
+            color: var(--link);
             cursor: pointer;
             font-size: 12px;
-            font-family: inherit;
+            font-family: var(--font-text);
             white-space: nowrap;
             transition: background 0.15s;
         }
-        .sim-refresh-btn:hover { background: #444; }
+        .sim-refresh-btn:hover { background: var(--primary-tint); }
         .sim-refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
         .sim-hint {
             padding: 0 14px 8px 14px;
-            font-size: 11px;
-            color: #666;
+            font-size: 12px;
+            color: var(--text-3);
             line-height: 1.5;
             flex-shrink: 0;
         }
@@ -498,9 +601,9 @@
             display: flex;
             align-items: center;
             padding: 0 4px;
-            background: #1e1e1e;
-            border-top: 1px solid #2a2a2a;
-            border-bottom: 1px solid #2a2a2a;
+            background: var(--surface-1);
+            border-top: 1px solid var(--hairline);
+            border-bottom: 1px solid var(--hairline);
         }
         .sim-strip-viewport {
             flex: 1;
@@ -517,7 +620,7 @@
         .sim-strip-empty {
             padding: 14px 10px;
             font-size: 12px;
-            color: #555;
+            color: var(--text-4);
             white-space: nowrap;
         }
         .sim-nav-btn {
@@ -534,7 +637,7 @@
             justify-content: center;
             padding: 0;
             transition: color 0.15s;
-            border-radius: 3px;
+            border-radius: var(--r-xs);
             z-index: 1;
         }
         .sim-nav-btn:hover { color: rgba(255,255,255,0.8); background: rgba(255,255,255,0.06); }
@@ -545,17 +648,17 @@
             flex-shrink: 0;
             width: 90px;
             height: 90px;
-            border-radius: 4px;
+            border-radius: var(--r-sm);
             overflow: hidden;
             position: relative;
-            border: 2px solid #383838;
+            border: 2px solid transparent;
             cursor: pointer;
-            transition: border-color 0.15s;
-            background: #111;
+            transition: border-color 0.2s var(--ease);
+            background: var(--surface-2);
         }
-        .sim-thumb:hover { border-color: #4a9eff; }
-        .sim-thumb.focused { border-color: #4a9eff; }
-        .sim-thumb.checked { border-color: #ff6b6b; }
+        .sim-thumb:hover { border-color: rgba(255, 255, 255, 0.3); }
+        .sim-thumb.focused { border-color: var(--link); }
+        .sim-thumb.checked { border-color: var(--danger); }
 
         .sim-thumb img {
             width: 100%;
@@ -571,7 +674,7 @@
             height: 16px;
             cursor: pointer;
             z-index: 3;
-            accent-color: #ff6b6b;
+            accent-color: var(--danger);
         }
         .sim-thumb-overlay {
             position: absolute;
@@ -579,8 +682,8 @@
             left: 0;
             right: 0;
             height: 50%;
-            background: rgba(0,0,0,0.55);
-            padding: 3px 4px 3px 4px;
+            background: linear-gradient(transparent, rgba(0,0,0,0.7));
+            padding: 3px 5px 4px 5px;
             display: flex;
             flex-direction: column;
             justify-content: flex-end;
@@ -609,7 +712,7 @@
             flex: 1;
             min-height: 0;
             position: relative;
-            background: #0a0a0a;
+            background: var(--surface-0);
             overflow: hidden;
             cursor: grab;
         }
@@ -636,29 +739,29 @@
             align-items: center;
             justify-content: center;
             font-size: 12px;
-            color: #444;
+            color: var(--text-4);
         }
 
         /* footer remove button */
         .sim-footer {
             flex-shrink: 0;
-            padding: 8px 14px;
-            border-top: 1px solid #2a2a2a;
+            padding: 12px 14px;
+            border-top: 1px solid var(--hairline);
             display: flex;
             justify-content: center;
         }
         .sim-remove-btn {
-            padding: 7px 36px;
-            background: #c62828;
+            padding: 8px 36px;
+            background: var(--danger);
             border: none;
-            border-radius: 4px;
+            border-radius: var(--r-pill);
             color: #fff;
             cursor: pointer;
-            font-size: 13px;
-            font-family: inherit;
+            font-size: 14px;
+            font-family: var(--font-text);
             transition: background 0.15s;
         }
-        .sim-remove-btn:hover:not(:disabled) { background: #b71c1c; }
+        .sim-remove-btn:hover:not(:disabled) { background: var(--danger-press); }
         .sim-remove-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
         /* Tags面板 */
@@ -672,12 +775,13 @@
             display: inline-flex;
             align-items: center;
             gap: 6px;
-            background: #2a2a2a;
-            border: 1px solid #383838;
-            padding: 4px 8px 4px 10px;
-            border-radius: 16px;
-            font-size: 12px;
-            color: #e0e0e0;
+            background: var(--surface-3);
+            border: 1px solid transparent;
+            padding: 4px 8px 4px 12px;
+            border-radius: var(--r-pill);
+            font-size: 13px;
+            letter-spacing: -0.08px;
+            color: var(--text);
         }
         .tag-pill .tag-dot {
             width: 6px; height: 6px;
@@ -688,7 +792,7 @@
             width: 16px; height: 16px;
             background: transparent;
             border: none;
-            color: #666;
+            color: var(--text-4);
             cursor: pointer;
             font-size: 14px;
             line-height: 1;
@@ -699,8 +803,8 @@
             border-radius: 50%;
         }
         .tag-pill .tag-remove:hover {
-            color: #ff5252;
-            background: rgba(255,82,82,0.15);
+            color: var(--danger);
+            background: rgba(255, 69, 58, 0.15);
         }
 
         .tag-btn-row {
@@ -709,32 +813,34 @@
             margin-top: 10px;
         }
         .add-tag-btn, .match-tag-btn {
-            background: #4a9eff;
+            background: var(--primary);
             border: none;
-            padding: 6px 16px;
-            border-radius: 4px;
+            padding: 7px 20px;
+            border-radius: var(--r-pill);
             color: #fff;
             cursor: pointer;
-            font-size: 13px;
-            font-family: inherit;
-            transition: background 0.15s;
+            font-size: 14px;
+            font-family: var(--font-text);
         }
         .match-tag-btn {
-            background: #4caf50;
+            background: transparent;
+            border: 1px solid var(--link);
+            color: var(--link);
+            padding: 6px 19px;
         }
-        .match-tag-btn:hover { background: #43a047; }
+        .match-tag-btn:hover { background: var(--primary-tint); }
         .match-tag-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
         .add-tag-btn:hover {
-            background: #3a8eef;
+            background: var(--primary-focus);
         }
 
         /* 小地图样式 */
         .mini-map-container {
-            margin-top: 16px;
-            border-radius: 4px;
+            margin-top: 20px;
+            border-radius: var(--r-md);
             overflow: hidden;
-            background: #1a1a1a;
+            background: var(--surface-1);
         }
 
         .mini-map-header {
@@ -745,39 +851,39 @@
         }
 
         .mini-map-label {
-            color: #777;
-            font-size: 11px;
+            color: var(--text-3);
+            font-size: 12px;
         }
 
         .edit-location-btn {
-            font-size: 11px;
-            padding: 2px 8px;
-            background: #333;
-            border: 1px solid #555;
-            color: #ccc;
+            font-size: 12px;
+            padding: 3px 12px;
+            background: transparent;
+            border: 1px solid var(--link);
+            color: var(--link);
             cursor: pointer;
-            border-radius: 3px;
-            font-family: inherit;
+            border-radius: var(--r-pill);
+            font-family: var(--font-text);
         }
-        .edit-location-btn:hover { background: #444; }
-        .edit-location-btn.cancel { border-color: #e57373; color: #e57373; }
-        .edit-location-btn.cancel:hover { background: rgba(229,115,115,0.1); }
+        .edit-location-btn:hover { background: var(--primary-tint); }
+        .edit-location-btn.cancel { border-color: var(--danger); color: var(--danger); }
+        .edit-location-btn.cancel:hover { background: rgba(255, 69, 58, 0.1); }
 
         .edit-location-hint {
             font-size: 11px;
-            color: #4a9eff;
+            color: var(--link);
             margin-bottom: 6px;
             text-align: center;
-            padding: 4px 8px;
-            background: rgba(74,158,255,0.1);
-            border-radius: 3px;
+            padding: 6px 10px;
+            background: var(--primary-tint);
+            border-radius: var(--r-sm);
         }
 
         #miniMap {
             width: 100%;
             height: 180px;
-            border-radius: 4px;
-            transition: height 0.3s ease;
+            border-radius: var(--r-md);
+            transition: height 0.3s var(--ease);
         }
 
         .sidebar.editing #miniMap {
@@ -797,57 +903,57 @@
 
         .location-search-input {
             flex: 1;
-            background: #222;
-            border: 1px solid #444;
-            color: #e0e0e0;
-            padding: 4px 8px;
-            border-radius: 3px;
-            font-size: 12px;
-            font-family: inherit;
+            background: var(--surface-3);
+            border: 1px solid var(--hairline);
+            color: var(--text);
+            padding: 6px 14px;
+            border-radius: var(--r-pill);
+            font-size: 13px;
+            font-family: var(--font-text);
             outline: none;
             min-width: 0;
         }
-        .location-search-input:focus { border-color: #4a9eff; }
+        .location-search-input:focus { border-color: var(--link); }
 
         .location-search-btn {
-            padding: 4px 10px;
-            background: #333;
-            border: 1px solid #555;
-            color: #ccc;
+            padding: 5px 14px;
+            background: var(--surface-3);
+            border: none;
+            color: var(--text);
             cursor: pointer;
-            border-radius: 3px;
-            font-size: 12px;
-            font-family: inherit;
+            border-radius: var(--r-pill);
+            font-size: 13px;
+            font-family: var(--font-text);
             white-space: nowrap;
             flex-shrink: 0;
         }
-        .location-search-btn:hover { background: #444; }
+        .location-search-btn:hover { background: var(--surface-4); }
 
         .location-search-results {
             position: absolute;
             top: 100%;
             left: 0;
             right: 0;
-            background: #2a2a2a;
-            border: 1px solid #444;
-            border-top: none;
-            border-radius: 0 0 4px 4px;
+            margin-top: 4px;
+            background: var(--surface-3);
+            border: 1px solid var(--hairline-strong);
+            border-radius: var(--r-md);
             z-index: 9999;
             max-height: 180px;
             overflow-y: auto;
         }
 
         .search-result-item {
-            padding: 6px 8px;
-            font-size: 11px;
-            color: #ccc;
+            padding: 7px 12px;
+            font-size: 12px;
+            color: var(--text);
             cursor: pointer;
-            border-bottom: 1px solid #333;
+            border-bottom: 1px solid var(--hairline);
             line-height: 1.4;
         }
-        .search-result-item:hover { background: #3a3a3a; color: #fff; }
+        .search-result-item:hover { background: var(--primary); color: #fff; }
         .search-result-item:last-child { border-bottom: none; }
-        .search-status-item { padding: 6px 8px; font-size: 11px; color: #666; }
+        .search-status-item { padding: 7px 12px; font-size: 12px; color: var(--text-3); }
 
         /* 相邻照片参考条 */
         .nearby-photos-strip {
@@ -855,8 +961,8 @@
             padding-top: 4px;
         }
         .nearby-strip-label {
-            color: #555;
-            font-size: 10px;
+            color: var(--text-3);
+            font-size: 11px;
             margin-bottom: 4px;
         }
         .nearby-photos-row {
@@ -867,31 +973,31 @@
             align-items: stretch;
         }
         .nearby-photos-row::-webkit-scrollbar { height: 3px; }
-        .nearby-photos-row::-webkit-scrollbar-thumb { background: #444; border-radius: 3px; }
+        .nearby-photos-row::-webkit-scrollbar-thumb { background: var(--surface-5); border-radius: var(--r-xs); }
         .nearby-photo-item {
             flex-shrink: 0;
             width: 84px;
             cursor: pointer;
-            border-radius: 3px;
+            border-radius: var(--r-sm);
             overflow: hidden;
             position: relative;
-            border: 1.5px solid #383838;
+            border: 2px solid transparent;
             transition: border-color 0.15s;
         }
-        .nearby-photo-item:hover { border-color: #4a9eff; }
+        .nearby-photo-item:hover { border-color: var(--link); }
         .nearby-photo-item.no-location { opacity: 0.4; cursor: default; }
-        .nearby-photo-item.no-location:hover { border-color: #383838; }
+        .nearby-photo-item.no-location:hover { border-color: transparent; }
         .nearby-photo-thumb {
             width: 84px;
             height: 84px;
             object-fit: cover;
             display: block;
-            background: #111;
+            background: var(--surface-1);
         }
         .nearby-photo-video {
             width: 84px;
             height: 84px;
-            background: #111;
+            background: var(--surface-1);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -908,7 +1014,7 @@
         .nearby-strip-sep {
             width: 1px;
             flex-shrink: 0;
-            background: #333;
+            background: var(--surface-4);
             border-radius: 1px;
             align-self: stretch;
             margin: 0 2px;
@@ -917,53 +1023,55 @@
         /* 地图/地标内部 Tab */
         .loc-tab-nav {
             display: flex;
-            margin-bottom: 6px;
-            background: #1e1e1e;
-            border-radius: 3px;
-            overflow: hidden;
+            margin-bottom: 8px;
+            padding: 2px;
+            gap: 2px;
+            background: var(--surface-3);
+            border-radius: var(--r-sm);
         }
         .loc-tab-btn {
             flex: 1;
             padding: 5px 0;
             background: transparent;
             border: none;
-            color: #666;
+            border-radius: 6px;
+            color: var(--text-2);
             cursor: pointer;
             font-size: 12px;
-            font-family: inherit;
-            transition: all 0.15s;
-            border-bottom: 2px solid transparent;
+            font-family: var(--font-text);
         }
-        .loc-tab-btn:hover { color: #bbb; background: rgba(255,255,255,0.04); }
-        .loc-tab-btn.active { color: #e0e0e0; border-bottom-color: #4a9eff; }
+        .loc-tab-btn:hover:not(.active) { color: var(--text); }
+        .loc-tab-btn.active { color: var(--text); background: var(--surface-5); font-weight: 600; }
+        .loc-tab-btn:active { transform: none; }
 
         /* 地标树 */
         .landmark-tree-container {
             max-height: 220px;
             overflow-y: auto;
             margin-bottom: 6px;
-            background: #1a1a1a;
-            border-radius: 3px;
-            padding: 4px 0;
+            background: var(--surface-2);
+            border-radius: var(--r-md);
+            padding: 4px;
         }
         .landmark-tree-container::-webkit-scrollbar { width: 4px; }
-        .landmark-tree-container::-webkit-scrollbar-thumb { background: #444; border-radius: 2px; }
+        .landmark-tree-container::-webkit-scrollbar-thumb { background: var(--surface-5); border-radius: 2px; }
         .landmark-node {
-            padding: 4px 8px;
-            font-size: 12px;
+            padding: 5px 8px;
+            font-size: 13px;
             cursor: pointer;
             display: flex;
             align-items: center;
-            gap: 5px;
+            gap: 6px;
+            border-radius: var(--r-sm);
             transition: background 0.12s;
             user-select: none;
-            color: #ccc;
+            color: var(--text);
         }
         .landmark-node:hover { background: rgba(255,255,255,0.06); }
-        .landmark-node.selected { background: rgba(74,158,255,0.18); color: #4a9eff; }
-        .landmark-node.no-location { color: #555; cursor: default; }
+        .landmark-node.selected { background: var(--primary); color: #fff; }
+        .landmark-node.no-location { color: var(--text-4); cursor: default; }
         .landmark-node.no-location:hover { background: transparent; }
-        .landmark-node .node-toggle { font-size: 9px; color: #555; flex-shrink: 0; width: 10px; text-align: center; }
+        .landmark-node .node-toggle { font-size: 9px; color: var(--text-4); flex-shrink: 0; width: 10px; text-align: center; }
         .landmark-node .node-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
         .landmark-node .node-name { flex: 1; }
         .landmark-node .node-loc-icon { font-size: 11px; flex-shrink: 0; }
@@ -973,31 +1081,30 @@
             padding-top: 4px;
         }
         .landmark-confirm-btn {
-            padding: 5px 18px;
-            background: #4a9eff;
+            padding: 6px 20px;
+            background: var(--primary);
             border: none;
-            border-radius: 3px;
+            border-radius: var(--r-pill);
             color: #fff;
             cursor: pointer;
-            font-size: 12px;
-            font-family: inherit;
+            font-size: 13px;
+            font-family: var(--font-text);
             transition: background 0.15s;
         }
-        .landmark-confirm-btn:hover:not(:disabled) { background: #3a8eef; }
+        .landmark-confirm-btn:hover:not(:disabled) { background: var(--primary-focus); }
         .landmark-confirm-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
         /* 占位符文本 */
         .placeholder {
-            color: #666;
+            color: var(--text-3);
+            font-size: 14px;
             text-align: center;
             padding: 40px 20px;
         }
 
-        /* 滚动条样式 */
-        .tab-content::-webkit-scrollbar { width: 5px; }
-        .tab-content::-webkit-scrollbar-track { background: transparent; }
-        .tab-content::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 3px; }
+        /* 滚动条样式由 apple-theme.css 统一提供 */
     </style>
+    <link rel="stylesheet" href="apple-theme.css">
     <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1/dist/face-api.js"></script>
 </head>
 <body>
@@ -1018,6 +1125,17 @@
             <video id="videoPlayer" controls preload="metadata">
                 Your browser does not support the video tag.
             </video>
+            <div class="unsupported-media" id="convertingMedia">
+                <div class="um-icon">⏳</div>
+                <div class="um-title" data-i18n="photo.converting">Preparing video…</div>
+                <div class="um-detail" data-i18n="photo.convertingDetail">This format is converted once with ffmpeg, then cached. Long videos may take a moment.</div>
+            </div>
+            <div class="unsupported-media" id="unsupportedMedia">
+                <div class="um-icon">🎞️</div>
+                <div class="um-title" data-i18n="photo.unsupportedTitle">This format cannot be played here</div>
+                <div class="um-detail" id="unsupportedDetail"></div>
+                <button class="um-open" id="openExternalBtn" data-i18n="photo.openExternal">Open with system player</button>
+            </div>
         </div>
         <div class="zoom-controls">
             <button class="zoom-btn" id="zoomOut" data-i18n-title="photo.zoomOut" title="Zoom Out">−</button>
@@ -1058,7 +1176,12 @@
                 </div>
                 <div class="info-row">
                     <div class="info-label" data-i18n="photo.datetime">Date & Time</div>
-                    <div class="info-value" id="info-datetime">-</div>
+                    <div class="info-value" id="info-datetime" data-i18n-title="photo.editDatetimeTitle" title="">-</div>
+                    <div class="datetime-edit-row" id="datetimeEditRow" style="display:none;">
+                        <input type="datetime-local" class="datetime-edit-input" id="datetimeEditInput" step="1">
+                        <button class="coord-action-btn" id="datetimeSaveBtn" data-i18n-title="photo.save" title="">✓</button>
+                        <button class="coord-action-btn" id="datetimeCancelBtn" data-i18n-title="photo.cancelEdit" title="">✕</button>
+                    </div>
                 </div>
                 <div class="info-row">
                     <div class="info-label" data-i18n="photo.location">Location</div>
@@ -1192,6 +1315,15 @@
             return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
         }
 
+        function formatDatetimeDisplay(time) {
+            if (!time) return '-';
+            const d = new Date(time);
+            if (isNaN(d.getTime())) return time;
+            const p = (n, len = 2) => String(n).padStart(len, '0');
+            return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ` +
+                   `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${p(d.getMilliseconds(), 3)}`;
+        }
+
         // i18n 初始化
         (async () => {
             const lang = await ipcRenderer.invoke('get-language');
@@ -1292,6 +1424,9 @@
 
         // 键盘左右键翻页（Similar tab激活时改为滚动缩略图条）
         document.addEventListener('keydown', async (e) => {
+            // 正在输入（编辑拍摄时间、备注、搜索地址等）时，左右键用来移动光标，不翻页
+            const t = e.target;
+            if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
             const similarActive = document.getElementById('tab-similar').classList.contains('active');
             if (e.key === 'ArrowLeft') {
                 if (similarActive) { scrollSimStrip(-1); }
@@ -1299,6 +1434,47 @@
             } else if (e.key === 'ArrowRight') {
                 if (similarActive) { scrollSimStrip(1); }
                 else { await ipcRenderer.invoke('navigate-photo', 'next'); }
+            }
+        });
+
+        // Chromium 不支持的容器/编码：.avi（这批是 Motion JPEG）Chromium 既不解 AVI 容器也不解 MJPG
+        // mpg/avi/wmv 等也走这里：先让主进程用 ffmpeg 转成 mp4 再播
+        function needsTranscode(filePath) {
+            return /\.(mpg|mpeg|avi|mts|m2ts|vob|asf|wmv|flv|3g2)$/i.test(filePath);
+        }
+
+        let unsupportedFilePath = null;
+        let videoLoadToken = 0;   // 转码期间用户切到别的文件时，丢弃过期的转码结果
+
+        function showConverting(on) {
+            const panel = document.getElementById('convertingMedia');
+            if (panel) panel.classList.toggle('active', on);
+        }
+
+        function showUnsupportedMedia(filePath, extraDetail) {
+            unsupportedFilePath = filePath;
+            const panel = document.getElementById('unsupportedMedia');
+            const detail = document.getElementById('unsupportedDetail');
+            const ext = (filePath.split('.').pop() || '').toUpperCase();
+            if (detail) {
+                detail.textContent = i18n.t('photo.unsupportedDetail', { format: ext }) +
+                    (extraDetail ? '\n' + extraDetail : '');
+            }
+            if (panel) panel.classList.add('active');
+        }
+
+        function hideUnsupportedMedia() {
+            unsupportedFilePath = null;
+            const panel = document.getElementById('unsupportedMedia');
+            if (panel) panel.classList.remove('active');
+        }
+
+        document.getElementById('openExternalBtn').addEventListener('click', async () => {
+            if (!unsupportedFilePath) return;
+            const res = await ipcRenderer.invoke('open-file-external', unsupportedFilePath);
+            if (res && !res.success) {
+                const detail = document.getElementById('unsupportedDetail');
+                if (detail) detail.textContent = res.error || 'Failed to open';
             }
         });
 
@@ -1321,43 +1497,74 @@
                 fileUrl: fileUrl
             });
             
+            const loadToken = ++videoLoadToken;
+            showConverting(false);
+            // 视频不支持编辑：隐藏编辑按钮
+            document.getElementById('editPhotoBtn').style.display = photo.type === 'video' ? 'none' : '';
+
             // 根据类型显示图片或视频
             if (photo.type === 'video') {
                 photoImage.classList.remove('active');
-                videoPlayer.classList.add('active');
-                
-                // 直接设置视频src
-                videoPlayer.src = fileUrl;
-                
-                // 添加错误处理
-                videoPlayer.onerror = (e) => {
-                    console.error('Video error:', e);
-                    console.error('Video error details:', {
-                        error: videoPlayer.error,
-                        networkState: videoPlayer.networkState,
-                        readyState: videoPlayer.readyState,
-                        src: videoPlayer.src
+                hideUnsupportedMedia();
+
+                let playUrl = fileUrl;
+                if (needsTranscode(filePath)) {
+                    // 停掉上一个视频，否则切到这里后它还在后台播
+                    videoPlayer.pause();
+                    videoPlayer.removeAttribute('src');
+                    videoPlayer.load();
+                    videoPlayer.classList.remove('active');
+                    showConverting(true);
+                    const res = await ipcRenderer.invoke('prepare-video-playback', { filePath });
+                    if (loadToken !== videoLoadToken) return;   // 已切换到别的文件
+                    showConverting(false);
+                    if (res && res.success) {
+                        playUrl = pathToFileURL(res.playPath).href;
+                    } else {
+                        // 没有 ffmpeg 或转码失败：退回「用系统播放器打开」
+                        showUnsupportedMedia(filePath, res && res.error);
+                        playUrl = null;
+                    }
+                }
+
+                if (playUrl) {
+                    videoPlayer.classList.add('active');
+
+                    // 直接设置视频src
+                    videoPlayer.src = playUrl;
+
+                    // 加载失败时同样给出可操作的提示，而不是只写 console
+                    videoPlayer.onerror = () => {
+                        console.error('Video error:', {
+                            error: videoPlayer.error,
+                            networkState: videoPlayer.networkState,
+                            readyState: videoPlayer.readyState,
+                            src: videoPlayer.src
+                        });
+                        videoPlayer.classList.remove('active');
+                        showUnsupportedMedia(filePath);
+                    };
+
+                    // 等待视频元数据加载后再重置缩放
+                    videoPlayer.onloadedmetadata = () => {
+                        console.log('Video metadata loaded:', {
+                            width: videoPlayer.videoWidth,
+                            height: videoPlayer.videoHeight,
+                            duration: videoPlayer.duration
+                        });
+                        resetZoom();
+                    };
+
+                    // 视频全屏事件处理
+                    videoPlayer.addEventListener('enterpictureinpicture', () => {
+                        console.log('Entered picture-in-picture');
                     });
-                };
-                
-                // 等待视频元数据加载后再重置缩放
-                videoPlayer.onloadedmetadata = () => {
-                    console.log('Video metadata loaded:', {
-                        width: videoPlayer.videoWidth,
-                        height: videoPlayer.videoHeight,
-                        duration: videoPlayer.duration
-                    });
-                    resetZoom();
-                };
-                
-                // 视频全屏事件处理
-                videoPlayer.addEventListener('enterpictureinpicture', () => {
-                    console.log('Entered picture-in-picture');
-                });
-                
-                videoPlayer.load();
+
+                    videoPlayer.load();
+                }
             } else {
                 videoPlayer.classList.remove('active');
+                hideUnsupportedMedia();
                 photoImage.classList.add('active');
 
                 if (/\.heic$/i.test(filePath)) {
@@ -1388,13 +1595,7 @@
             document.getElementById('info-filename').textContent = (photo.filename || '-') +
                 ((photo.id != null) ? ` (${photo.id})` : '');
             document.getElementById('info-directory').textContent = photo.directory || '-';
-            document.getElementById('info-datetime').textContent = photo.time ? (() => {
-                const d = new Date(photo.time);
-                if (isNaN(d.getTime())) return photo.time;
-                const p = (n, len = 2) => String(n).padStart(len, '0');
-                return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ` +
-                       `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${p(d.getMilliseconds(), 3)}`;
-            })() : '-';
+            document.getElementById('info-datetime').textContent = formatDatetimeDisplay(photo.time);
             try {
                 const stat = fs.statSync(filePath);
                 document.getElementById('info-filesize').textContent = formatFileSize(stat.size);
@@ -1459,6 +1660,7 @@
             document.getElementById('likeBtn').style.display          = inBin ? 'none' : '';
             document.getElementById('deleteBtn').style.display        = inBin ? 'none' : '';
             document.querySelector('.tag-btn-row').style.display      = inBin ? 'none' : '';
+            document.getElementById('info-datetime').classList.toggle('readonly', inBin);
         }
 
         // 缩放控制
@@ -1629,15 +1831,23 @@
                     currentPhoto.fullPath = res.path;
                     await ipcRenderer.invoke('update-current-nav-entry', currentPhoto);
                     await ipcRenderer.invoke('refresh-map-photos', currentPhoto);
+                    await ipcRenderer.invoke('notify-photo-file-updated', {
+                        photoId: currentPhoto.id, directory: currentPhoto.directory,
+                        filename: res.filename, fullPath: res.path
+                    });
                     await loadPhoto(currentPhoto);
                     regenerateThumbnail(res.path);
                     console.log('[photo-edit] 已覆盖原图（改名）:', res.path);
                 } else {
-                    // 覆盖原图（原地写回）：刷新当前视图，重建缩略图，并刷新地图
+                    // 覆盖原图（原地写回）：刷新当前视图，重建缩略图，并刷新地图/管理窗
                     photoImage.onload = () => { resetZoom(); };
                     photoImage.src = pathToFileURL(res.path).href + '?t=' + Date.now();
                     regenerateThumbnail(res.path);
                     await ipcRenderer.invoke('refresh-map-photos', { id: currentPhoto.id, directory: currentPhoto.directory, filename: currentPhoto.filename });
+                    await ipcRenderer.invoke('notify-photo-file-updated', {
+                        photoId: currentPhoto.id, directory: currentPhoto.directory,
+                        filename: currentPhoto.filename, fullPath: res.path
+                    });
                     console.log('[photo-edit] 已覆盖原图:', res.path);
                 }
             } catch (err) {
@@ -2013,19 +2223,19 @@
             const container = document.getElementById('landmarkTreeContainer');
             // 避免重复加载
             if (container.dataset.loaded === 'true') return;
-            container.innerHTML = '<div style="color:#555;font-size:11px;padding:8px 10px;">加载中...</div>';
+            container.innerHTML = '<div style="color:var(--text-3);font-size:12px;padding:8px 10px;">加载中...</div>';
             try {
                 const tree = await ipcRenderer.invoke('get-location-tag-tree');
                 container.innerHTML = '';
                 if (!tree || tree.length === 0) {
-                    container.innerHTML = '<div style="color:#555;font-size:11px;padding:8px 10px;">暂无地标</div>';
+                    container.innerHTML = '<div style="color:var(--text-3);font-size:12px;padding:8px 10px;">暂无地标</div>';
                     return;
                 }
                 renderLandmarkTree(tree, container);
                 container.dataset.loaded = 'true';
             } catch (e) {
                 console.error('加载地标树失败:', e);
-                container.innerHTML = '<div style="color:#555;font-size:11px;padding:8px 10px;">加载失败</div>';
+                container.innerHTML = '<div style="color:var(--text-3);font-size:12px;padding:8px 10px;">加载失败</div>';
             }
         }
 
@@ -2254,7 +2464,7 @@
         async function loadNearbyPhotos() {
             if (!currentPhoto || !currentPhoto.id) return;
             const row = document.getElementById('nearbyPhotosRow');
-            row.innerHTML = '<span style="color:#555;font-size:11px;line-height:56px;padding:0 4px;">...</span>';
+            row.innerHTML = '<span style="color:var(--text-3);font-size:12px;line-height:56px;padding:0 4px;">...</span>';
 
             try {
                 const { before, after } = await ipcRenderer.invoke('get-photos-near-time', {
@@ -2265,7 +2475,7 @@
                 row.innerHTML = '';
 
                 if (before.length === 0 && after.length === 0) {
-                    row.innerHTML = '<span style="color:#555;font-size:10px;padding:0 4px;">暂无相邻照片</span>';
+                    row.innerHTML = '<span style="color:var(--text-3);font-size:11px;padding:0 4px;">暂无相邻照片</span>';
                     return;
                 }
 
@@ -2557,6 +2767,74 @@
             document.addEventListener('click', () => removeDirMenu());
         })();
 
+        // 点击拍摄时间 → 内联编辑并保存回照片文件（写入数据库 + JPEG EXIF）
+        (function () {
+            const dtEl = document.getElementById('info-datetime');
+            const editRow = document.getElementById('datetimeEditRow');
+            const input = document.getElementById('datetimeEditInput');
+            const saveBtn = document.getElementById('datetimeSaveBtn');
+            const cancelBtn = document.getElementById('datetimeCancelBtn');
+            let editing = false;
+
+            function toInputValue(time) {
+                const d = new Date(time);
+                if (isNaN(d.getTime())) return '';
+                const p = (n) => String(n).padStart(2, '0');
+                return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+            }
+
+            function enterEdit() {
+                if (!currentPhoto || !currentPhoto.time || dtEl.classList.contains('readonly')) return;
+                const val = toInputValue(currentPhoto.time);
+                if (!val) return;
+                editing = true;
+                input.value = val;
+                dtEl.style.display = 'none';
+                editRow.style.display = 'flex';
+                input.focus();
+            }
+
+            function exitEdit() {
+                editing = false;
+                dtEl.style.display = '';
+                editRow.style.display = 'none';
+            }
+
+            async function save() {
+                if (!currentPhoto) return;
+                const val = input.value;
+                if (!val) return;
+                const [datePart, timePart] = val.split('T');
+                const [y, mo, da] = datePart.split('-').map(Number);
+                const [h, mi, se] = (timePart || '00:00:00').split(':').map(Number);
+                const newDate = new Date(y, mo - 1, da, h, mi, se || 0);
+                if (isNaN(newDate.getTime())) {
+                    alert(i18n.t('photo.invalidDatetime'));
+                    return;
+                }
+                const isoTime = newDate.toISOString();
+                const res = await ipcRenderer.invoke('update-photo-time', { photoId: currentPhoto.id, time: isoTime });
+                if (res && res.success) {
+                    currentPhoto.time = isoTime;
+                    dtEl.textContent = formatDatetimeDisplay(isoTime);
+                    exitEdit();
+                    await ipcRenderer.invoke('refresh-map-photos', {
+                        id: currentPhoto.id, directory: currentPhoto.directory, filename: currentPhoto.filename
+                    });
+                } else {
+                    alert(i18n.t('photo.failedSaveDatetime'));
+                }
+            }
+
+            dtEl.addEventListener('click', () => { if (!editing) enterEdit(); });
+            cancelBtn.addEventListener('click', exitEdit);
+            saveBtn.addEventListener('click', save);
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') { e.preventDefault(); save(); }
+                else if (e.key === 'Escape') { e.preventDefault(); exitEdit(); }
+            });
+        })();
+
         // 地址搜索按钮
         document.getElementById('locationSearchBtn').addEventListener('click', () => {
             const q = document.getElementById('locationSearchInput').value.trim();
@@ -2774,7 +3052,7 @@
             const pill = document.createElement('div');
             pill.className = 'tag-pill';
             pill.dataset.tagId = tag.id;
-            pill.style.borderColor = tag.color || '#383838';
+            pill.style.borderColor = tag.color || 'transparent';
 
             const dot = document.createElement('span');
             dot.className = 'tag-dot';

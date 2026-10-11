@@ -65,7 +65,7 @@ class PhotoWindow {
             minHeight: 400,
             fullscreenable: true,
             show: false,
-            backgroundColor: '#1a1a1a',
+            backgroundColor: '#1d1d1f',
             webPreferences: {
                 nodeIntegration: true,
                 contextIsolation: false
